@@ -19,6 +19,7 @@
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -27,10 +28,11 @@ from pathlib import Path
 import urllib.error
 import urllib.request
 
-# winrun.sh --py ships scripts/mac/lib/relay_code.py next to this script (an import
-# at column 0); it finds the installed relay's code for the debug-mode switch below.
-# Run from the repo (tests), it is found in scripts/mac/lib.
+# winrun.sh --py ships scripts/mac/lib/relay_code.py and arklog.py next to this script
+# (imports at column 0); relay_code finds the installed relay's code for debug mode.
+# Run from the repo (tests), they are found in scripts/mac/lib.
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "mac", "lib"))
+import arklog
 import relay_code
 
 API = "http://127.0.0.1:36163"
@@ -38,6 +40,18 @@ PWSH = r"C:\Program Files\PowerShell\7\pwsh.exe"
 # 游戏进程留给 AUTO-MAS/脚本自己关；这里只认「脚本在不在跑」
 SCRIPT_EXES = ("MAA.exe", "MaaEnd.exe")
 GAME_EXES = ("dnplayer.exe", "Client-Win64-Shipping.exe", "Endfield.exe")
+TZ_BJ = timezone(timedelta(hours=8))
+HISTORY_DIR = r"D:\ark\automas\history"
+RELAY_LOG = arklog.RELAY_LOG
+SCRIPT_LOGS = (
+    ("ok-ww", "ok-script.log", arklog.OKWW_LOG),
+    ("MAA", "asst.log", r"D:\ark\maa\debug\asst.log"),
+    ("MAA", "gui.log", arklog.MAA_GUI_LOG),
+    ("MaaEnd", "maafw.log", r"D:\ark\maaend\debug\maafw.log"),
+)
+_HEARTBEAT_RE = re.compile(r"下一个闹钟\s+\d{2}:\d{2}\s+在跑巡查")
+_TAIL_BYTES = 65536
+_RECENT_LOG_SECS = 900
 
 
 # AUTO-MAS's /api/dispatch/start body since its update of 2026-11-16 21:21 (Beijing): the old
@@ -106,13 +120,151 @@ def qids():
     return {(q.get("Info") or {}).get("Name", ""): qid for qid, q in qs.items()}
 
 
-def status():
+def _proc_start_times() -> list[str]:
+    """Single pwsh CIM query returning ['label(pid) HH:MM:SS 起', ...] for active scripts/games."""
+    exes = ",".join(f"'{e}'" for e in SCRIPT_EXES + GAME_EXES)
+    ps = (
+        f"$exes = @({exes}); "
+        "Get-CimInstance Win32_Process | ForEach-Object { "
+        "$n = $_.Name; $c = $_.CommandLine; $st = if ($_.CreationDate) { $_.CreationDate.ToString('HH:mm:ss') } else { '?' }; "
+        "if ($exes -contains $n) { Write-Output ($n.Substring(0, $n.Length - 4) + '|' + $_.ProcessId + '|' + $st) } "
+        r"elseif (($n -eq 'pythonw.exe' -or $n -eq 'python.exe') -and $c -like '*\ok-ww\*') "
+        "{ Write-Output ('ok-ww|' + $_.ProcessId + '|' + $st) } }"
+    )
+    out = subprocess.run([PWSH, "-NoProfile", "-Command", ps],
+                         capture_output=True, text=True, errors="replace", timeout=15).stdout
+    rows = []
+    for line in out.splitlines():
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) == 3 and parts[0]:
+            rows.append(f"{parts[0]}(pid {parts[1]}, {parts[2]} 起)")
+    return rows
+
+
+def _tail_ts_lines(path: str | Path, *, limit: int = 5, skip_re=None) -> tuple[str | None, list[str]]:
+    """Read last 64KB of a log file (never whole multi-MB log) and return (mtime_str, last timestamped lines)."""
+    p = Path(path)
+    if not p.is_file():
+        return None, []
+    st = p.stat()
+    mt = datetime.fromtimestamp(st.st_mtime, TZ_BJ).strftime("%m-%d %H:%M:%S")
+    with p.open("rb") as fh:
+        fh.seek(0, os.SEEK_END)
+        sz = fh.tell()
+        fh.seek(max(0, sz - _TAIL_BYTES))
+        raw = fh.read().decode("utf-8", errors="replace")
+    kept: list[str] = []
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if skip_re is not None and skip_re.search(s):
+            continue
+        if arklog.parse_ts(s) is None:
+            continue
+        kept.append(s[:140])
+    return mt, kept[-limit:]
+
+
+def _recent_history_today(limit: int = 3, *, today_str: str | None = None) -> list[str]:
+    """Latest AUTO-MAS history records for today (Beijing date), zero rglob/os.walk."""
+    day = today_str or datetime.now(TZ_BJ).strftime("%Y-%m-%d")
+    day_dir = Path(HISTORY_DIR) / day
+    if not day_dir.is_dir():
+        return []
+    files: list[Path] = []
+    for sub in sorted(day_dir.iterdir()):
+        if not sub.is_dir():
+            continue
+        for jf in sub.iterdir():
+            if jf.is_file() and jf.suffix.lower() == ".json":
+                files.append(jf)
+    files.sort(key=lambda p: (p.stem, p.name))
+    out: list[str] = []
+    for jf in files[-limit:]:
+        try:
+            with jf.open(encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if "maa_result" in data:
+            kind, res = "MAA", str(data.get("maa_result") or "?")
+        elif "maaend_result" in data:
+            kind, res = "MaaEnd", str(data.get("maaend_result") or "?")
+        elif "general_result" in data:
+            kind, res = "OK-WW", str(data.get("general_result") or "?")
+        else:
+            kind, res = "?", "?"
+        out.append(f"{jf.stem} | {kind} | {res[:80]}")
+    return out
+
+
+def _status_details(busy, games, *, now_epoch: float | None = None, today_str: str | None = None):
+    """Best-effort atomic live context for `status`: start times, AUTO-MAS live tasks,
+    today's latest history, heartbeat-filtered relay.log tail, and active/recent script logs.
+    Every block is isolated so missing files or unreachable APIs never break `status`."""
+    if busy or games:
+        try:
+            starts = _proc_start_times()
+            if starts:
+                print("进程启动:", "；".join(starts))
+        except (OSError, subprocess.SubprocessError, ValueError):
+            pass
+    try:
+        live = live_tasks(timeout=3, quiet=True)
+        if live is None:
+            print("AUTO-MAS 在跑: 连不上")
+        elif live:
+            print("AUTO-MAS 在跑:", "；".join(f"{lbl}({tid[:8]})" for tid, lbl in live))
+        else:
+            print("AUTO-MAS 在跑: 无")
+    except (OSError, ValueError, urllib.error.URLError):
+        pass
+    try:
+        hist = _recent_history_today(limit=3, today_str=today_str)
+        if hist:
+            print("今日最近记录:")
+            for row in hist:
+                print(" ", row)
+    except (OSError, ValueError):
+        pass
+    try:
+        mt, lines = _tail_ts_lines(RELAY_LOG, limit=5, skip_re=_HEARTBEAT_RE)
+        if mt is not None:
+            print(f"relay.log（写入 {mt}，已过滤心跳）:")
+            for ln in lines:
+                print(" ", ln)
+    except (OSError, ValueError):
+        pass
+    now_ts = now_epoch if now_epoch is not None else time.time()
+    busy_set = set(busy or ())
+    for script_name, label, log_path in SCRIPT_LOGS:
+        try:
+            p = Path(log_path)
+            if not p.is_file():
+                continue
+            age = now_ts - p.stat().st_mtime
+            if script_name not in busy_set and age > _RECENT_LOG_SECS:
+                continue
+            mt, lines = _tail_ts_lines(p, limit=5)
+            if mt is not None and lines:
+                tag = "活跃" if script_name in busy_set else f"{max(0, int(age))}秒前更新"
+                print(f"{script_name}/{label}（写入 {mt}，{tag}）:")
+                for ln in lines:
+                    print(" ", ln)
+        except (OSError, ValueError):
+            continue
+
+
+def status(detail: bool = False):
     busy, games = running()
     print("脚本在跑:", busy or "无", "｜游戏在跑:", games or "无")
+    if detail:
+        _status_details(busy, games)
     return busy
 
 
-def live_tasks():
+def live_tasks(timeout: int = 10, quiet: bool = False):
     """AUTO-MAS's running dispatch tasks: [(taskId, label)]. The taskId here is
     what /api/dispatch/stop wants - a dispatch id, not a script or queue id.
 
@@ -121,9 +273,10 @@ def live_tasks():
     straight to taskkill on an unknown state."""
     try:
         d = json.loads(urllib.request.urlopen(API + "/api/dispatch/runtime-snapshot",
-                                              timeout=10).read().decode())
+                                              timeout=timeout).read().decode())
     except (urllib.error.URLError, OSError, ValueError) as e:
-        print(f"  ❌ 问不到 AUTO-MAS 在跑什么（{e}）")
+        if not quiet:
+            print(f"  ❌ 问不到 AUTO-MAS 在跑什么（{e}）")
         return None
     out = []
     for t in d.get("tasks") or []:
@@ -323,6 +476,7 @@ def start(name, test=False) -> int:
     """
     busy = status()
     if busy:
+        _status_details(busy, [])
         print(f"❌ 拒绝派发：{busy} 还在跑。先 stop 或等它完——"
               "带病派发就是上午三个游戏同时在线的起点。")
         return 2
@@ -352,6 +506,7 @@ def start_queue(name) -> int:
           "中途 taskkill 任何成员都会引发连锁——2026-09-01 上午就是这么乱的。")
     busy = status()
     if busy:
+        _status_details(busy, [])
         print(f"❌ 拒绝：{busy} 在跑。")
         return 2
     table = qids()
@@ -366,7 +521,7 @@ def start_queue(name) -> int:
 if __name__ == "__main__":
     a = sys.argv[1:] or ["status"]
     if a[0] == "status":
-        status()
+        status(detail=True)
     elif a[0] == "idle":
         # Exit 0 only when no script and no game runs: run-one.sh wait-idle loops on the
         # exit code, not on the wording of the status line (2026-10-24 a hand-written wait

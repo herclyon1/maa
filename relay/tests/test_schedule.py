@@ -4056,5 +4056,110 @@ def _part_debug_window():
         main(Path(d))
 
 
+def _part_dispatch_guard_status_details():
+    """dispatch_guard.py status prints atomic live context: start times, AUTO-MAS live tasks,
+    today's recent history, heartbeat-filtered relay.log tail, and active/recent script logs."""
+    import contextlib
+    import importlib
+    import io
+    import json
+    import os
+    import time
+
+    ROOT = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(ROOT / "scripts" / "windows"))
+    import dispatch_guard as g
+    g = importlib.reload(g)
+
+    saved = (g.running, g._proc_start_times, g.live_tasks, g.HISTORY_DIR, g.RELAY_LOG, g.SCRIPT_LOGS)
+    try:
+        d = tmpdir()
+        day = "2026-11-20"
+        hist_sub = d / "history" / day / "OK-WW"
+        hist_sub.mkdir(parents=True)
+        (hist_sub / "2026-11-20_10-58-00.json").write_text(
+            json.dumps({"general_result": "error: kicked"}), encoding="utf-8"
+        )
+        (hist_sub / "2026-11-20_11-09-31.json").write_text(
+            json.dumps({"general_result": "Success!"}), encoding="utf-8"
+        )
+        (hist_sub / "2026-11-20_11-10-00.json").write_text("{corrupt json", encoding="utf-8")
+
+        relay_log = d / "relay.log"
+        # Put a real event followed by 10 heartbeat lines: heartbeats must be filtered out
+        relay_lines = [
+            "11-20 11:03:58 INFO    ark.relay  OK-WW-07-04-09 失败，等待 AUTO-MAS 重试",
+            "11-20 11:05:10 INFO    ark.relay  AUTO-MAS 自动重试 OK-WW-07-04-09",
+        ] + [f"11-20 11:{10 + i:02d}:00 INFO    ark.service  下一个闹钟 11:{11 + i:02d} 在跑巡查：读 AUTO-MAS 日志、核对有没有超时" for i in range(10)]
+        relay_log.write_text("\n".join(relay_lines) + "\n", encoding="utf-8")
+
+        ok_log = d / "ok-script.log"
+        # >1MB file to verify 64KB tail-seek works cleanly on large logs
+        big_pad = ("2026-11-20 08:00:00,000 INFO old_padding " + "x" * 100 + "\n") * 8000
+        ok_log.write_text(
+            big_pad
+            + "2026-11-20 11:05:12,100 INFO TaskExecutor DailyTask: start retry\n"
+            + "2026-11-20 11:07:01,100 INFO TaskExecutor DailyTask: farm done\n"
+            + "2026-11-20 11:08:15,100 INFO TaskExecutor DailyTask: open F2\n"
+            + "2026-11-20 11:09:17,100 INFO TaskExecutor 活跃奖励：活跃度 200\n"
+            + "2026-11-20 11:09:31,200 INFO TaskExecutor 活跃奖励：领完核对通过\n",
+            encoding="utf-8",
+        )
+        now_ts = time.time()
+        os.utime(ok_log, (now_ts - 60, now_ts - 60))
+
+        g.HISTORY_DIR = str(d / "history")
+        g.RELAY_LOG = str(relay_log)
+        g.SCRIPT_LOGS = (
+            ("ok-ww", "ok-script.log", str(ok_log)),
+            ("MAA", "asst.log", str(d / "missing_asst.log")),
+        )
+
+        # Case 1: Active run with start times + live task + heartbeat filtering + >1MB log seek
+        g.running = lambda: (["ok-ww"], ["Client-Win64-Shipping"])
+        g._proc_start_times = lambda: ["ok-ww(pid 9001, 11:05:12 起)", "Client-Win64-Shipping(pid 9002, 11:05:14 起)"]
+        g.live_tasks = lambda timeout=10, quiet=False: [("t99999999", "OK-WW")]
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            g.status(detail=True)
+        out = buf.getvalue()
+        print("[status(detail=True) 活跃场景：启动时间 + 心跳滤波 + >1MB尾读]")
+        check("首行保持原格式", "脚本在跑: ['ok-ww'] ｜游戏在跑: ['Client-Win64-Shipping']" in out)
+        check("输出进程启动时间", "ok-ww(pid 9001, 11:05:12 起)" in out)
+        check("输出 AUTO-MAS 活跃任务", "AUTO-MAS 在跑: OK-WW(t9999999)" in out)
+        check("过滤掉 10 条心跳，保留真实事件", ("AUTO-MAS 自动重试 OK-WW-07-04-09" in out) and ("下一个闹钟" not in out))
+        check(">1MB 日志 seek-tail 读到尾部最新行", "活跃奖励：领完核对通过" in out)
+        check(">1MB 日志未把 08:00 旧填充吐出来", "old_padding" not in out)
+
+        # Case 2: Just finished (idle) -> still shows today's recent history + recent 60s-ago script log!
+        g.running = lambda: ([], [])
+        g.live_tasks = lambda timeout=10, quiet=False: []
+        buf2 = io.StringIO()
+        with contextlib.redirect_stdout(buf2):
+            g._status_details([], [], now_epoch=now_ts, today_str=day)
+        out2 = buf2.getvalue()
+        print("[status 空闲但刚跑完场景：今日历史 + 15分钟内刚更新日志]")
+        check("显示今日最近 history 成功记录", "2026-11-20_11-09-31 | OK-WW | Success!" in out2)
+        check("损坏 history JSON 不崩溃", "AUTO-MAS 在跑: 无" in out2)
+        check("空闲仍显示 60 秒前刚更新的 ok-script.log", "活跃奖励：领完核对通过" in out2)
+
+        # Case 3: Everything missing / AUTO-MAS refused -> never crashes, line 1 still printed
+        g.HISTORY_DIR = str(d / "no_such_history")
+        g.RELAY_LOG = str(d / "no_such_relay.log")
+        g.SCRIPT_LOGS = (("ok-ww", "ok-script.log", str(d / "no_such_ok.log")),)
+        g.running = lambda: ([], [])
+        g.live_tasks = lambda timeout=10, quiet=False: None
+        buf3 = io.StringIO()
+        with contextlib.redirect_stdout(buf3):
+            res = g.status(detail=True)
+        out3 = buf3.getvalue()
+        print("[全部缺失 + AUTO-MAS 离线：不崩溃、首行完整]")
+        check("返回空闲列表", res, [])
+        check("首行完整", "脚本在跑: 无 ｜游戏在跑: 无" in out3)
+        check("显示 AUTO-MAS 连不上", "AUTO-MAS 在跑: 连不上" in out3)
+    finally:
+        g.running, g._proc_start_times, g.live_tasks, g.HISTORY_DIR, g.RELAY_LOG, g.SCRIPT_LOGS = saved
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window]))
+    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_guard_status_details, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window]))
