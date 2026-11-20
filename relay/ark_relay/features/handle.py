@@ -535,10 +535,8 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     game = GAME[rec.script]
     note = _evidence_note(eng, rec)
     raw = rec.raw or {}
-    names = core._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
-    if makeup_phrase == texts.MAKEUP_STOPPED_PHRASE:
-        names = [n for n in names if texts.AUTOMAS_MANUAL_STOP not in n]
-    stuck = "、".join(names[:3]) + ("…" if len(names) > 3 else "")
+    stuck = _stuck(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"),
+                   makeup_phrase == texts.MAKEUP_STOPPED_PHRASE)
     page = raw.get("evidence_page") or ""
     # The link goes in the head; the rest of the body is the usual failure text without it.
     _, rest = core.format_failure(dataclasses.replace(rec, raw={k: v for k, v in raw.items() if k != "evidence_page"}),
@@ -552,6 +550,22 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
         body += "\n" + (unread_note if raw.get("maaend_unreachable_unread") and unread_note
                          else texts.UNREACHABLE_SHAPE_NOTE)
     return send(eng, day, UNRESOLVED_KIND, rec.run_id, title, body)
+
+
+def _stuck(failed: list[str], causes: "dict | None", drop_manual_stop: bool) -> str:
+    """The alarm's 「卡在 …」: the first three failed tasks with their causes (core._with_causes),
+    「…」 when there are more. When the three shown share one cause it is said once after them:
+    2026-11-20 (#187) 「赠送干员礼物（游戏停在「协议更新」窗口，要人点同意）、装备制造（…同上）、…」
+    repeated it three times. After a manual stop the 「任务被用户手动停止」 ones are left out."""
+    named = core._with_causes(failed, causes)
+    pairs = [(f, n) for f, n in zip(failed, named, strict=True)
+             if not (drop_manual_stop and texts.AUTOMAS_MANUAL_STOP in n)]
+    more = "…" if len(pairs) > 3 else ""
+    shown = pairs[:3]
+    whys = {n[len(f):] for f, n in shown}
+    if len(shown) > 1 and len(whys) == 1 and next(iter(whys)):
+        return "、".join(f for f, _ in shown) + more + next(iter(whys))
+    return "、".join(n for _, n in shown) + more
 
 
 def _unresolved_title_head(game: str, shift: str, makeup_phrase: str, stuck: str, page: str) -> tuple[str, str]:
