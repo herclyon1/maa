@@ -234,6 +234,13 @@ def maaend_plugin_gone_reason(seconds: int) -> str:
             f"（隔 {seconds} 秒查了两次都不在），MaaEnd 不会再往下走。")
 
 
+def maaend_agreement_reason() -> str:
+    """maaend_watchdog: the game held at the one-time 「协议更新」 dialog (2026-11-20, #187)."""
+    return ("判定原因：终末地停在一次性的「协议更新」窗口，要点「同意」才进得去；MaaEnd 认不出这个窗口，"
+            "后面的任务只会一个个等到超时（11 月 20 日早班这样白等了 83 分钟）。"
+            "程序不替你点同意：你在游戏里点一下，补跑就能接上。")
+
+
 def maaend_stall_reason(minutes: int, last: str) -> str:
     tail = f"（最后一行 {last}）" if last else ""
     return f"判定原因：MaaEnd 的运行日志 debug\\maafw.log 已 {minutes} 分钟没有新行{tail}；正常运行时两行最多隔 65 秒。"
@@ -1534,6 +1541,7 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, "", ["agent\\go-service.exe"]),
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
+        maaend_stuck_body(maaend_agreement_reason(), True, ""),
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),
                               ("#11", "中继停下时推状态给手机", "B", "", "", "")],

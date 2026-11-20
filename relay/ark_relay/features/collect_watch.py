@@ -28,6 +28,11 @@ from pathlib import Path
 
 log = logging.getLogger("ark.collect_watch")
 
+# The one-time 「协议更新」 dialog's line as MaaFW's OCR logs it (collector_maaend.AGREEMENT_TEXT);
+# a task's end as failed. Both only counted here: maaend_watchdog judges them.
+from ark_relay.features.collector_maaend import AGREEMENT_TEXT  # noqa: E402 - after the logger, as above
+_TASK_FAILED = "[msg=Tasker.Task.Failed]"
+
 ENTRY = "AutoCollectSchedule"
 _TASK = re.compile(r"\[msg=Tasker\.Task\.(Starting|Completed|Failed)\].*?\"entry\":\"" + ENTRY + r"\"")
 _ROUTE_FAILED = re.compile(
@@ -55,6 +60,10 @@ class Watcher:
         # and the timestamp of the newest one.
         self.lines_seen = 0
         self.last_stamp = ""
+        # For the watchdog's 「协议更新」 check: chunks read with the dialog's line in them, and
+        # tasks MaaFW booked as failed, both counted since the relay started.
+        self.agreement_seen = 0
+        self.tasks_failed = 0
         self._shots_broken = False       # the picture queue failed once in this attempt (said once)
 
     # ---------------------------------------------------------------- parsing
@@ -62,9 +71,13 @@ class Watcher:
     def feed(self, text: str) -> list[str]:
         """Consume log text (any number of lines). Returns the notes it logged."""
         notes: list[str] = []
+        if AGREEMENT_TEXT in text:
+            self.agreement_seen += 1
         for line in text.splitlines():
             if _NOTIFY not in line:
                 continue
+            if _TASK_FAILED in line:
+                self.tasks_failed += 1
             if self.shots is not None and _TASK_EVENT in line:
                 try:
                     self.shots.on_line(line)    # queues only; never waits on a picture
@@ -206,7 +219,7 @@ def start(cfg, notifier) -> bool:
                 log.exception("盯采集日志出错，继续")
             # Separate guard: a watchdog fault must not stop the log reading.
             try:
-                dog.tick(w.lines_seen, w.last_stamp)
+                dog.tick(w.lines_seen, w.last_stamp, w.agreement_seen, w.tasks_failed)
             except Exception:
                 log.exception("MaaEnd 卡死看门狗出错，继续")
 

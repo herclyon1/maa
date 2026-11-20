@@ -1460,6 +1460,64 @@ def _part_maaend_watchdog_main():
     check("同一个 MaaEnd 不再结束第二次", r.killed, [MAAEND_PID, 21932, 21940])
     check("也不再报第二次", len(r.notes.sent), 1)
 
+    print("\n[11-20 (#187)：开屏停在「协议更新」窗口——日志一直在写，但第一个任务失败就结束 MaaEnd]")
+
+    class Agree(Rig):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self.seen = self.failed = 0
+
+        def step(self, seconds, *, new_lines=40, stamp=None, seen=0, failed=0):
+            self.t += seconds
+            self.lines += new_lines
+            self.seen += seen
+            self.failed += failed
+            return self.dog.tick(self.lines, self.stamp, self.seen, self.failed)
+    r = Agree()
+    r.step(60)
+    r.step(30, seen=1)                                 # 09:34:28 the dialog read
+    r.step(30)
+    check("只读到一次、也没任务失败：不动", (r.killed, r.notes.sent), ([], []))
+    r.run_for(240)
+    check("日志一直在写：老的 10 分钟判据不会出手", r.killed, [])
+    got = r.step(30, failed=1)                          # 09:40:02 the first task failed
+    check("第一个任务失败：结束 MaaEnd（没碰游戏）", (got, r.killed[:1]), (texts.MAAEND_STUCK_KILLED, [MAAEND_PID]))
+    title, body, alert = r.notes.sent[0]
+    check("一条群报警，说清是协议窗口、要人点同意", (len(r.notes.sent), alert, "协议更新" in body, "点「同意」" in body),
+          (1, True, True, True))
+    check("正文是人话", texts.plain(body), [])
+    r = Agree()
+    r.step(60, seen=1)
+    r.step(30)
+    r.step(40, seen=1)
+    check("隔 70 秒又读到：结束（不用等任务失败）", r.killed[:1], [MAAEND_PID])
+    r = Agree()
+    r.step(60, seen=1)
+    r.step(20, seen=1)
+    check("20 秒内读到两次（同一屏）：还不算", r.killed, [])
+    r.run_for(600)
+    check("之后再没读到、也没任务失败（有人点了同意）：不动", r.killed, [])
+
+    print("\n[AUTO-MAS 重试拉起的下一个 MaaEnd 又停在那儿：照样结束，跟别的卡死一样每结束一个报一条]")
+    r = Agree()
+    r.step(60, seen=1)
+    r.step(30, failed=1)
+    r.procs = [(n, (p + 100 if n.lower() == "maaend.exe" else p)) for n, p in r.procs]
+    r.step(30)
+    r.step(30, seen=1)
+    r.step(30, failed=1)
+    check("两个 MaaEnd 都结束了", [p for p in r.killed if p in (MAAEND_PID, MAAEND_PID + 100)], [MAAEND_PID, MAAEND_PID + 100])
+    check("每结束一个 MaaEnd 报一条（不压）", len(r.notes.sent), 2)
+
+    print("\n[上一个 MaaEnd 读到过、这个没读到：不算到这个头上]")
+    r = Agree()
+    r.step(60, seen=1)
+    r.snap = {"tasks": []}                              # that MaaEnd finished
+    r.step(30)
+    r.snap = RUNNING
+    r.step(30, failed=1)
+    check("新的一趟只有任务失败、没读到窗口：不动", r.killed, [])
+
     print("\n[maafw.log 10 分钟没有新行 → 结束 + 报警；9 分钟不动作]")
     r = Rig()
     r.run_for(300, new_lines=50, stamp="2026-10-01 15:30:03")
@@ -1592,7 +1650,7 @@ def _part_maaend_watchdog_main():
         def __init__(self, *a, **kw):
             pass
 
-        def tick(self, lines, stamp):
+        def tick(self, lines, stamp, agreement_seen=0, tasks_failed=0):
             ticks.append(lines)
 
     real_dog, real_tick = maaend_watchdog.Watchdog, collect_watch.TICK_SECONDS
