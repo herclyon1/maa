@@ -121,9 +121,11 @@ def eligible(rec, now: datetime | None = None) -> bool:
     if _day(rec.started) != _day(_now(now)):
         return False
     raw = rec.raw or {}
+    # The 「协议更新」 dialog waits for a person's 同意: a make-up would stop at it again. A logout
+    # (the account logged in elsewhere) is NOT a reason to skip one: the user, 2026-11-20 (B 10426,
+    # 10451), on 「怕顶下线，暂未重新派跑」 and on stopping AUTO-MAS's retries for it.
     return not (raw.get("maintenance") or raw.get("maaend_unreachable") or raw.get("manual_stop")
-                or raw.get("hand_started")
-                or raw.get("maaend_agreement_at") or raw.get("maaend_logged_out_at"))
+                or raw.get("hand_started") or raw.get("maaend_agreement_at"))
 
 
 def candidates(eng, now: datetime | None = None) -> list:

@@ -1285,11 +1285,13 @@ lists an older relay version narrowed go back at the next attempt's start.
     w_old.poll()
     check("重启清空 maafw.log 不误读昨天的残留 .log.gz", w_old.agreement_seen, 0)
     check("collect_retry._maafw_text 也能读 .log.gz", "请您仔细阅读并同意以下协议" in _cr._maafw_text(log_gz.parent), True)
-    # N1: makeup.eligible skips agreement / logged_out dialogs
+    # N1: makeup.eligible skips the agreement dialog (it waits for a person's 同意) but not a logout:
+    # the user, 2026-11-20 (B 10426, 10451), against holding back re-runs for fear of kicking someone off.
     now_t = _dt(2026, 11, 20, 10, 0, tzinfo=_TZ)
-    for k in ("maaend_agreement_at", "maaend_logged_out_at"):
+    for k, want, label in (("maaend_agreement_at", False, "协议窗口：不派无效整轮补跑"),
+                           ("maaend_logged_out_at", True, "被别处登录挤下线：照常补跑")):
         r_blk = _RR("r1", "MaaEnd", "u", now_t, now_t, False, ["赠送干员礼物"], raw={k: "09:34:28"})
-        check(f"{k} 不派无效整轮补跑", _mk.eligible(r_blk, now_t), False)
+        check(label, _mk.eligible(r_blk, now_t), want)
 
     print("\n[旧版本收窄过的母本：新一趟（Tasker.Task.Starting）一开始就改回]")
     cfg, f, n = _setup()
