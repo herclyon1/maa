@@ -4840,7 +4840,10 @@ def _part_config_skip():
     print("\n[the shutdown gate: the shift is over at the skip, so the machine is not held on]")
     v = shutdown.decide(e, at(9, 35))
     check("not 「shift-running」 (还差 MaaEnd)", v.code != "shift-running", True)
-    check("…the decision right after the shift says go", v.code, "go")
+    # Since 2026-11-20 (the user: 「早班的游戏任务没跑完，没修好，就不能关机」) a skip like this one,
+    # which needs someone to fix the launcher path, keeps the machine on (shutdown._shift_unfixed).
+    check("…the decision right after the shift: held by the unfixed-shift gate, naming MaaEnd",
+          (v.code, "终末地" in v.reason), ("shift-failed", True))
 
     print("\n[the interim / daily title is not 全绿]")
     # The same steps report._compose_daily runs before format_daily (no history log for the row).
@@ -4938,7 +4941,8 @@ def _part_config_skip():
     check("next tick: the alarm with the reason goes out",
           [("找不到终末地官方启动器" in b) for t, b in alarms(e6)], [True])
     check("nothing left to send", e6._unsent_skips, [])
-    check("then the shutdown says go", shutdown.decide(e6, at(9, 35, 8)).code, "go")
+    check("then the shutdown no longer waits on the alarm (the unfixed shift holds it instead)",
+          shutdown.decide(e6, at(9, 35, 8)).code, "shift-failed")
 
     _mc.CHECKS.update(_mc_real)
 

@@ -1,8 +1,8 @@
 {
- "version": 20261120034906,
- "ref": "relay-20261120034906",
+ "version": 20261120035338,
+ "ref": "relay-20261120035338",
  "files": {
-  "RELEASE-NOTES.md": "007447bd2dff3bdbe2e2489481881c9d9f315c1d",
+  "RELEASE-NOTES.md": "0219438f6ff6c6f3a0a3e125cd5f81854ccf9902",
   "app_main.py": "f39c46e3878537a3f7a65de1f44fcf1265fe0666",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "c0a631ddcc33578f69f308469124c1ca716b3171",
@@ -71,7 +71,7 @@
   "ark_relay/features/sanity_plan.py": "9758de0876a3c6326e0daf5af98c556298293451",
   "ark_relay/features/selfcheck.py": "b7033704befa2cfb458cf4e100f662ee65c7bb88",
   "ark_relay/features/selfupdate.py": "57142a87bffed56ef2bd6be9cf5ee83e0b3ce8f2",
-  "ark_relay/features/shutdown.py": "176ab1b5940cce28e40b78ee23f01144e5580851",
+  "ark_relay/features/shutdown.py": "1117a435513194f0d68b3c010d77c87be19f4b85",
   "ark_relay/features/snapshot.py": "0d9ca475059fd8119f3929247b7c889a95c736c5",
   "ark_relay/features/stagegate.py": "ba297e89e0a404daa4ac14905ad2f56bb59ecdd3",
   "ark_relay/features/task_shots.py": "375dd0c49301f35965f42f728e54e69a35618c95",
@@ -85,7 +85,7 @@
   "watchdog_guard.py": "30e8a798a30b7404b09772caea11320901f4580d"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "a3a4e30a42a817bab8431cf5a00774e0f49b5f6e5a0c6cec603e7985ff8866e0",
+  "RELEASE-NOTES.md": "80b99a1624ce21e64e4b7a61aa2100407041f71291e7db39bf180d9c4fe10ebd",
   "app_main.py": "5f30b2cbaa7058518f593a8a910948f99b0151324fefb3f49354c19e42878134",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7895467b7d9212cc1ece9932e52e114f5336168f833bbe06828a577b200d2389",
@@ -154,7 +154,7 @@
   "ark_relay/features/sanity_plan.py": "b74435b49acd89ff0ba11ec66f65ea3ba778e826f66b7f8f184382d5e9edb4ba",
   "ark_relay/features/selfcheck.py": "40cd319700cc6615b345bc885123abdc4d950dfee37a6a5abd7c6a8936a6c26d",
   "ark_relay/features/selfupdate.py": "f7e9229f7ab9f49fbfb99168f18d2be65ca0105ba0b3bac195ec1a35b5a06708",
-  "ark_relay/features/shutdown.py": "0e2255a767b60cdf684bda36c42ee3c0a109972acdd95d2d6558a34976a0f0a5",
+  "ark_relay/features/shutdown.py": "7a8d82041de4e68b4d781609376ce1221cdae2f87be0b0d13820d3cfd28db776",
   "ark_relay/features/snapshot.py": "99a3b70a999ec37eaef05c1fd6b45b09ee4da7cce084fa42fa5958822febd9d7",
   "ark_relay/features/stagegate.py": "d2e728bc49c03a4dee6daef31f8eceafeb130fcefe79dfc02d3a07c35ab5ed99",
   "ark_relay/features/task_shots.py": "4ffd65f0a8c14e37c4dae6b0e34d888895db779fa1eb73e61e5a9f67b26b6b9d",

@@ -173,6 +173,42 @@ AFTER_SHIFT = ("uptime", "running", "farming", "pending", "report")
 UPDATE_HOLD = "游戏客户端正在更新或重跑"
 
 
+# A failed run nobody here can fix: the game's servers down (maintenance / maaend_unreachable)
+# or the user's own stop (manual_stop). makeup.eligible skips the same ones.
+UNFIXABLE = ("maintenance", "maaend_unreachable", "manual_stop")
+
+
+def _shift_unfixed(shift: list[dict], entries: list[dict]) -> list[str]:
+    """「明日方舟（开始唤醒）」 for each script of the current shift (_current_shift) whose latest
+    record since the shift's time failed and was not one of UNFIXABLE; a later record that
+    went through (a retry, the make-up, a run by hand) fixes it. Transitional records (one
+    attempt of several) are not the latest word."""
+    from ark_relay.features.handle import GAME  # noqa: PLC0415 - handle imports this module
+    cur = _current_shift(shift)
+    if not cur:
+        return []
+    since = min(q["due"] for q in cur) - timedelta(minutes=5)
+    kinds = {k for q in cur for k in q.get("kinds", [])}
+    latest: dict = {}
+    for e in entries:
+        try:
+            if e.get("script") not in kinds or e.get("transitional") or _entry_time(e) < since:
+                continue
+            if e["script"] not in latest or _entry_time(e) >= _entry_time(latest[e["script"]]):
+                latest[e["script"]] = e
+        except (KeyError, TypeError, ValueError):
+            continue
+    out = []
+    for script, e in sorted(latest.items()):
+        raw = e.get("raw") or {}
+        if e.get("ok") or any(raw.get(k) for k in UNFIXABLE):
+            continue
+        failed = [str(t) for t in e.get("failed_tasks") or []]
+        what = "、".join(failed[:3]) + ("…" if len(failed) > 3 else "")
+        out.append(f"{({'OK-WW': '鸣潮', **GAME}).get(script, script)}（{what or '没说是哪一项'}）")
+    return out
+
+
 def _newest_shift(shift: list[dict]) -> "dict | None":
     return max(shift, key=lambda q: q["due"]) if shift else None
 
@@ -702,6 +738,12 @@ def decide(eng, now: datetime) -> Verdict:
     from ark_relay.features import activity  # noqa: PLC0415
     if why := activity.holding(eng, now):
         return Verdict(False, "makeup", why)
+    # The user, 2026-11-20 (B 10477): 「早班的游戏任务没跑完，没修好，就不能关机，你们要修好。」
+    # That morning the 终末地 shift failed and the machine stayed on only because debug mode
+    # happened to be on. Not in HELD_PAST_SHIFT: once a later run of the script goes through,
+    # the machine powers off as usual.
+    if unfixed := _shift_unfixed(shift, entries):
+        return Verdict(False, "shift-failed", "这一班有游戏任务没跑完、还没修好：" + "；".join(unfixed))
     day = now.strftime("%Y-%m-%d")
     cutoff = eng._report_cutoff(now)   # same source as the report itself
     # An empty ledger means nothing ran today, so there is no daily report to wait
