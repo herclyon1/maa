@@ -252,6 +252,38 @@ def _part_okww_error_event():
             "按「刷到空」把剩下的体力刷掉\n")
     check("the stamina item: kicked off while farming", co._no_farm_reason(FARM + KICKED_RUN.format(kicked=LINE)),
           "上游这趟不刷体力（已用 180/180，活跃度满 True），中继按「刷到空」补刷时这个号在别处登录了，游戏被顶下线")
+    print("[the kicked line explains only its own run's error, within KICKED_WINDOW_S]")
+    BOOK_ERR = ("{ts} INFO TaskExecutor DailyTask:info_set current task claim daily\n"
+                "{ts} ERROR TaskExecutor DailyTask:can't find gray_book_boss, make sure f2 is the hotkey for book \n"
+                "{ts} INFO TaskExecutor DailyTask:info_set 错误 can't find gray_book_boss, make sure f2 is the hotkey for book\n"
+                "{ts} ERROR TaskExecutor TaskExecutor:📅 Daily Task exception stopped Traceback (most recent call last):\n"
+                "Exception: can't find gray_book_boss, make sure f2 is the hotkey for book\n")
+    OLD_KICK = "2026-11-20 09:03:00,000 INFO TaskExecutor DailyTask:" + co.KICKED_LINE + "补刷体力出错时，屏幕上读到：账号在别处登录\n"
+    KEYS = "日常清单：按 F2 打不开图鉴——先核对键位是不是游戏默认"
+    later_run = (OLD_KICK + "2026-11-20 09:10:00,000 INFO TaskExecutor DailyTask:Daily Task Completed\n"
+                 + "2026-11-20 15:00:00,000 INFO MainThread ok:pyappify  app_version:v3.8.5\n"
+                 + BOOK_ERR.format(ts="2026-11-20 15:05:00,000"))
+    check("an earlier run's kick (then Daily Task Completed, a new start): not this error's reason",
+          co._okww_error(later_run), KEYS)
+    retry = ("2026-11-20 11:03:44,900 INFO TaskExecutor DailyTask:" + co.KICKED_LINE + "补刷体力出错时，屏幕上读到：账号在别处登录\n"
+             + "2026-11-20 11:05:55,828 INFO MainThread ok:pyappify  app_version:v3.8.5\n"
+             + BOOK_ERR.format(ts="2026-11-20 11:06:30,000"))
+    check("AUTO-MAS's retry (11-20 11:05:55) failing 3 minutes after the kick: a new run, not the kick",
+          co._okww_error(retry), KEYS)
+    check("the same run, but the kick 10 minutes before the error: not its reason",
+          co._okww_error(OLD_KICK + BOOK_ERR.format(ts="2026-11-20 09:13:00,000")), KEYS)
+    check("the same run, 13 s before (as on 11-20): its reason",
+          co._okww_error(OLD_KICK + BOOK_ERR.format(ts="2026-11-20 09:03:13,000")), "日常清单：" + co.KICKED_SAY)
+    check("an error at offset 0 is not explained by a kick logged after it", co._kicked_before(BOOK_ERR.format(
+          ts="2026-11-20 09:02:00,000") + OLD_KICK, 0), False)
+    FARM_OWN = ("2026-11-20 11:02:10,000 ERROR TaskExecutor DailyTask:补刷体力出错，照常领日常奖励:  Traceback (most recent call last):\n"
+                "ok.task.exceptions.WaitFailedException\n"
+                "2026-11-20 11:02:20,000 INFO TaskExecutor DailyTask:info_set current task claim daily\n"
+                "2026-11-20 11:02:35,000 INFO TaskExecutor DailyTask:" + co.KICKED_LINE
+                + "领活跃奖励时 F2 指南没打开，屏幕上读到：账号在别处登录\n")
+    check("the farm failed by itself and the kick came at the claim: the farm's own error",
+          co._no_farm_reason(FARM + FARM_OWN).startswith(
+              "上游这趟不刷体力（已用 180/180，活跃度满 True），中继按「刷到空」补刷时出错："), True)
     check("the stamina item without the line: the farm's own error, as before",
           co._no_farm_reason(FARM + KICKED_RUN.format(kicked="")).startswith(
               "上游这趟不刷体力（已用 180/180，活跃度满 True），中继按「刷到空」补刷时出错："), True)
@@ -2813,7 +2845,7 @@ def _part_okww_farm_hook():  # noqa: C901
     d = on_screen(daily(USED_FULL, farm_error=RuntimeError("WaitFailedException")), KICKED_SCREEN)
     d.run()
     kicked = [m for m in d.logs if m.startswith(ns["KICKED_LINE"])]
-    check("记了「被顶下线」一行", kicked, ["鸣潮账号在别处登录，游戏被顶下线：补刷体力出错时，屏幕上是「连接已断开｜账号在别处登录」"])
+    check("记了「被顶下线」一行", kicked, ["鸣潮账号在别处登录，游戏被顶下线：补刷体力出错时，屏幕上读到：连接已断开 | 账号在别处登录 | 确认"])
     check("补刷出错那行照旧在它前面", [m.split("：")[0] for m in d.logs if "补刷体力出错" in m or m in kicked],
           ["补刷体力出错，照常领日常奖励: WaitFailedException", "鸣潮账号在别处登录，游戏被顶下线"])
     check("日常奖励照领（重试、补跑都不动）", "claim_daily" in EV)
@@ -2848,7 +2880,7 @@ def _part_okww_farm_hook():  # noqa: C901
     t = claim_task(KICKED_SCREEN, Exception(BOOK))
     check("错原样往上抛", claim(t), BOOK)
     check("记了「被顶下线」一行", [m for m in t.logs if m.startswith(ns["KICKED_LINE"])],
-          ["鸣潮账号在别处登录，游戏被顶下线：领活跃奖励时 F2 指南没打开，屏幕上是「连接已断开｜账号在别处登录」"])
+          ["鸣潮账号在别处登录，游戏被顶下线：领活跃奖励时 F2 指南没打开，屏幕上读到：连接已断开 | 账号在别处登录 | 确认"])
     t._ark_kicked = True
     t.logs.clear()
     check("补刷时已经记过：不再记第二遍", (claim(t), [m for m in t.logs if m.startswith(ns["KICKED_LINE"])]), (BOOK, []))
@@ -2858,6 +2890,68 @@ def _part_okww_farm_hook():  # noqa: C901
     read = []
     t.ocr = lambda *a, **k: (read.append(1), list(KICKED_SCREEN))[1]
     check("OK-WW 自己的停止：直接往上，不读屏", (claim(t), read), ("stopped", []))
+
+    print("\n[被顶下线：同一个实例跑第二趟又被顶，照样记（DailyTask.run 复位）]")
+    d = on_screen(daily(USED_FULL, farm_error=RuntimeError("WaitFailedException")), KICKED_SCREEN)
+    d.run()
+    d.farms[TacetTask].farm_error = RuntimeError("WaitFailedException")
+    d.run()
+    check("两趟各记一行", sum(m.startswith(ns["KICKED_LINE"]) for m in d.logs), 2)
+
+    print("\n[被顶下线：先抓新画面再读——手里那帧还是旧的也不漏]")
+    t = wire(object.__new__(DailyTask))
+    t.box_of_screen = lambda *a: None
+    t.frames = [[types.SimpleNamespace(name="背包")]]
+    t.next_frame = lambda: t.frames.append(KICKED_SCREEN)
+    t.ocr = lambda *a, **k: list(t.frames[-1])
+    check("旧帧没有、新帧有：认出来", ns["_say_if_kicked"](t, "x，"), True)
+    t = wire(object.__new__(DailyTask))
+    t.box_of_screen = lambda *a: None
+
+    def no_grab():
+        raise RuntimeError("capture lost")
+    t.next_frame = no_grab
+    t.ocr = lambda *a, **k: list(KICKED_SCREEN)
+    check("抓不到新画面：读手里那帧", ns["_say_if_kicked"](t, "x，"), True)
+    for where, boom in (("next_frame", "frame"), ("ocr", "read")):
+        t = wire(object.__new__(DailyTask))
+        t.box_of_screen = lambda *a: None
+        t.next_frame = (lambda: (_ for _ in ()).throw(Disabled())) if boom == "frame" else (lambda: None)
+        t.ocr = (lambda *a, **k: (_ for _ in ()).throw(Disabled())) if boom == "read" else (lambda *a, **k: [])
+        try:
+            ns["_say_if_kicked"](t, "x，")
+            got = "swallowed"
+        except Disabled:
+            got = "stopped"
+        check(f"{where} 里 OK-WW 的停止：往上抛，不吞", got, "stopped")
+    t = wire(object.__new__(DailyTask))
+    t.box_of_screen = lambda *a: None
+    t.next_frame = lambda: None
+    t.ocr = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("ocr down"))
+    check("普通读字出错：当没看到", ns["_say_if_kicked"](t, "x，"), False)
+    d = on_screen(daily(USED_FULL, farm_error=RuntimeError("WaitFailedException")), KICKED_SCREEN)
+    d.ocr = lambda *a, **k: (_ for _ in ()).throw(Disabled())
+    try:
+        d.run()
+        got = "ran on"
+    except Disabled:
+        got = "stopped"
+    check("补刷出错后读屏时 OK-WW 停了：整趟停，不接着领", (got, "claim_daily" in EV), ("stopped", False))
+
+    print("\n[被顶下线：OCR 把一句拆成几块、写成「登陆」也认；只有「连接已断开」（断网）不算]")
+    for label, names, want in (
+            ("拆成「账号在别处」「登录」", ["连接已断开", "账号在别处", "登录", "确认"], True),
+            ("「别处登陆」", ["账号在别处登陆"], True),
+            ("「其他设备登录」", ["您的账号已在其他设备登录"], True),
+            ("只有「连接已断开」", ["连接已断开", "网络异常", "确认"], False)):
+        t = on_screen(wire(object.__new__(DailyTask)), [types.SimpleNamespace(name=n) for n in names])
+        t.next_frame = lambda: None
+        check(label, ns["_say_if_kicked"](t, "x，"), want)
+    check("记下来的是实际读到的字", [m for m in t.logs if m.startswith(ns["KICKED_LINE"])], [])
+    t = on_screen(wire(object.__new__(DailyTask)), [types.SimpleNamespace(name=n) for n in ("账号在别处", "登录")])
+    t.next_frame = lambda: None
+    ns["_say_if_kicked"](t, "x，")
+    check("记下来的是实际读到的字（拆开的样子）", t.logs, ["鸣潮账号在别处登录，游戏被顶下线：x，屏幕上读到：账号在别处 | 登录"])
 
     print("\n[补刷时主动停（TaskDisabledException）照原样往上抛]")
     d = daily(USED_FULL, farm_error=Disabled())

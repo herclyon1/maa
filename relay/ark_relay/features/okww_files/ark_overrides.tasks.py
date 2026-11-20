@@ -777,23 +777,43 @@ def _screen_text(task) -> str:
 # notice on it, KICKED_LINE says so, and the relay (outcome.py) gives that as the reason.
 # Retries and makeup runs are not touched.
 KICKED_LINE = "鸣潮账号在别处登录，游戏被顶下线："
-_KICKED_TEXT = "别处登录"
+# Matched on the screen's text with every box joined and the blanks taken out: OCR may split
+# 「账号在别处登录」 into 「账号在别处」「登录」. 「连接已断开」 alone is not enough (a network drop).
+_KICKED_TEXT = re.compile(r"别处登[录陆]|其他设备登[录陆]")
 
 
 def _say_if_kicked(task, where) -> bool:
-    """Read the screen; on the game's 「账号在别处登录」 notice log KICKED_LINE once per task.
+    """On a fresh frame, read the screen; on the game's 「账号在别处登录」 notice log KICKED_LINE
+    with what was read, once per run (DailyTask.run clears _ark_kicked).
 
-    True when the notice is (or already was) seen. Never raises: a failed read is False."""
+    True when the notice is (or already was) seen in this run. Only OK-WW's own stop goes up
+    (see _echo_drop_stat); a frame that cannot be grabbed reads the one in hand, a failed
+    read is False."""
     if getattr(task, "_ark_kicked", False):
         return True
-    found, text = _screen_read(task)
-    if not found or _KICKED_TEXT not in _names(found):
+
+    def stop(exc):
+        return TaskDisabledException is not Exception and isinstance(exc, TaskDisabledException)
+
+    try:
+        task.next_frame()
+    except Exception as exc:  # noqa: BLE001 - the frame in hand is still worth reading
+        if stop(exc):
+            raise
+    try:
+        found = task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
+    except Exception as exc:  # noqa: BLE001 - unread is not kicked
+        if stop(exc):
+            raise
+        return False
+    said = _names(found)
+    if not _KICKED_TEXT.search(re.sub(r"[\s|]+", "", said)):
         return False
     try:
         task._ark_kicked = True
     except Exception:  # noqa: BLE001 - a task that takes no attribute is logged every time
         pass
-    task.log_info(f"{KICKED_LINE}{where}屏幕上是「连接已断开｜账号在别处登录」")
+    task.log_info(f"{KICKED_LINE}{where}屏幕上读到：{said[:200]}")
     return True
 
 
@@ -2186,6 +2206,7 @@ def _install_hooks():
         # One flag per run. Without resetting it here the second daily of a boot
         # would skip its additional tasks entirely.
         self._ark_additional_ran = False
+        self._ark_kicked = False         # 「账号在别处登录」 is said once per run (_say_if_kicked)
         farm_called["ran"] = False
         return daily_run(self)
 
