@@ -1772,6 +1772,7 @@ def _part_maaend_agreement():
     from ark_relay.core import texts
     from ark_relay.core.ledger import _with_causes
     from ark_relay.features import collector_maaend as C
+    from datetime import datetime
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-20"
     HISTORY = (FIX / "history-MaaEnd-05-32-21.log").read_text(encoding="utf-8")
@@ -1805,6 +1806,41 @@ def _part_maaend_agreement():
     causes = out.get("maaend_fail_causes") or {}
     check("15 个失败的都是这个原因", (len(causes), set(causes.values())), (15, {C.AGREEMENT}))
     check("自动采集是周五按周期跳过、完成的，不算", "自动采集" in causes, False)
+
+    print("\n[11-20 游戏机上真实的样子：09:34-10:46 在压缩过的轮转文件里，maafw.log 从 10:46:38 起]")
+    import gzip
+
+    def rotated(d, stamp, text, suffix=".log.gz"):
+        f = d / "debug" / f"maafw.bak.{stamp}{suffix}"
+        f.write_bytes(gzip.compress(text.encode("utf-8")) if suffix.endswith(".gz") else text.encode("utf-8"))
+        return f
+    d = TMP / "gz"
+    (d / "debug").mkdir(parents=True, exist_ok=True)
+    (d / "debug" / "maafw.log").write_text(FW.replace(C.AGREEMENT_TEXT, "本次更新"), encoding="utf-8")
+    rotated(d, "2026.11.20-09.40.02.867", FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-20 09:34:28.920]"))
+    rotated(d, "2026.11.20-10.13.19.711", "[2026-11-20 10:00:00.000][DBG] nothing\n")
+    old = rotated(d, "2026.11.19-10.09.48.424", FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-19 10:00:00.000]"))
+    rotated(d, "2026.11.20-11.30.00.000", "[2026-11-20 11:00:00.000][DBG] after\n")
+    rotated(d, "2026.11.20-12.00.00.000", "[2026-11-20 11:40:00.000][DBG] later\n")
+    (d / "debug" / "maafw.bak.2026.11.20-10.13.19.711.log.gz.2026.11.21-00.00.00.000.tmp").write_bytes(b"\x1f\x8b broken")
+    (d / "debug" / "maafw.bak.2026.11.20-10.40.00.000.log.gz").write_bytes(b"\x1f\x8b not really gzip")
+    log = TMP / "gz.log"
+    log.write_text(HISTORY, encoding="utf-8")
+    out = C.parse_maaend_log(log, d)
+    causes = out.get("maaend_fail_causes") or {}
+    check("09:34:28 读到（压缩文件里）", out.get("maaend_agreement_at"), "09:34:28")
+    check("15 个失败的都是这个原因", (len(causes), set(causes.values())), (15, {C.AGREEMENT}))
+    names = [f.name for f in C._fw_files(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46))]
+    check("只读盖到这一趟的：前一天的不读、写到一半的 .tmp 不读、过了这一趟的只读紧接着的那一个",
+          names, ["maafw.bak.2026.11.20-09.40.02.867.log.gz", "maafw.bak.2026.11.20-10.13.19.711.log.gz",
+                  "maafw.bak.2026.11.20-10.40.00.000.log.gz", "maafw.bak.2026.11.20-11.30.00.000.log.gz", "maafw.log"])
+    check("坏的压缩文件跳过，不出错", len(C.maafw_grep(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46),
+                                               (C.AGREEMENT_TEXT,))) > 0, True)
+    check("不给时间段：跟以前一样只列不压缩的", [f.name for f in C._fw_files(d)], ["maafw.log"])
+    rotated(d, "2026.11.20-09.40.02.867", FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-20 09:34:28.920]"), ".log")
+    names = [f.name for f in C._fw_files(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46))]
+    check("同一次轮转既有 .log 又有 .log.gz（11-15 那样）：只读一份", sum("09.40.02.867" in n for n in names), 1)
+    old.unlink()
 
     print("\n[没有这句、或者没有框架日志：不写原因，跟以前一样]")
     out = parse("no-dialog", HISTORY, FW.replace(C.AGREEMENT_TEXT, "资源完整性"))

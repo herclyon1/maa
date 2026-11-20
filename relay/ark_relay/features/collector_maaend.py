@@ -10,6 +10,7 @@ collector_maaend re-exports the readers it used to hold, under their old names.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import re
 from datetime import datetime, timedelta
@@ -35,23 +36,55 @@ UPDATE_AT_START_S = (-2, 30)
 UPDATE_INSTALL_S = 30
 
 
-def _fw_files(maaend_dir) -> list[Path]:
+# MaaFW rotates maafw.log to maafw.bak.<YYYY.MM.DD-HH.MM.SS.mmm>.log and gzips it (….log.gz; one
+# still being written ends in .tmp and is left alone). The stamp is the moment of the rotation, so
+# a file holds what was logged before it. 2026-11-20 the 09:34-10:46 part of the 早班 was in three
+# such files (09.40.02.867, 10.13.19.711, 10.46.38.827) and maafw.log began at 10:46:38: read
+# without them, the 「协议更新」 dialog of 09:34:28 was not there for _dialog_seen.
+_BAK_END = re.compile(r"maafw\.bak\.(\d{4})\.(\d{2})\.(\d{2})-(\d{2})\.(\d{2})\.(\d{2})")
+
+
+def _naive(t: datetime) -> datetime:
+    """`t` on the machine's clock (MaaFW stamps its lines in it) without a zone."""
+    return t.astimezone(SERVER_TZ).replace(tzinfo=None) if t.tzinfo else t
+
+
+def _fw_files(maaend_dir, t0: "datetime | None" = None, t1: "datetime | None" = None) -> list[Path]:
+    """MaaFW's logs. Without a window: the plain ones (maafw.log and any unzipped rotated one).
+    With one: maafw.log, plus the rotated ones, plain or gzipped, that cover part of it - each
+    ending at or after t0, up to the first ending after t1."""
     debug = Path(maaend_dir) / "debug"
-    return sorted([*debug.glob("maafw*.log"), *(debug / "cpp-algo" / "debug").glob("maafw*.log")])
+    plain = [*debug.glob("maafw*.log"), *(debug / "cpp-algo" / "debug").glob("maafw*.log")]
+    if t0 is None or t1 is None:
+        return sorted(plain)
+    lo, hi = _naive(t0).replace(microsecond=0), _naive(t1)
+    files = [f for f in plain if not _BAK_END.search(f.name)]
+    rotated = sorted((datetime(*map(int, m.groups())), f) for f in [*plain, *debug.glob("maafw.bak.*.log.gz")]
+                     if (m := _BAK_END.search(f.name)))
+    seen = set()     # 11-15 left both maafw.bak.<stamp>.log and its .log.gz: the same lines once
+    for end, f in rotated:
+        if end >= lo and end not in seen:
+            seen.add(end)
+            files.append(f)
+            if end > hi:
+                break
+    return sorted(files)
 
 
 def _fw_lines(files: list[Path], t0: datetime, t1: datetime, want=None) -> list[str]:
     """Lines of `files` stamped from t0 to t1 (whole seconds) for which `want(line)`
-    holds (every line when `want` is None), trailing newline removed. Unreadable
-    files are skipped."""
-    lo, hi = f"[{t0:%Y-%m-%d %H:%M:%S}", f"[{t1:%Y-%m-%d %H:%M:%S}~"
+    holds (every line when `want` is None), trailing newline removed. A .gz is read
+    through gzip. Unreadable files are skipped."""
+    lo, hi = f"[{_naive(t0):%Y-%m-%d %H:%M:%S}", f"[{_naive(t1):%Y-%m-%d %H:%M:%S}~"
     out: list[str] = []
     for f in files:
         try:
-            with f.open(encoding="utf-8", errors="replace") as fh:
+            opener = gzip.open(f, "rt", encoding="utf-8", errors="replace") if f.suffix == ".gz" \
+                else f.open(encoding="utf-8", errors="replace")
+            with opener as fh:
                 out.extend(line.rstrip("\n") for line in fh
                            if lo <= line[:24] <= hi and (want is None or want(line)))
-        except OSError:
+        except (OSError, EOFError):
             continue
     return out
 
@@ -85,7 +118,7 @@ def maafw_window(maaend_dir, t0: datetime, t1: datetime) -> tuple[list[str], str
     (lines, why there are none - '' when there are)."""
     if not maaend_dir:
         return [], "没配终末地的目录"
-    files = _fw_files(maaend_dir)
+    files = _fw_files(maaend_dir, t0, t1)
     if not files:
         return [], "框架日志的文件夹里没有日志（终末地每次重启会清掉它）"
     stretch = _fw_lines(files, t0, t1)
@@ -111,7 +144,7 @@ def maafw_grep(maaend_dir, t0: datetime, t1: datetime, needles: "tuple[str, ...]
         return []
     forms = list(dict.fromkeys(f for n in needles
                                for f in (n, json.dumps(n).strip('"'))))
-    found = _fw_lines(_fw_files(maaend_dir), t0, t1, lambda line: any(x in line for x in forms))
+    found = _fw_lines(_fw_files(maaend_dir, t0, t1), t0, t1, lambda line: any(x in line for x in forms))
     out: list[str] = []
     seen: set[str] = set()
     for line in sorted(found):
@@ -175,7 +208,7 @@ def task_events(maaend_dir, t0: datetime, t1: datetime) -> list:
         return []
     lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
     hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
-    lines = _fw_lines(_fw_files(maaend_dir), lo, hi,
+    lines = _fw_lines(_fw_files(maaend_dir, lo, hi), lo, hi,
                       lambda line: "[msg=Tasker.Task." in line or "[msg=Node.PipelineNode.Succeeded]" in line)
     events = []
     for line in lines:
@@ -1411,4 +1444,4 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     out.update(out_flags)
     return out
 
-__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'in_window', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']
+__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'AGREEMENT', 'AGREEMENT_TEXT', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'in_window', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']
