@@ -4058,12 +4058,14 @@ def _part_debug_window():
 
 def _part_dispatch_guard_status_details():
     """dispatch_guard.py status prints atomic live context: start times, AUTO-MAS live tasks,
-    today's recent history, heartbeat-filtered relay.log tail, and active/recent script logs."""
+    today's recent history (SQLite history.db + legacy JSON fallback), heartbeat-filtered
+    relay.log tail, and active/recent script logs."""
     import contextlib
     import importlib
     import io
     import json
     import os
+    import sqlite3
     import time
 
     ROOT = Path(__file__).resolve().parents[2]
@@ -4075,15 +4077,35 @@ def _part_dispatch_guard_status_details():
     try:
         d = tmpdir()
         day = "2026-11-20"
-        hist_sub = d / "history" / day / "OK-WW"
+        now_ts = time.time()
+
+        # Legacy JSON layout with realistic AUTO-MAS names (<script>-HH-MM-SS.json):
+        # OK-WW-07-04-09 (older mtime) vs MAA-21-25-00 (newer mtime) + corrupt newest JSON
+        # + yesterday UTC+4 22:10 (= today Beijing 02:10) run
+        hist_sub = d / "history" / day / "u1"
         hist_sub.mkdir(parents=True)
-        (hist_sub / "2026-11-20_10-58-00.json").write_text(
-            json.dumps({"general_result": "error: kicked"}), encoding="utf-8"
-        )
-        (hist_sub / "2026-11-20_11-09-31.json").write_text(
-            json.dumps({"general_result": "Success!"}), encoding="utf-8"
-        )
-        (hist_sub / "2026-11-20_11-10-00.json").write_text("{corrupt json", encoding="utf-8")
+        prev_sub = d / "history" / "2026-11-19" / "u1"
+        prev_sub.mkdir(parents=True)
+
+        f_yest_old = prev_sub / "MAA-10-00-00.json"  # UTC+4 10:00 = 11-19 14:00 BJ (yesterday -> excluded)
+        f_yest_old.write_text(json.dumps({"maa_result": "YesterdayRun"}), encoding="utf-8")
+        os.utime(f_yest_old, (now_ts - 70000, now_ts - 70000))
+
+        f_early_bj = prev_sub / "MaaEnd-22-10-00.json"  # UTC+4 22:10 = 11-20 02:10 BJ (today -> included)
+        f_early_bj.write_text(json.dumps({"maaend_result": "EarlyShiftDone"}), encoding="utf-8")
+        os.utime(f_early_bj, (now_ts - 40000, now_ts - 40000))
+
+        f_okww = hist_sub / "OK-WW-07-04-09.json"
+        f_okww.write_text(json.dumps({"general_result": "error: kicked"}), encoding="utf-8")
+        os.utime(f_okww, (now_ts - 3600, now_ts - 3600))
+
+        f_maa = hist_sub / "MAA-21-25-00.json"
+        f_maa.write_text(json.dumps({"maa_result": "Success!"}), encoding="utf-8")
+        os.utime(f_maa, (now_ts - 120, now_ts - 120))
+
+        f_bad = hist_sub / "ZZZ-23-59-59.json"
+        f_bad.write_text("{corrupt json", encoding="utf-8")
+        os.utime(f_bad, (now_ts - 10, now_ts - 10))
 
         relay_log = d / "relay.log"
         # Put a real event followed by 10 heartbeat lines: heartbeats must be filtered out
@@ -4105,7 +4127,6 @@ def _part_dispatch_guard_status_details():
             + "2026-11-20 11:09:31,200 INFO TaskExecutor 活跃奖励：领完核对通过\n",
             encoding="utf-8",
         )
-        now_ts = time.time()
         os.utime(ok_log, (now_ts - 60, now_ts - 60))
 
         g.HISTORY_DIR = str(d / "history")
@@ -4131,20 +4152,80 @@ def _part_dispatch_guard_status_details():
         check(">1MB 日志 seek-tail 读到尾部最新行", "活跃奖励：领完核对通过" in out)
         check(">1MB 日志未把 08:00 旧填充吐出来", "old_padding" not in out)
 
-        # Case 2: Just finished (idle) -> still shows today's recent history + recent 60s-ago script log!
+        # Case 2: Legacy JSON fallback ordering + corrupt-skip + UTC+4 midnight carry-in + recent log
         g.running = lambda: ([], [])
         g.live_tasks = lambda timeout=10, quiet=False: []
         buf2 = io.StringIO()
         with contextlib.redirect_stdout(buf2):
             g._status_details([], [], now_epoch=now_ts, today_str=day)
         out2 = buf2.getvalue()
-        print("[status 空闲但刚跑完场景：今日历史 + 15分钟内刚更新日志]")
-        check("显示今日最近 history 成功记录", "2026-11-20_11-09-31 | OK-WW | Success!" in out2)
-        check("损坏 history JSON 不崩溃", "AUTO-MAS 在跑: 无" in out2)
+        print("[status 空闲旧 JSON 降级：mtime 排序 + 坏 JSON 不占名额 + UTC+4 跨零点]")
+        check("旧布局排除前一天北京记录", "YesterdayRun" not in out2)
+        check("旧布局带入 UTC+4 22:10（北京 02:10）且坏 JSON 不挤占 3 条名额", "MaaEnd-22-10-00 | MaaEnd | EarlyShiftDone" in out2)
+        idx_okww = out2.find("OK-WW-07-04-09 | OK-WW | error: kicked")
+        idx_maa = out2.find("MAA-21-25-00 | MAA | Success!")
+        check("MAA(新 mtime) 排在 OK-WW(旧 mtime) 之后，非按脚本名字母序", idx_okww != -1 and idx_maa > idx_okww)
         check("空闲仍显示 60 秒前刚更新的 ok-script.log", "活跃奖励：领完核对通过" in out2)
 
-        # Case 3: Everything missing / AUTO-MAS refused -> never crashes, line 1 still printed
-        g.HISTORY_DIR = str(d / "no_such_history")
+        # Case 3: Live SQLite data/history.db (AUTO-MAS v5.8.0-beta.2+) takes priority, UTC+4 -> BJ
+        data_dir = d / "data"
+        data_dir.mkdir(parents=True)
+        db_path = data_dir / "history.db"
+        con = sqlite3.connect(db_path)
+        try:
+            con.execute(
+                "CREATE TABLE records (id TEXT, timestamp REAL, time TEXT, date TEXT, "
+                "username TEXT, script_name TEXT, message TEXT, data TEXT, log_path TEXT)"
+            )
+            con.executemany(
+                "INSERT INTO records VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    ("r0", 100.0, "2026-11-19T10:00:00", "2026-11-19", "u", "MAA", "Yesterday", "{}", "2026-11-19/r0/0.log"),
+                    # UTC+4 22:30 on 11-19 -> Beijing 2026-11-20 02:30:00
+                    ("r1", 200.0, "2026-11-19T22:30:00", "2026-11-19", "u", "MAA", "NightOldest", "{}", "2026-11-19/r1/0.log"),
+                    # UTC+4 06:58 on 11-20 -> Beijing 2026-11-20 10:58:00
+                    ("r2", 300.0, "2026-11-20T06:58:00", "2026-11-20", "u", "OK-WW", "Kicked1", "{}", "2026-11-20/r2/0.log"),
+                    # UTC+4 07:09:31 on 11-20 -> Beijing 2026-11-20 11:09:31
+                    ("r3", 400.0, "2026-11-20T07:09:31", "2026-11-20", "u", "OK-WW", "Daily Task Completed", "{}", "2026-11-20/r3/0.log"),
+                    # UTC+4 08:21:00 on 11-20 -> Beijing 2026-11-20 12:21:00
+                    ("r4", 500.0, "2026-11-20T08:21:00", "2026-11-20", "u", "MaaEnd", "All Done", "{}", "2026-11-20/r4/0.log"),
+                ],
+            )
+            con.commit()
+        finally:
+            con.close()
+
+        # Also test all-heartbeat relay.log notice here
+        hb_only_log = d / "relay_hb_only.log"
+        hb_only_log.write_text(
+            "11-20 12:00:00 INFO    ark.service  下一个闹钟 12:01 在跑巡查：读 AUTO-MAS 日志\n"
+            "11-20 12:01:00 INFO    ark.service  下一个闹钟 12:02 在跑巡查：读 AUTO-MAS 日志\n",
+            encoding="utf-8",
+        )
+        g.RELAY_LOG = str(hb_only_log)
+        buf_db = io.StringIO()
+        with contextlib.redirect_stdout(buf_db):
+            g._status_details([], [], now_epoch=now_ts, today_str=day)
+        out_db = buf_db.getvalue()
+        print("[现役 history.db SQLite 优先读取 + UTC+4 转北京 + 纯心跳提示]")
+        check("history.db 按 timestamp DESC 取今日最新 3 条（排除最旧 r1）", "NightOldest" not in out_db)
+        i_r2 = out_db.find("10:58:00 | OK-WW | Kicked1")
+        i_r3 = out_db.find("11:09:31 | OK-WW | Daily Task Completed")
+        i_r4 = out_db.find("12:21:00 | MaaEnd | All Done")
+        check("SQLite 输出按北京时刻正序呈现 3 条", i_r2 != -1 and i_r2 < i_r3 < i_r4)
+        check("纯心跳 relay.log 输出明确无非心跳提示", "(最近 64KB 无非心跳记录)" in out_db)
+
+        # Case 4: Corrupt history.db degrades silently to legacy JSON without crashing
+        db_path.write_bytes(b"not a valid sqlite database file!!!")
+        buf_corrupt = io.StringIO()
+        with contextlib.redirect_stdout(buf_corrupt):
+            g._status_details([], [], now_epoch=now_ts, today_str=day)
+        out_corrupt = buf_corrupt.getvalue()
+        print("[损坏 history.db 静默降级至旧 JSON 不崩]")
+        check("损坏 SQLite 降级读到旧 JSON 记录", "MAA-21-25-00 | MAA | Success!" in out_corrupt)
+
+        # Case 5: Everything missing / AUTO-MAS refused -> never crashes, line 1 still printed
+        g.HISTORY_DIR = str(d / "no_such_root" / "history")
         g.RELAY_LOG = str(d / "no_such_relay.log")
         g.SCRIPT_LOGS = (("ok-ww", "ok-script.log", str(d / "no_such_ok.log")),)
         g.running = lambda: ([], [])

@@ -20,6 +20,7 @@
 import json
 import os
 import re
+import sqlite3
 import subprocess
 import sys
 import time
@@ -41,6 +42,7 @@ PWSH = r"C:\Program Files\PowerShell\7\pwsh.exe"
 SCRIPT_EXES = ("MAA.exe", "MaaEnd.exe")
 GAME_EXES = ("dnplayer.exe", "Client-Win64-Shipping.exe", "Endfield.exe")
 TZ_BJ = timezone(timedelta(hours=8))
+TZ_AUTOMAS = timezone(timedelta(hours=4))
 HISTORY_DIR = r"D:\ark\automas\history"
 RELAY_LOG = arklog.RELAY_LOG
 SCRIPT_LOGS = (
@@ -166,26 +168,103 @@ def _tail_ts_lines(path: str | Path, *, limit: int = 5, skip_re=None) -> tuple[s
     return mt, kept[-limit:]
 
 
-def _recent_history_today(limit: int = 3, *, today_str: str | None = None) -> list[str]:
-    """Latest AUTO-MAS history records for today (Beijing date), zero rglob/os.walk."""
-    day = today_str or datetime.now(TZ_BJ).strftime("%Y-%m-%d")
-    day_dir = Path(HISTORY_DIR) / day
-    if not day_dir.is_dir():
+def _recent_history_db(history_root: Path, day: str, limit: int) -> list[str]:
+    """Read latest AUTO-MAS v5.8.0-beta.2+ rows from data/history.db (read-only)."""
+    db = history_root.parent / "data" / "history.db"
+    if not db.is_file():
         return []
-    files: list[Path] = []
-    for sub in sorted(day_dir.iterdir()):
-        if not sub.is_dir():
+    con = None
+    try:
+        con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=2)
+        rows = con.execute(
+            "SELECT time, script_name, message FROM records ORDER BY timestamp DESC LIMIT 30"
+        ).fetchall()
+    except (sqlite3.Error, OSError):
+        return []
+    finally:
+        if con is not None:
+            con.close()
+    picked: list[str] = []
+    for time_s, script_name, message in rows:
+        try:
+            at = datetime.fromisoformat(str(time_s))
+        except ValueError:
             continue
-        for jf in sub.iterdir():
-            if jf.is_file() and jf.suffix.lower() == ".json":
-                files.append(jf)
-    files.sort(key=lambda p: (p.stem, p.name))
+        if at.tzinfo is None:
+            at = at.replace(tzinfo=TZ_AUTOMAS)
+        at_bj = at.astimezone(TZ_BJ)
+        if at_bj.strftime("%Y-%m-%d") != day:
+            continue
+        msg = str(message or "?").replace("\n", " ").strip() or "?"
+        picked.append(f"{at_bj:%H:%M:%S} | {script_name or '?'} | {msg[:80]}")
+        if len(picked) >= limit:
+            break
+    picked.reverse()
+    return picked
+
+
+def _parse_json_stem_bj(date_str: str, stem: str) -> datetime | None:
+    """Parse legacy AUTO-MAS '<script>-HH-MM-SS' or 'HH-MM-SS' stem on UTC+4 into Beijing time."""
+    parts = stem.rsplit("-", 3)[-3:]
+    stem_time = "-".join(parts) if len(parts) == 3 else stem
+    try:
+        dt = datetime.strptime(f"{date_str} {stem_time}", "%Y-%m-%d %H-%M-%S")
+    except ValueError:
+        return None
+    return dt.replace(tzinfo=TZ_AUTOMAS).astimezone(TZ_BJ)
+
+
+def _recent_history_today(limit: int = 3, *, today_str: str | None = None) -> list[str]:
+    """Latest AUTO-MAS history records for today (Beijing date), zero rglob/os.walk.
+
+    Tries live SQLite data/history.db first (AUTO-MAS v5.8.0-beta.2+); falls back to
+    legacy JSON files sorted by mtime (scanning yesterday's UTC+4 folder for Beijing
+    00:00-03:59 runs) and skips corrupt JSON without consuming limit slots."""
+    history_root = Path(HISTORY_DIR)
+    day = today_str or datetime.now(TZ_BJ).strftime("%Y-%m-%d")
+    db_rows = _recent_history_db(history_root, day, limit)
+    if db_rows:
+        return db_rows
+
+    try:
+        prev_day = (datetime.strptime(day, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    except ValueError:
+        prev_day = ""
+
+    candidates: list[tuple[float, float, Path]] = []
+    for d_str in (prev_day, day):
+        if not d_str:
+            continue
+        day_dir = history_root / d_str
+        if not day_dir.is_dir():
+            continue
+        for sub in day_dir.iterdir():
+            if not sub.is_dir():
+                continue
+            for jf in sub.iterdir():
+                if not (jf.is_file() and jf.suffix.lower() == ".json"):
+                    continue
+                try:
+                    mtime = jf.stat().st_mtime
+                except OSError:
+                    continue
+                at_bj = _parse_json_stem_bj(d_str, jf.stem)
+                if d_str == prev_day:
+                    bj_day = (at_bj or datetime.fromtimestamp(mtime, TZ_BJ)).strftime("%Y-%m-%d")
+                    if bj_day != day:
+                        continue
+                parsed_ts = at_bj.timestamp() if at_bj is not None else 0.0
+                candidates.append((mtime, parsed_ts, jf))
+
+    candidates.sort(key=lambda item: (item[0], item[1], item[2].name))
     out: list[str] = []
-    for jf in files[-limit:]:
+    for _, _, jf in reversed(candidates):
         try:
             with jf.open(encoding="utf-8") as fh:
                 data = json.load(fh)
         except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
             continue
         if "maa_result" in data:
             kind, res = "MAA", str(data.get("maa_result") or "?")
@@ -195,7 +274,11 @@ def _recent_history_today(limit: int = 3, *, today_str: str | None = None) -> li
             kind, res = "OK-WW", str(data.get("general_result") or "?")
         else:
             kind, res = "?", "?"
+        res = res.replace("\n", " ").strip() or "?"
         out.append(f"{jf.stem} | {kind} | {res[:80]}")
+        if len(out) >= limit:
+            break
+    out.reverse()
     return out
 
 
@@ -226,14 +309,17 @@ def _status_details(busy, games, *, now_epoch: float | None = None, today_str: s
             print("今日最近记录:")
             for row in hist:
                 print(" ", row)
-    except (OSError, ValueError):
+    except (OSError, ValueError, sqlite3.Error):
         pass
     try:
         mt, lines = _tail_ts_lines(RELAY_LOG, limit=5, skip_re=_HEARTBEAT_RE)
         if mt is not None:
             print(f"relay.log（写入 {mt}，已过滤心跳）:")
-            for ln in lines:
-                print(" ", ln)
+            if lines:
+                for ln in lines:
+                    print(" ", ln)
+            else:
+                print("  (最近 64KB 无非心跳记录)")
     except (OSError, ValueError):
         pass
     now_ts = now_epoch if now_epoch is not None else time.time()
