@@ -864,19 +864,36 @@ AGREEMENT_TEXT = "请您仔细阅读并同意以下协议"
 AGREEMENT = "游戏停在「协议更新」窗口，要人点同意"
 
 
-def _dialog_seen(text: str, maaend_dir, needle: str, cause: str) -> "tuple[str, dict]":
+# A dialog read this long before the task's own 「任务开始」 line still counts as read during it:
+# MaaFW's start event and AUTO-MAS's line differ by up to a second (11-20: 09:34:27.414 / .524).
+TASK_START_SLACK_S = 5
+
+
+def _dialog_seen(text: str, maaend_dir, needle: str, cause: str, during: bool = False) -> "tuple[str, dict]":
     """('HH:MM:SS' of the first `needle` MaaEnd's framework log has within this run,
-    {failed task: cause} for the tasks that failed at or after it), or ('', {})."""
+    {failed task: cause}), or ('', {}). The tasks named: every one that failed at or after that
+    first read; with `during`, only those with a read between their own 「任务开始」 and their
+    failure (the 「协议更新」 dialog: after a click on 同意 a task fails for its own reasons)."""
     stamps = [t for line in text.splitlines() if (t := _stamp(line))]
     if not maaend_dir or not stamps:
         return "", {}
-    hits = maafw_grep(maaend_dir, min(stamps), max(stamps), (needle,))
-    at = next((t for h in hits if (t := _stamp(h))), None)
-    if at is None:
+    # Every read, by its own stamp (maafw_grep keeps a body once: the reads of later tasks would go).
+    t0, t1 = min(stamps), max(stamps)
+    forms = (needle, json.dumps(needle).strip('"'))
+    hits = _fw_lines(_fw_files(maaend_dir, t0, t1), t0, t1, lambda line: any(x in line for x in forms))
+    reads = sorted(t for h in hits if (t := _stamp(h)))
+    if not reads:
         return "", {}
+    at = reads[0]
     causes = {}
+    started = None
     for line in text.splitlines():
-        if (m := _END_TASK_FAIL.search(line)) and (t := _stamp(line)) and t >= at:
+        if (m := _END_TASK_START.search(line)) and (t := _stamp(line)):
+            started = t
+        elif (m := _END_TASK_FAIL.search(line)) and (t := _stamp(line)) and t >= at:
+            if during and not (started is not None and any(
+                    started - timedelta(seconds=TASK_START_SLACK_S) <= r <= t for r in reads)):
+                continue
             causes[_strip_emoji(m.group(1))] = cause
     return at.strftime("%H:%M:%S"), causes
 
@@ -898,7 +915,7 @@ def _add_logged_out(text: str, maaend_dir, failed: list[str], causes: dict, out:
     at, lost = _logged_out(text, maaend_dir)
     if at:
         out["maaend_logged_out_at"] = at
-    agreed_at, held = _dialog_seen(text, maaend_dir, AGREEMENT_TEXT, AGREEMENT)
+    agreed_at, held = _dialog_seen(text, maaend_dir, AGREEMENT_TEXT, AGREEMENT, during=True)
     if agreed_at:
         out["maaend_agreement_at"] = agreed_at
     if not (at or agreed_at):

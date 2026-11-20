@@ -48,9 +48,11 @@ CHECK_EVERY_SECONDS = 30           # MaaFW wakes the thread every ~2 s; tasklist
 GONE_WAIT_SECONDS = 10
 # The one-time 「协议更新」 dialog (2026-11-20, #187): MaaEnd has no node for it, and each task
 # waited 5 min 33 s and failed, 83 minutes for the 早班, with maafw.log writing all along (so the
-# stall check never fired). Held: the dialog's line seen, and then a task failed or the line came
-# again AGREEMENT_AGAIN_SECONDS or more later. One sighting alone is not enough: if anyone (or a
-# later MaaEnd) clicks 同意, the line stops and the run goes on.
+# stall check never fired). MaaFW's OCR read the dialog once at each task's start, 1-2 s in
+# (09:34:28, 09:40:03, 09:45:35 … in the rotated logs). Held: read, and read again
+# AGREEMENT_AGAIN_SECONDS or more later - on 11-20 at 09:40:03, the second task's start. One
+# read, or two on the same screen, is not enough; once anyone clicks 同意 the line stops.
+# A task failing is not used: after a click it fails for its own reasons.
 AGREEMENT_AGAIN_SECONDS = 60
 _CRASH_MARKS = ("Exception 0x", "panic:", "fatal error")
 _CODE = re.compile(r"Exception (0x[0-9A-Fa-f]+)")
@@ -151,13 +153,12 @@ class Watchdog:
         self._handled: set[int] = set()
         self._pid_lines: "int | None" = None   # lines_seen when this MaaEnd was first seen
         self._blind: set[int] = set()           # PIDs already reported as unreadable
-        # 「协议更新」 (_agreement_held): when the dialog's line and a task failure were read
-        # (every tick, so to the tick, not to the 30 s look), counted for the MaaEnd running
-        # since _agree_since. Like every other kill here, one group alarm per MaaEnd ended
-        # (holding back the retries' ones would be a mute, which only the user decides).
-        self._seen_count = self._failed_count = 0
+        # 「协议更新」 (_agreement_held): when the dialog's line was read (every tick, so to the
+        # tick, not to the 30 s look), counted for the MaaEnd running since _agree_since. Like
+        # every other kill here, one group alarm per MaaEnd ended (holding back the retries'
+        # ones would be a mute, which only the user decides).
+        self._seen_count = 0
         self._sightings: list[float] = []
-        self._failures: list[float] = []
         self._agree_since = now
         # Start from now, like collect_watch does for maafw.log: an old crash in the
         # file belongs to a MaaEnd that is already gone.
@@ -165,17 +166,15 @@ class Watchdog:
 
     # ---------------------------------------------------------------- the loop
 
-    def tick(self, lines_seen: int, last_stamp: str, agreement_seen: int = 0, tasks_failed: int = 0) -> "str | None":
-        """One look. `lines_seen` / `last_stamp` / `agreement_seen` / `tasks_failed` come from
+    def tick(self, lines_seen: int, last_stamp: str, agreement_seen: int = 0) -> "str | None":
+        """One look. `lines_seen` / `last_stamp` / `agreement_seen` come from
         collect_watch.Watcher. Returns the title sent."""
         if not self.active:
             return None
         now = self.clock()
         if agreement_seen > self._seen_count:
             self._sightings.append(now)
-        if tasks_failed > self._failed_count:
-            self._failures.append(now)
-        self._seen_count, self._failed_count = agreement_seen, tasks_failed
+        self._seen_count = agreement_seen
         if lines_seen != self._lines:
             self._lines, self._progress_at = lines_seen, now
         if now - self._last_check < CHECK_EVERY_SECONDS:
@@ -256,17 +255,12 @@ class Watchdog:
         """A new MaaEnd, or none running: only what was read from `since` on counts."""
         self._agree_since = since
         self._sightings = [t for t in self._sightings if t >= since]
-        self._failures = [t for t in self._failures if t >= since]
 
     def _agreement_held(self, now: float) -> bool:
-        """Is this MaaEnd held at the 「协议更新」 dialog: read, and then a task failed or it was
-        read again AGREEMENT_AGAIN_SECONDS or more later (module constants)?"""
+        """Is this MaaEnd held at the 「协议更新」 dialog: read, and read again
+        AGREEMENT_AGAIN_SECONDS or more later?"""
         seen = [t for t in self._sightings if t >= self._agree_since]
-        if not seen:
-            return False
-        first = seen[0]
-        return (seen[-1] - first >= AGREEMENT_AGAIN_SECONDS
-                or any(t >= first for t in self._failures if t >= self._agree_since))
+        return bool(seen) and seen[-1] - seen[0] >= AGREEMENT_AGAIN_SECONDS
 
     def _starting(self, procs) -> bool:
         try:

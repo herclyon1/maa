@@ -20,7 +20,7 @@ def _without_unfixed_gate(shutdown):
     _part_shutdown_unfixed_shift. Returns the real one, which the part puts back at its end."""
     real = getattr(shutdown._shift_unfixed, "real", shutdown._shift_unfixed)
 
-    def off(shift, entries):
+    def off(shift, entries, off_shift=frozenset()):
         return []
     off.real = real
     shutdown._shift_unfixed = off
@@ -713,7 +713,17 @@ def _part_shutdown_unfixed_shift():
     check("晚班只看晚班", shutdown._shift_unfixed([MORNING, EVENING], [rec("MaaEnd", 9, 34, False, TASKS),
                                                                     rec("MaaEnd", 21, 34, True)]), [])
     check("排期前的记录不算这一班的", shutdown._shift_unfixed([EVENING], [rec("MaaEnd", 9, 34, False, TASKS)]), [])
-    print("\n[不算「留过了这一班的关机时机」：修好后照常关机，不用人去关]")
+    print("\n[只差自动采集：不留——关机那一刻中继会重走这些路线，留着反而永远走不到那一步]")
+    check("只有自动采集", shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, False, ["🧺自动采集"])]), [])
+    check("自动采集加别的：留", shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, False, ["🧺自动采集", "基质刷取"])]),
+          ["终末地（🧺自动采集、基质刷取）"])
+    print("\n[测试窗口里或手动起的那一趟失败：不算这一班没修好；手动跑成了算修好]")
+    bad = rec("MaaEnd", 10, 0, False, TASKS)
+    check("那一趟在 off 里：不留", shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, True), bad], {id(bad)}), [])
+    good = rec("MaaEnd", 11, 0, True)
+    check("班上失败、后来手动跑成：修好了", shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, False, TASKS), good],
+                                                             {id(good)}), [])
+    print("\n[不算「留过了这一班的关机时机」：AUTO-MAS 重试跑成了照常关机（真走一遍在 _part_shutdown_held_past_shift）]")
     check("shift-failed 不在 HELD_PAST_SHIFT 里", "shift-failed" in shutdown.HELD_PAST_SHIFT, False)
 
 
@@ -999,6 +1009,53 @@ def _part_shutdown_held_past_shift():
     check("a service stop, the machine staying up -> by service", puts[-1].get("off", {}).get("by"), "service")
     heartbeat.cos_put = saved_put
     check("StateStore reads the new marks back", StateStore(STATE).get("marks", "relay_poweroff_why") is not None, True)
+
+    print("\n[2026-11-20 不关机闸门，真走一遍「修好」的三种路：AUTO-MAS 自己重试、补跑、手动跑]")
+
+    def rows(*rs):
+        (STATE / "ledger-2026-10-15.jsonl").write_text("\n".join(
+            json.dumps({"run_id": f"2026-10-15/x/{r}", "script": s, "user": "u", "started": a.isoformat(),
+                        "finished": b.isoformat(), "ok": ok, "failed_tasks": [] if ok else ["开始唤醒"],
+                        "raw": dict(raw)})
+            for r, s, a, b, ok, raw in rs) + "\n", encoding="utf-8")
+    MAA_OK = ("MAA-1", "MAA", at(8, 50, 40), at(9, 9, 12), True, {})
+    MAA_BAD = ("MAA-1", "MAA", at(8, 50, 40), at(9, 9, 12), False, {})
+    OKWW_OK = ("OK-WW-1", "OK-WW", at(9, 9, 40), at(9, 31, 5), True, {})
+    OKWW_BAD = ("OK-WW-1", "OK-WW", at(9, 9, 40), at(9, 31, 5), False, {})
+
+    fresh()
+    rows(MAA_OK, OKWW_BAD)
+    v = tick(at(9, 32))
+    check("鸣潮失败、没人修：不关机，说清是谁", (v.code, v.reason, powered), (
+        "shift-failed", "这一班有游戏任务没跑完、还没修好：鸣潮（开始唤醒）", []))
+    check("…没有把这一班的关机时机记成用掉了", e.state.store.get("marks", "shutdown_forfeit"), None)
+    rows(MAA_OK, OKWW_BAD, ("OK-WW-2", "OK-WW", at(9, 33), at(9, 50), True, {}))
+    tick(at(9, 51))
+    check("AUTO-MAS 自己重试跑成了：照常关机", powered, [1])
+
+    fresh()
+    rows(MAA_BAD, OKWW_OK)
+    check("明日方舟失败：不关机", tick(at(9, 32)).code, "shift-failed")
+    (STATE / "makeup").mkdir(exist_ok=True)
+    (STATE / "makeup" / "2026-10-15.json").write_text(json.dumps(
+        {"MAA": {"dispatched_at": at(9, 40).isoformat(), "result": makeup.DISPATCHED, "tries": 1}}), encoding="utf-8")
+    v = tick(at(9, 41))
+    check("补跑一开跑：关机被补跑拖住，这一班的关机时机就用掉了（原来的规矩，不是这道闸）",
+          (v.code, "MAA 正在补跑" in v.reason, powered), ("not-shift", True, []))
+    rows(MAA_BAD, OKWW_OK, ("MAA-2", "MAA", at(9, 41), at(9, 58), True, {}))
+    (STATE / "makeup" / "2026-10-15.json").write_text(json.dumps(
+        {"MAA": {"dispatched_at": at(9, 40).isoformat(), "result": makeup.OK, "tries": 1}}), encoding="utf-8")
+    v = tick(at(10, 0))
+    check("补跑跑成了：这一班照样不再自动关机，下一趟早班/晚班跑完照常关（原来的规矩）",
+          (v.code, powered), ("not-shift", []))
+
+    fresh()
+    rows(MAA_BAD, OKWW_OK)
+    check("明日方舟失败：不关机", tick(at(9, 32)).code, "shift-failed")
+    rows(MAA_BAD, OKWW_OK, ("MAA-3", "MAA", at(10, 30), at(10, 45), True, {"hand_started": True}))
+    v = tick(at(10, 46))
+    check("有人手动跑成了：不再是这道闸留着，按原来的规矩手动那一轮不自动关机",
+          (v.code, "手动" in v.reason, powered), ("not-shift", True, []))
 
     error_evidence.upload_daily_logs, collect_retry.maybe_run = saved
 

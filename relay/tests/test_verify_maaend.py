@@ -1772,7 +1772,7 @@ def _part_maaend_agreement():
     from ark_relay.core import texts
     from ark_relay.core.ledger import _with_causes
     from ark_relay.features import collector_maaend as C
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-20"
     HISTORY = (FIX / "history-MaaEnd-05-32-21.log").read_text(encoding="utf-8")
@@ -1793,19 +1793,29 @@ def _part_maaend_agreement():
     out = parse("real", HISTORY, FW)
     causes = out.get("maaend_fail_causes") or {}
     check("记下第一次读到的时刻", out.get("maaend_agreement_at"), "10:46:39")
-    check("那之后失败的两个任务带上原因", {k: v for k, v in causes.items()},
-          {"基质刷取": C.AGREEMENT, "日常奖励领取": C.AGREEMENT})
+    check("只标读到它的那个任务（基质刷取 10:46:38 开始）", causes, {"基质刷取": C.AGREEMENT})
     check("那之前失败的不硬套（框架日志里看不到那时候）", "赠送干员礼物" in causes, False)
     check("报警「卡在」那一段", _with_causes(["基质刷取", "日常奖励领取"], causes),
-          ["基质刷取（" + C.AGREEMENT + "）", "日常奖励领取（" + C.AGREEMENT + "）"])
+          ["基质刷取（" + C.AGREEMENT + "）", "日常奖励领取"])
     check("说法是平白中文", texts.plain(C.AGREEMENT), [])
 
-    print("\n[游戏机上的整份框架日志从 09:3x 就有这句：第一个失败的任务起全都带上]")
-    early = FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-20 09:34:30.000]")
-    out = parse("whole", HISTORY, early)
+    # As the machine's rotated logs have it: MaaFW's OCR read the dialog once at every task's
+    # start, 1-2 s in (09:34:28, 09:40:03, 09:45:35 …).
+    def read_at(stamp):
+        return FW.replace("[2026-11-20 10:46:39.237]", f"[{stamp}]")
+    starts = [datetime.strptime(ln[1:24], "%Y-%m-%d %H:%M:%S.%f") for ln in HISTORY.splitlines() if "任务开始" in ln]
+    every_task = "".join(read_at(f"{t + timedelta(seconds=1.5):%Y-%m-%d %H:%M:%S.%f}"[:23]) for t in starts)
+
+    print("\n[游戏机上的整份框架日志：每个任务开头都读到这句 → 15 个失败的全带上]")
+    out = parse("whole", HISTORY, every_task)
     causes = out.get("maaend_fail_causes") or {}
     check("15 个失败的都是这个原因", (len(causes), set(causes.values())), (15, {C.AGREEMENT}))
     check("自动采集是周五按周期跳过、完成的，不算", "自动采集" in causes, False)
+
+    print("\n[只在第一个任务里读到（之后有人点了同意）：后面的失败是它们自己的事，不标]")
+    out = parse("clicked", HISTORY, read_at("2026-11-20 09:34:28.920"))
+    check("只有赠送干员礼物带原因", out.get("maaend_fail_causes"), {"赠送干员礼物": C.AGREEMENT})
+    check("时刻照记", out.get("maaend_agreement_at"), "09:34:28")
 
     print("\n[11-20 游戏机上真实的样子：09:34-10:46 在压缩过的轮转文件里，maafw.log 从 10:46:38 起]")
     import gzip
@@ -1817,23 +1827,29 @@ def _part_maaend_agreement():
     d = TMP / "gz"
     (d / "debug").mkdir(parents=True, exist_ok=True)
     (d / "debug" / "maafw.log").write_text(FW.replace(C.AGREEMENT_TEXT, "本次更新"), encoding="utf-8")
-    rotated(d, "2026.11.20-09.40.02.867", FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-20 09:34:28.920]"))
-    rotated(d, "2026.11.20-10.13.19.711", "[2026-11-20 10:00:00.000][DBG] nothing\n")
+    early_reads = "".join(ln + "\n" for ln in every_task.splitlines() if ln[1:17] < "2026-11-20 09:40")
+    mid_reads = "".join(ln + "\n" for ln in every_task.splitlines() if "2026-11-20 09:40" <= ln[1:17] < "2026-11-20 10:13")
+    late_reads = "".join(ln + "\n" for ln in every_task.splitlines() if ln[1:17] >= "2026-11-20 10:13")
+    rotated(d, "2026.11.20-09.40.02.867", early_reads)
+    rotated(d, "2026.11.20-10.13.19.711", mid_reads)
+    rotated(d, "2026.11.20-10.46.38.827", late_reads)
     old = rotated(d, "2026.11.19-10.09.48.424", FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-19 10:00:00.000]"))
     rotated(d, "2026.11.20-11.30.00.000", "[2026-11-20 11:00:00.000][DBG] after\n")
     rotated(d, "2026.11.20-12.00.00.000", "[2026-11-20 11:40:00.000][DBG] later\n")
     (d / "debug" / "maafw.bak.2026.11.20-10.13.19.711.log.gz.2026.11.21-00.00.00.000.tmp").write_bytes(b"\x1f\x8b broken")
     (d / "debug" / "maafw.bak.2026.11.20-10.40.00.000.log.gz").write_bytes(b"\x1f\x8b not really gzip")
+    (d / "debug" / "maafw.log").write_text(FW, encoding="utf-8")
     log = TMP / "gz.log"
     log.write_text(HISTORY, encoding="utf-8")
     out = C.parse_maaend_log(log, d)
     causes = out.get("maaend_fail_causes") or {}
-    check("09:34:28 读到（压缩文件里）", out.get("maaend_agreement_at"), "09:34:28")
+    check("09:34 读到（压缩文件里；这里造的是每个任务开始后 1.5 秒）", out.get("maaend_agreement_at"), "09:34:29")
     check("15 个失败的都是这个原因", (len(causes), set(causes.values())), (15, {C.AGREEMENT}))
     names = [f.name for f in C._fw_files(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46))]
     check("只读盖到这一趟的：前一天的不读、写到一半的 .tmp 不读、过了这一趟的只读紧接着的那一个",
           names, ["maafw.bak.2026.11.20-09.40.02.867.log.gz", "maafw.bak.2026.11.20-10.13.19.711.log.gz",
-                  "maafw.bak.2026.11.20-10.40.00.000.log.gz", "maafw.bak.2026.11.20-11.30.00.000.log.gz", "maafw.log"])
+                  "maafw.bak.2026.11.20-10.40.00.000.log.gz", "maafw.bak.2026.11.20-10.46.38.827.log.gz",
+                  "maafw.bak.2026.11.20-11.30.00.000.log.gz", "maafw.log"])
     check("坏的压缩文件跳过，不出错", len(C.maafw_grep(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46),
                                                (C.AGREEMENT_TEXT,))) > 0, True)
     check("不给时间段：跟以前一样只列不压缩的", [f.name for f in C._fw_files(d)], ["maafw.log"])
@@ -1849,7 +1865,7 @@ def _part_maaend_agreement():
     check("没有框架日志：不写原因", out.get("maaend_fail_causes"), None)
 
     print("\n[两个框都有：被挤下线的说法排在协议窗口前面]")
-    both = early + OLD.replace("2026-11-05 11:43:57", "2026-11-20 10:30:00")
+    both = every_task + OLD.replace("2026-11-05 11:43:57", "2026-11-20 10:30:00")
     out = parse("both", HISTORY, both)
     causes = out.get("maaend_fail_causes") or {}
     check("10:30 之前失败的：协议窗口", causes.get("据点交易"), C.AGREEMENT)

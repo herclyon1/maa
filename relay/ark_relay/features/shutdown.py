@@ -178,12 +178,17 @@ UPDATE_HOLD = "游戏客户端正在更新或重跑"
 UNFIXABLE = ("maintenance", "maaend_unreachable", "manual_stop")
 
 
-def _shift_unfixed(shift: list[dict], entries: list[dict]) -> list[str]:
+def _shift_unfixed(shift: list[dict], entries: list[dict], off: "set[int] | frozenset" = frozenset()) -> list[str]:
     """「明日方舟（开始唤醒）」 for each script of the current shift (_current_shift) whose latest
-    record since the shift's time failed and was not one of UNFIXABLE; a later record that
-    went through (a retry, the make-up, a run by hand) fixes it. Transitional records (one
-    attempt of several) are not the latest word."""
+    record since the shift's time failed, unless that failure is UNFIXABLE or gathering only.
+    A later record that went through (an AUTO-MAS retry, the make-up, a run by hand) fixes it.
+    Not the latest word: a transitional record (one attempt of several), and a failed run off
+    the shift (`off`, _off_shift: a test or a run started by hand). Gathering only (自动采集):
+    collect_retry walks those routes again at the power-off moment, which needs this gate to
+    let go (makeup.maaend_round_only_gathering gives such a round no whole make-up)."""
     from ark_relay.features.handle import GAME  # noqa: PLC0415 - handle imports this module
+    from ark_relay.features.collector_maaend import _strip_emoji  # noqa: PLC0415
+    from ark_relay.features.makeup import GATHERING  # noqa: PLC0415
     cur = _current_shift(shift)
     if not cur:
         return []
@@ -192,7 +197,8 @@ def _shift_unfixed(shift: list[dict], entries: list[dict]) -> list[str]:
     latest: dict = {}
     for e in entries:
         try:
-            if e.get("script") not in kinds or e.get("transitional") or _entry_time(e) < since:
+            if (e.get("script") not in kinds or e.get("transitional") or _entry_time(e) < since
+                    or (id(e) in off and not e.get("ok"))):
                 continue
             if e["script"] not in latest or _entry_time(e) >= _entry_time(latest[e["script"]]):
                 latest[e["script"]] = e
@@ -204,6 +210,8 @@ def _shift_unfixed(shift: list[dict], entries: list[dict]) -> list[str]:
         if e.get("ok") or any(raw.get(k) for k in UNFIXABLE):
             continue
         failed = [str(t) for t in e.get("failed_tasks") or []]
+        if failed and all(_strip_emoji(t) == GATHERING for t in failed):
+            continue
         what = "、".join(failed[:3]) + ("…" if len(failed) > 3 else "")
         out.append(f"{({'OK-WW': '鸣潮', **GAME}).get(script, script)}（{what or '没说是哪一项'}）")
     return out
@@ -742,7 +750,7 @@ def decide(eng, now: datetime) -> Verdict:
     # That morning the 终末地 shift failed and the machine stayed on only because debug mode
     # happened to be on. Not in HELD_PAST_SHIFT: once a later run of the script goes through,
     # the machine powers off as usual.
-    if unfixed := _shift_unfixed(shift, entries):
+    if unfixed := _shift_unfixed(shift, entries, _off_shift(eng, entries)):
         return Verdict(False, "shift-failed", "这一班有游戏任务没跑完、还没修好：" + "；".join(unfixed))
     day = now.strftime("%Y-%m-%d")
     cutoff = eng._report_cutoff(now)   # same source as the report itself
