@@ -822,34 +822,55 @@ LOGGED_OUT_TEXT = "登录认证已失效"
 LOGGED_OUT = "这个号在别的设备上登录了，游戏弹「登录认证已失效」，之后进不了游戏"
 
 
-def _logged_out(text: str, maaend_dir) -> "tuple[str, dict]":
-    """('HH:MM:SS' of the first 「登录认证已失效」 MaaEnd's framework log has within this run,
-    {failed task: LOGGED_OUT} for the tasks that failed at or after it), or ('', {})."""
+# 2026-11-20 09:32 (#187): the game opened on a one-time 「协议更新」 dialog (游戏个人信息保护政策,
+# [取消]/[同意]); MaaEnd has no node for it, so each of 15 tasks waited 5 min 33 s and failed,
+# and the alarm said 「卡在 赠送干员礼物、装备制造、拜访好友…」 with nothing about the dialog. MaaEnd's
+# OCR reads the dialog's line into its framework log. Nothing here clicks 同意: that is
+# accepting an agreement, which is the account owner's to do.
+AGREEMENT_TEXT = "请您仔细阅读并同意以下协议"
+AGREEMENT = "游戏停在「协议更新」窗口，要人点同意"
+
+
+def _dialog_seen(text: str, maaend_dir, needle: str, cause: str) -> "tuple[str, dict]":
+    """('HH:MM:SS' of the first `needle` MaaEnd's framework log has within this run,
+    {failed task: cause} for the tasks that failed at or after it), or ('', {})."""
     stamps = [t for line in text.splitlines() if (t := _stamp(line))]
     if not maaend_dir or not stamps:
         return "", {}
-    hits = maafw_grep(maaend_dir, min(stamps), max(stamps), (LOGGED_OUT_TEXT,))
+    hits = maafw_grep(maaend_dir, min(stamps), max(stamps), (needle,))
     at = next((t for h in hits if (t := _stamp(h))), None)
     if at is None:
         return "", {}
     causes = {}
     for line in text.splitlines():
         if (m := _END_TASK_FAIL.search(line)) and (t := _stamp(line)) and t >= at:
-            causes[_strip_emoji(m.group(1))] = LOGGED_OUT
+            causes[_strip_emoji(m.group(1))] = cause
     return at.strftime("%H:%M:%S"), causes
 
 
+def _logged_out(text: str, maaend_dir) -> "tuple[str, dict]":
+    """('HH:MM:SS' of the first 「登录认证已失效」 MaaEnd's framework log has within this run,
+    {failed task: LOGGED_OUT} for the tasks that failed at or after it), or ('', {})."""
+    return _dialog_seen(text, maaend_dir, LOGGED_OUT_TEXT, LOGGED_OUT)
+
+
 def _add_logged_out(text: str, maaend_dir, failed: list[str], causes: dict, out: dict) -> dict:
-    """`causes` with LOGGED_OUT for the tasks that failed at or after the dialog, and
-    out["maaend_logged_out_at"] set; unchanged when nothing failed or the dialog was not
-    seen. Only a run with a failure reads the framework log for it (~90 MB a file)."""
+    """`causes` with LOGGED_OUT for the tasks that failed at or after that dialog and
+    AGREEMENT for those at or after the 「协议更新」 one, out["maaend_logged_out_at"] /
+    out["maaend_agreement_at"] set; unchanged when nothing failed or neither was seen.
+    A cause already proven (a full bag) stays; for a task after both, the logout is named.
+    Only a run with a failure reads the framework log for it (~90 MB a file)."""
     if not failed:
         return causes
     at, lost = _logged_out(text, maaend_dir)
-    if not at:
+    if at:
+        out["maaend_logged_out_at"] = at
+    agreed_at, held = _dialog_seen(text, maaend_dir, AGREEMENT_TEXT, AGREEMENT)
+    if agreed_at:
+        out["maaend_agreement_at"] = agreed_at
+    if not (at or agreed_at):
         return causes
-    out["maaend_logged_out_at"] = at
-    return {**lost, **causes}
+    return {**held, **lost, **causes}
 
 
 def _cap(lines: list[str]) -> list[str]:

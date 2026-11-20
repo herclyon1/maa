@@ -1765,6 +1765,61 @@ def _part_maaend_logged_out():
     check("弹框前失败：不写原因", (out.get("maaend_fail_causes") or {}).get("自动采集"), None)
 
 
+def _part_maaend_agreement():
+    """#187: the game opened on the one-time 「协议更新」 dialog; the failed tasks name it."""
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.core.ledger import _with_causes
+    from ark_relay.features import collector_maaend as C
+
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-20"
+    HISTORY = (FIX / "history-MaaEnd-05-32-21.log").read_text(encoding="utf-8")
+    FW = (FIX / "maafw-agreement-ocr.log").read_text(encoding="utf-8")
+    OLD = (fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-05" / "maafw-logged-out-ocr.log").read_text(encoding="utf-8")
+    TMP = tmpdir()
+
+    def parse(name, history, fw_text):
+        d = TMP / name
+        (d / "debug").mkdir(parents=True, exist_ok=True)
+        if fw_text is not None:
+            (d / "debug" / "maafw.log").write_text(fw_text, encoding="utf-8")
+        log = TMP / f"{name}.log"
+        log.write_text(history, encoding="utf-8")
+        return C.parse_maaend_log(log, d)
+
+    print("[11-20 原样（证据包里的框架日志从 10:46:38 起）：10:46:39 读到「请您仔细阅读并同意以下协议」]")
+    out = parse("real", HISTORY, FW)
+    causes = out.get("maaend_fail_causes") or {}
+    check("记下第一次读到的时刻", out.get("maaend_agreement_at"), "10:46:39")
+    check("那之后失败的两个任务带上原因", {k: v for k, v in causes.items()},
+          {"基质刷取": C.AGREEMENT, "日常奖励领取": C.AGREEMENT})
+    check("那之前失败的不硬套（框架日志里看不到那时候）", "赠送干员礼物" in causes, False)
+    check("报警「卡在」那一段", _with_causes(["基质刷取", "日常奖励领取"], causes),
+          ["基质刷取（" + C.AGREEMENT + "）", "日常奖励领取（" + C.AGREEMENT + "）"])
+    check("说法是平白中文", texts.plain(C.AGREEMENT), [])
+
+    print("\n[游戏机上的整份框架日志从 09:3x 就有这句：第一个失败的任务起全都带上]")
+    early = FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-20 09:34:30.000]")
+    out = parse("whole", HISTORY, early)
+    causes = out.get("maaend_fail_causes") or {}
+    check("15 个失败的都是这个原因", (len(causes), set(causes.values())), (15, {C.AGREEMENT}))
+    check("自动采集是周五按周期跳过、完成的，不算", "自动采集" in causes, False)
+
+    print("\n[没有这句、或者没有框架日志：不写原因，跟以前一样]")
+    out = parse("no-dialog", HISTORY, FW.replace(C.AGREEMENT_TEXT, "资源完整性"))
+    check("没有那句话：不记时刻、不写原因", ("maaend_agreement_at" in out, out.get("maaend_fail_causes")), (False, None))
+    out = parse("no-fw", HISTORY, None)
+    check("没有框架日志：不写原因", out.get("maaend_fail_causes"), None)
+
+    print("\n[两个框都有：被挤下线的说法排在协议窗口前面]")
+    both = early + OLD.replace("2026-11-05 11:43:57", "2026-11-20 10:30:00")
+    out = parse("both", HISTORY, both)
+    causes = out.get("maaend_fail_causes") or {}
+    check("10:30 之前失败的：协议窗口", causes.get("据点交易"), C.AGREEMENT)
+    check("10:30 之后失败的：被挤下线", causes.get("基质刷取"), C.LOGGED_OUT)
+
+
 def _part_maaend_recovered():
     """MaaEnd hung and the relay ends it: which of the two log lines is "recovered"."""
     import logging
@@ -3192,4 +3247,4 @@ def _part_unreachable_note_pushed_now():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now]))
+    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_agreement, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now]))
