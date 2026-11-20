@@ -770,6 +770,33 @@ def _screen_text(task) -> str:
     return _screen_read(task)[1]
 
 
+# 2026-11-20 11:03 (Beijing): someone logged in to the account somewhere else, the game
+# put up 「连接已断开｜账号在别处登录｜确认」, the leftover farm's walk to the chest timed out
+# and the claim's F2 book did not open. The relay said 「按 F2 打不开图鉴——先核对键位」 and a
+# session read it as a key problem. Where a step fails, the screen is read once: with this
+# notice on it, KICKED_LINE says so, and the relay (outcome.py) gives that as the reason.
+# Retries and makeup runs are not touched.
+KICKED_LINE = "鸣潮账号在别处登录，游戏被顶下线："
+_KICKED_TEXT = "别处登录"
+
+
+def _say_if_kicked(task, where) -> bool:
+    """Read the screen; on the game's 「账号在别处登录」 notice log KICKED_LINE once per task.
+
+    True when the notice is (or already was) seen. Never raises: a failed read is False."""
+    if getattr(task, "_ark_kicked", False):
+        return True
+    found, text = _screen_read(task)
+    if not found or _KICKED_TEXT not in _names(found):
+        return False
+    try:
+        task._ark_kicked = True
+    except Exception:  # noqa: BLE001 - a task that takes no attribute is logged every time
+        pass
+    task.log_info(f"{KICKED_LINE}{where}屏幕上是「连接已断开｜账号在别处登录」")
+    return True
+
+
 def _names(found) -> str:
     """Every name of one screen read, in the order read, short enough for one log line.
 
@@ -1700,7 +1727,14 @@ def _claim_tiers(task):
 def _claim_daily_checked(task):
     """Upstream claim_daily (sha _CLAIM_DAILY_SHA) up to its one blind click, then _claim_tiers."""
     task.info_set('current task', 'claim daily')
-    task.openF2Book('gray_book_quest')
+    try:
+        task.openF2Book('gray_book_quest')
+    except Exception as exc:
+        # Only OK-WW's own stop goes straight up (see _echo_drop_stat); any other failure
+        # still goes up, after a look for the 「账号在别处登录」 notice (KICKED_LINE).
+        if not (TaskDisabledException is not Exception and isinstance(exc, TaskDisabledException)):
+            _say_if_kicked(task, "领活跃奖励时 F2 指南没打开，")
+        raise
     if not task.find_one('boss_proceed', box=task.box_of_screen(0.803, 0.189, 0.960, 0.312)):
         task.log_info('no_boss_proceed, click claim')
         task.click(0.885, 0.250, after_sleep=2)
@@ -2297,6 +2331,7 @@ def _install_hooks():
                 raise
             except Exception as exc:  # noqa: BLE001 - upstream would have claimed without it
                 self.log_error(f"补刷体力出错，照常领日常奖励: {exc}", exception=exc)
+                _say_if_kicked(self, "补刷体力出错时，")
                 try:
                     self.screenshot("leftover_farm_error")
                     self.ensure_main(time_out=180)

@@ -568,6 +568,12 @@ _DAILY_PROGRESS = re.compile(r"DailyTask:info_set current daily progress (\d+)")
 # claim_daily_after_farm).
 _LEFTOVER_FARM = re.compile(r"DailyTask:(上游这趟不刷体力（[^）\n]*）)")
 _LEFTOVER_FAILED = re.compile(r"DailyTask:补刷体力出错，照常领日常奖励: ([^\n]*)")
+# The overlay's line when a failed step had the game's 「连接已断开｜账号在别处登录」 notice on
+# screen (okww_files/ark_overrides.tasks.py KICKED_LINE): the account was logged in somewhere
+# else and the game went off the server, so the reason is that, not the step's own error
+# (11-20 11:03: 「按 F2 打不开图鉴——先核对键位」 was said for it).
+KICKED_LINE = "鸣潮账号在别处登录，游戏被顶下线："
+KICKED_SAY = "这个号在别处登录了，游戏被顶下线"
 # Full value of the daily activity meter; the reading can go above it.
 _DAILY_POINTS_TARGET = 100
 
@@ -1112,6 +1118,8 @@ def _no_farm_reason(text: str) -> str:
     t = _task_lines(text)
     if m := _LEFTOVER_FARM.search(t):
         if e := _LEFTOVER_FAILED.search(t):
+            if KICKED_LINE in t[e.start():]:
+                return f"{m.group(1)}，中继按「刷到空」补刷时{KICKED_SAY}"
             return f"{m.group(1)}，中继按「刷到空」补刷时出错：{without_screen_dump(e.group(1))}"
         return f"{m.group(1)}，中继按「刷到空」补刷了，但既没进本，也没说体力不足"
     progress = [int(x) for x in _DAILY_PROGRESS.findall(t)]
@@ -1712,6 +1720,9 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
     """
     msg = normalize_okww_log(msg)
     task_zh = _OKWW_TASK_ZH.get(task)
+    if text and text.rfind(KICKED_LINE, 0, at or len(text)) >= 0:
+        # The overlay saw 「账号在别处登录」 before this error: that is why the step failed.
+        return f"{task_zh or '某个任务'}：{KICKED_SAY}"
     if FAILED_MARK in msg:
         # The overlay ended the run as failed and logged why in Chinese.
         why = without_screen_dump(msg.split(FAILED_MARK, 1)[1])
