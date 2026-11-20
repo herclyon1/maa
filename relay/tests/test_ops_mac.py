@@ -948,8 +948,10 @@ def _part_wingui_guards():
             (FAKE / "state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
         if gui is not None:
             (FAKE / "gui.txt").write_text(gui, encoding="utf-8")
+        # The action log only where a check reads it (log=True): writing it starts python3 for the redaction, and
+        # thirty-odd calls of that kept this file over the deploy's 10 s a file (2026-11-20).
         env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{os.environ['PATH']}", "ARK_HOST": "test-host",
-               "ARK_ACTION_LOG": str(LOG), "TMPDIR": str(FAKE / "tmp"), **extra}
+               "ARK_ACTION_LOG": str(LOG) if extra.pop("log", None) else os.devnull, "TMPDIR": str(FAKE / "tmp"), **extra}
         env.pop("ARK_GUI_WAIT", None)
         if "ARK_GUI_DURING_FARM" not in extra:
             env.pop("ARK_GUI_DURING_FARM", None)
@@ -1019,9 +1021,9 @@ def _part_wingui_guards():
 
     print("\n[every call leaves one line in the action log]")
     LOG.unlink(missing_ok=True)
-    run("key", "esc", state={"queues": {}}, gui="cmd=esc\nsent esc")
-    run("seq", "focus\nwait 100", state={"queues": {}}, gui="cmd=focus\nfocus only")
-    run("shot", state=FARM, gui="cmd=shot\nshot")
+    run("key", "esc", state={"queues": {}}, gui="cmd=esc\nsent esc", log="1")
+    run("seq", "focus\nwait 100", state={"queues": {}}, gui="cmd=focus\nfocus only", log="1")
+    run("shot", state=FARM, gui="cmd=shot\nshot", log="1")
     lines = LOG.read_text(encoding="utf-8").splitlines()
     check("one line per call, a newline in the argument included", len(lines), 3)
     check("script and arguments in it", [ln.split("\t")[1:3] for ln in lines],
