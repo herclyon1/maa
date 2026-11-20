@@ -46,6 +46,14 @@ CHECK_EVERY_SECONDS = 30           # MaaFW wakes the thread every ~2 s; tasklist
 # alone is not taken as MaaEnd gone. Looked at on the next checks
 # (CHECK_EVERY_SECONDS), never waited for here.
 GONE_WAIT_SECONDS = 10
+# The one-time 「协议更新」 dialog (2026-11-20, #187): MaaEnd has no node for it, and each task
+# waited 5 min 33 s and failed, 83 minutes for the 早班, with maafw.log writing all along (so the
+# stall check never fired). MaaFW's OCR read the dialog once at each task's start, 1-2 s in
+# (09:34:28, 09:40:03, 09:45:35 … in the rotated logs). Held: read, and read again
+# AGREEMENT_AGAIN_SECONDS or more later - on 11-20 at 09:40:03, the second task's start. One
+# read, or two on the same screen, is not enough; once anyone clicks 同意 the line stops.
+# A task failing is not used: after a click it fails for its own reasons.
+AGREEMENT_AGAIN_SECONDS = 60
 _CRASH_MARKS = ("Exception 0x", "panic:", "fatal error")
 _CODE = re.compile(r"Exception (0x[0-9A-Fa-f]+)")
 _HEAD_BYTES = 64
@@ -145,21 +153,37 @@ class Watchdog:
         self._handled: set[int] = set()
         self._pid_lines: "int | None" = None   # lines_seen when this MaaEnd was first seen
         self._blind: set[int] = set()           # PIDs already reported as unreadable
+        # Blocking dialogs (_dialog_held: 「协议更新」 and 「登录认证已失效」): when each
+        # dialog's line was read (recorded on every tick, not only the 30 s look), counted for
+        # the MaaEnd running since _dialog_since. Like every other kill here, one group alarm
+        # per MaaEnd ended (holding back retries' ones would be a mute, which only the user decides).
+        self._dialog_counts = {"agreement": 0, "logout": 0}
+        self._dialog_sightings: dict[str, list[float]] = {"agreement": [], "logout": []}
+        self._dialog_since = now
         # Start from now, like collect_watch does for maafw.log: an old crash in the
         # file belongs to a MaaEnd that is already gone.
         self._err_offset, self._err_head = self._stderr_now()
 
     # ---------------------------------------------------------------- the loop
 
-    def tick(self, lines_seen: int, last_stamp: str) -> "str | None":
-        """One look. `lines_seen` / `last_stamp` come from collect_watch.Watcher. Returns the title sent."""
+    def tick(self, lines_seen: int, last_stamp: str, agreement_seen: int = 0, logout_seen: int = 0) -> "str | None":
+        """One look. `lines_seen` / `last_stamp` / `agreement_seen` / `logout_seen` come from
+        collect_watch.Watcher. Returns the title sent."""
         if not self.active:
             return None
         now = self.clock()
+        for kind, count in (("agreement", agreement_seen), ("logout", logout_seen)):
+            if count > self._dialog_counts[kind]:
+                self._dialog_sightings[kind].append(now)
+            self._dialog_counts[kind] = count
         if lines_seen != self._lines:
             self._lines, self._progress_at = lines_seen, now
         if now - self._last_check < CHECK_EVERY_SECONDS:
             return None
+        # What was read since the previous look belongs to whichever MaaEnd runs now when none
+        # was running before; bounded to CHECK_EVERY_SECONDS (< AGREEMENT_AGAIN_SECONDS) so a
+        # brand-new PID can never inherit an old sighting and die on its first check.
+        since_last = self._last_check
         self._last_check = now
         self._verify_kill(now)
 
@@ -169,6 +193,7 @@ class Watchdog:
         if not _maaend_running(snap):
             # Waiting or done: the 10 minutes start over once it is 「运行」 again.
             self._progress_at, self._gone_since = now, None
+            self._dialog_reset(now, drop_all=True)
             return None
         procs = self.processes()
         if procs is None:
@@ -180,12 +205,18 @@ class Watchdog:
             self._pid, self._gone_since = None, None
             self._handled.clear()
             self._blind.clear()
+            self._dialog_reset(now, drop_all=True)
             return None
         if pid != self._pid:
             # A new MaaEnd: its own clocks, and the stderr file still holds the previous
-            # run's text until go-service relaunches and rewrites it.
+            # run's text until go-service relaunches and rewrites it. Never carry an old PID's
+            # dialog sightings onto a new PID.
+            prev_pid = self._pid
             self._pid, self._pid_seen_at, self._gone_since, self._crash = pid, now, None, ""
             self._pid_lines = self._lines
+            baseline = now if (prev_pid is not None or since_last == float("-inf")) else max(
+                since_last, now - CHECK_EVERY_SECONDS)
+            self._dialog_reset(baseline)
             self._err_offset, self._err_head = self._stderr_now()
         if self._starting(procs):
             # The relay's helper is starting Endfield through the official launcher
@@ -214,6 +245,11 @@ class Watchdog:
         else:
             self._gone_since = None
         if reason is None:
+            if self._dialog_held("logout"):
+                reason = texts.maaend_logged_out_reason()
+            elif self._dialog_held("agreement"):
+                reason = texts.maaend_agreement_reason()
+        if reason is None:
             idle = now - max(self._progress_at, self._pid_seen_at)
             if idle >= STALL_SECONDS:
                 if self._lines == self._pid_lines:
@@ -224,6 +260,17 @@ class Watchdog:
         if reason is None:
             return None
         return self._end(pid, procs, reason, now)
+
+    def _dialog_reset(self, since: float, *, drop_all: bool = False) -> None:
+        """A new MaaEnd, or none running: keep only sightings from `since` on (or none at all)."""
+        self._dialog_since = since
+        for kind in self._dialog_sightings:
+            self._dialog_sightings[kind] = [] if drop_all else [t for t in self._dialog_sightings[kind] if t >= since]
+
+    def _dialog_held(self, kind: str) -> bool:
+        """Is this MaaEnd held at dialog `kind`: read, and read again AGREEMENT_AGAIN_SECONDS or more later?"""
+        seen = [t for t in self._dialog_sightings[kind] if t >= self._dialog_since]
+        return bool(seen) and seen[-1] - seen[0] >= AGREEMENT_AGAIN_SECONDS
 
     def _starting(self, procs) -> bool:
         try:
@@ -276,6 +323,7 @@ class Watchdog:
                     log.warning("MaaEnd 的插件 %s（%s）没结束掉：%s", name, p, w)
                     left.append("agent\\" + name)
         self._crash, self._gone_since, self._progress_at = "", None, now
+        self._dialog_reset(now, drop_all=True)
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
         body = texts.maaend_stuck_body(reason, ok, why, left=left)
         # One hang, one group push: the ⚠️ group alarm, and the WARNING that follows

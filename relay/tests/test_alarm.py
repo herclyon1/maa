@@ -1167,6 +1167,38 @@ def _part_unresolved():
           [f"终末地早班没跑成，补跑没能开跑（找不到终末地的母本）：卡在 基质刷取（证据包 {PAGE}）"])
     check("没有派补跑", makeup.read_marker(e.cfg.state_dir, D)["MaaEnd"]["result"], makeup.GAVE_UP)
 
+    print("\n[11-20 (#187)：三个任务是同一个原因，「卡在」后面只说一次]")
+    from ark_relay.features.collector_maaend import AGREEMENT, BAG_FULL
+    TASKS = ["赠送干员礼物", "装备制造", "拜访好友", "基建任务"]
+    check("同一个原因：说一次，放在后面", handle._stuck(TASKS, {t: AGREEMENT for t in TASKS}, False),
+          f"赠送干员礼物、装备制造、拜访好友…（{AGREEMENT}）")
+    check("前 3 项相同但第 4 项不同/无原因：不把尾因硬挂到省略号后",
+          handle._stuck(TASKS, {t: AGREEMENT for t in TASKS[:3]}, False),
+          f"赠送干员礼物（{AGREEMENT}）、装备制造（{AGREEMENT}）、拜访好友（{AGREEMENT}）…")
+    check("三个以内也一样", handle._stuck(TASKS[:2], {t: AGREEMENT for t in TASKS}, False),
+          f"赠送干员礼物、装备制造（{AGREEMENT}）")
+    check("原因不同：各说各的（跟以前一样）",
+          handle._stuck(["基质刷取", "装备制造"], {"基质刷取": BAG_FULL, "装备制造": AGREEMENT}, False),
+          f"基质刷取（{BAG_FULL}）、装备制造（{AGREEMENT}）")
+    check("有的有原因、有的没有：各说各的", handle._stuck(["基质刷取", "装备制造"], {"基质刷取": BAG_FULL}, False),
+          f"基质刷取（{BAG_FULL}）、装备制造")
+    check("都没有原因：跟以前一样", handle._stuck(TASKS, {}, False), "赠送干员礼物、装备制造、拜访好友…")
+    check("只有一个：照旧带在它后面", handle._stuck(["基质刷取"], {"基质刷取": BAG_FULL}, False), f"基质刷取（{BAG_FULL}）")
+    check("手动停的不算卡点", handle._stuck([texts.AUTOMAS_MANUAL_STOP, "装备制造"], {}, True), "装备制造")
+    e = build()
+    causes = {t: AGREEMENT for t in TASKS}
+    first = rec("MaaEnd", at(9, 34), failed=TASKS, raw={"maaend_fail_causes": causes})
+    handle._handle(e, first)
+    e._flush_pending()
+    makeup.maybe_run(e, at(10, 34))
+    e._flush_pending()
+    handle._handle(e, rec("MaaEnd", at(10, 35), failed=TASKS, raw={"maaend_fail_causes": causes}))
+    e._flush_pending()
+    heads = [b.splitlines()[0] for _, b, a in e.notifier.sent if a]
+    check("进群那条的头一行：卡在 … 后面原因只说一次",
+          [h.split("；", 1)[-1].split("：", 1)[-1] for h in heads[-1:]],
+          [f"卡在 赠送干员礼物、装备制造、拜访好友…（{AGREEMENT}）（证据包 {PAGE}）"])
+
     print("\n[补跑走通：自己好了，不进群，只进日报（用户 2026-10-06 05:07）]")
     e = build()
     handle._handle(e, rec("MAA", at(9, 5)))

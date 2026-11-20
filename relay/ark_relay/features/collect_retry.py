@@ -38,11 +38,13 @@ power-off waits for it.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import logging
 import re
 import shutil
 import subprocess
+import zlib
 import time
 import urllib.error
 import urllib.request
@@ -645,9 +647,27 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
 
 
 def _maafw_text(debug: Path) -> str:
+    by_stem: dict[str, Path] = {}
+    for p in [*debug.glob("maafw*.log"), *debug.glob("maafw.bak.*.log.gz")]:
+        stem = p.name[:-3] if p.suffix == ".gz" else p.name
+        if stem not in by_stem or p.suffix != ".gz":
+            by_stem[stem] = p
+    cands = []
+    for p in by_stem.values():
+        try:
+            cands.append((p.stat().st_mtime, p))
+        except OSError:
+            continue
     text = ""
-    for p in sorted(debug.glob("maafw*.log"), key=lambda q: q.stat().st_mtime)[-2:]:
-        text += p.read_text(encoding="utf-8", errors="replace")
+    for _, p in sorted(cands)[-2:]:
+        try:
+            if p.suffix == ".gz":
+                with gzip.open(p, "rt", encoding="utf-8", errors="replace") as fh:
+                    text += fh.read()
+            else:
+                text += p.read_text(encoding="utf-8", errors="replace")
+        except (OSError, EOFError, zlib.error):
+            continue
     return text
 
 

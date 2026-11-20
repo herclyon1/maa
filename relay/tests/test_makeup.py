@@ -1239,6 +1239,58 @@ lists an older relay version narrowed go back at the next attempt's start.
     w.feed(start_line)
     check("新一趟开始就清空", w.failed, [])
 
+    print("\n[11-20 (#187)：给看门狗数读到「协议更新」/「登录认证已失效」窗口的次数，含转义与 .log.gz 轮转]")
+    import gzip
+    import json as _json
+    from ark_relay.features import collect_retry as _cr, makeup as _mk
+    from ark_relay.core.config import RunRecord as _RR
+    from datetime import datetime as _dt
+    from ark_relay.core.config import SERVER_TZ as _TZ
+    cfg, f, n = _setup()
+    w = collect_watch.Watcher(cfg, n)
+    agree = (fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-20" / "maafw-agreement-ocr.log").read_text(encoding="utf-8")
+    check("开始是 0", (w.agreement_seen, w.logout_seen), (0, 0))
+    w.feed(agree)
+    check("读到窗口那一行（OCR 行，不是事件行）：记一次", w.agreement_seen, 1)
+    w.feed(_json.dumps({"text": "请您仔细阅读并同意以下协议"}))
+    check("JSON \\uXXXX 转义也认", w.agreement_seen, 2)
+    w.feed(_json.dumps({"text": "登录认证已失效"}))
+    check("登录认证已失效也计次", w.logout_seen, 1)
+    w.feed("\n".join(LINES))
+    check("别的行不算", (w.agreement_seen, w.logout_seen), (2, 1))
+    check("采集路线的记账照旧", w.failed, ["Route10"])
+    # N2: collect_watch.poll follows rotated .log.gz tail
+    cfg_gz, _f_gz, n_gz = _setup()
+    w_gz = collect_watch.Watcher(cfg_gz, n_gz)
+    log_gz = w_gz.log_path()
+    head_txt = "[2026-11-20 09:34:00.000][INF] line1\n" * 5
+    log_gz.write_text(head_txt, encoding="utf-8")
+    w_gz.poll()
+    rotated_gz = log_gz.parent / "maafw.bak.2026.11.20-09.40.02.867.log.gz"
+    rotated_gz.write_bytes(gzip.compress((head_txt + agree).encode("utf-8")))
+    log_gz.write_text("[2026-11-20 09:40:03.000][INF] fresh\n", encoding="utf-8")
+    w_gz.poll()
+    check("轮转成 .log.gz 后仍补读旧文件尾巴里的弹窗", w_gz.agreement_seen, 1)
+    # R2-M1: clean MaaEnd restart truncating maafw.log must NOT replay an older run's leftover .log.gz
+    import os as _os
+    cfg_old, _f_old, n_old = _setup()
+    w_old = collect_watch.Watcher(cfg_old, n_old)
+    log_old = w_old.log_path()
+    stale_gz = log_old.parent / "maafw.bak.2026.11.19-09.40.02.867.log.gz"
+    stale_gz.write_bytes(gzip.compress((head_txt * 20 + agree).encode("utf-8")))
+    _os.utime(stale_gz, (1700000000, 1700000000))
+    log_old.write_text(head_txt * 10, encoding="utf-8")
+    w_old.poll()
+    log_old.write_text("[2026-11-20 09:00:00.000][INF] clean restart\n", encoding="utf-8")
+    w_old.poll()
+    check("重启清空 maafw.log 不误读昨天的残留 .log.gz", w_old.agreement_seen, 0)
+    check("collect_retry._maafw_text 也能读 .log.gz", "请您仔细阅读并同意以下协议" in _cr._maafw_text(log_gz.parent), True)
+    # N1: makeup.eligible skips agreement / logged_out dialogs
+    now_t = _dt(2026, 11, 20, 10, 0, tzinfo=_TZ)
+    for k in ("maaend_agreement_at", "maaend_logged_out_at"):
+        r_blk = _RR("r1", "MaaEnd", "u", now_t, now_t, False, ["赠送干员礼物"], raw={k: "09:34:28"})
+        check(f"{k} 不派无效整轮补跑", _mk.eligible(r_blk, now_t), False)
+
     print("\n[旧版本收窄过的母本：新一趟（Tasker.Task.Starting）一开始就改回]")
     cfg, f, n = _setup()
     nf = _old_narrowing(cfg, f, (["Route10"], []))

@@ -1765,6 +1765,189 @@ def _part_maaend_logged_out():
     check("弹框前失败：不写原因", (out.get("maaend_fail_causes") or {}).get("自动采集"), None)
 
 
+def _part_maaend_agreement():
+    """#187: the game opened on the one-time 「协议更新」 dialog; the failed tasks name it."""
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.core.ledger import _with_causes
+    from ark_relay.features import collector_maaend as C
+    from datetime import datetime, timedelta
+
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-20"
+    HISTORY = (FIX / "history-MaaEnd-05-32-21.log").read_text(encoding="utf-8")
+    FW = (FIX / "maafw-agreement-ocr.log").read_text(encoding="utf-8")
+    OLD = (fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-05" / "maafw-logged-out-ocr.log").read_text(encoding="utf-8")
+    TMP = tmpdir()
+
+    def parse(name, history, fw_text):
+        d = TMP / name
+        (d / "debug").mkdir(parents=True, exist_ok=True)
+        if fw_text is not None:
+            (d / "debug" / "maafw.log").write_text(fw_text, encoding="utf-8")
+        log = TMP / f"{name}.log"
+        log.write_text(history, encoding="utf-8")
+        return C.parse_maaend_log(log, d)
+
+    print("[11-20 原样（证据包里的框架日志从 10:46:38 起）：10:46:39 读到「请您仔细阅读并同意以下协议」]")
+    out = parse("real", HISTORY, FW)
+    causes = out.get("maaend_fail_causes") or {}
+    check("记下第一次读到的时刻", out.get("maaend_agreement_at"), "10:46:39")
+    check("只标读到它的那个任务（基质刷取 10:46:38 开始）", causes, {"基质刷取": C.AGREEMENT})
+    check("那之前失败的不硬套（框架日志里看不到那时候）", "赠送干员礼物" in causes, False)
+    check("报警「卡在」那一段", _with_causes(["基质刷取", "日常奖励领取"], causes),
+          ["基质刷取（" + C.AGREEMENT + "）", "日常奖励领取"])
+    check("说法是平白中文", texts.plain(C.AGREEMENT), [])
+
+    # As the machine's rotated logs have it: MaaFW's OCR read the dialog once at every task's
+    # start, 1-2 s in (09:34:28, 09:40:03, 09:45:35 …).
+    def read_at(stamp):
+        return FW.replace("[2026-11-20 10:46:39.237]", f"[{stamp}]")
+    starts = [datetime.strptime(ln[1:24], "%Y-%m-%d %H:%M:%S.%f") for ln in HISTORY.splitlines() if "任务开始" in ln]
+    every_task = "".join(read_at(f"{t + timedelta(seconds=1.5):%Y-%m-%d %H:%M:%S.%f}"[:23]) for t in starts)
+
+    print("\n[游戏机上的整份框架日志：每个任务开头都读到这句 → 15 个失败的全带上]")
+    out = parse("whole", HISTORY, every_task)
+    causes = out.get("maaend_fail_causes") or {}
+    check("15 个失败的都是这个原因", (len(causes), set(causes.values())), (15, {C.AGREEMENT}))
+    check("自动采集是周五按周期跳过、完成的，不算", "自动采集" in causes, False)
+
+    print("\n[只在第一个任务里读到（之后有人点了同意）：后面的失败是它们自己的事，不标]")
+    out = parse("clicked", HISTORY, read_at("2026-11-20 09:34:28.920"))
+    check("只有赠送干员礼物带原因", out.get("maaend_fail_causes"), {"赠送干员礼物": C.AGREEMENT})
+    check("时刻照记", out.get("maaend_agreement_at"), "09:34:28")
+
+    print("\n[11-20 游戏机上真实的样子：09:34-10:46 在压缩过的轮转文件里，maafw.log 从 10:46:38 起]")
+    import gzip
+
+    def rotated(d, stamp, text, suffix=".log.gz"):
+        f = d / "debug" / f"maafw.bak.{stamp}{suffix}"
+        f.write_bytes(gzip.compress(text.encode("utf-8")) if suffix.endswith(".gz") else text.encode("utf-8"))
+        return f
+    d = TMP / "gz"
+    (d / "debug").mkdir(parents=True, exist_ok=True)
+    (d / "debug" / "maafw.log").write_text(FW.replace(C.AGREEMENT_TEXT, "本次更新"), encoding="utf-8")
+    early_reads = "".join(ln + "\n" for ln in every_task.splitlines() if ln[1:17] < "2026-11-20 09:40")
+    mid_reads = "".join(ln + "\n" for ln in every_task.splitlines() if "2026-11-20 09:40" <= ln[1:17] < "2026-11-20 10:13")
+    late_reads = "".join(ln + "\n" for ln in every_task.splitlines() if ln[1:17] >= "2026-11-20 10:13")
+    rotated(d, "2026.11.20-09.40.02.867", early_reads)
+    rotated(d, "2026.11.20-10.13.19.711", mid_reads)
+    rotated(d, "2026.11.20-10.46.38.827", late_reads)
+    old = rotated(d, "2026.11.19-10.09.48.424", FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-19 10:00:00.000]"))
+    rotated(d, "2026.11.20-11.30.00.000", "[2026-11-20 11:00:00.000][DBG] after\n")
+    rotated(d, "2026.11.20-12.00.00.000", "[2026-11-20 11:40:00.000][DBG] later\n")
+    (d / "debug" / "maafw.bak.2026.11.20-10.13.19.711.log.gz.2026.11.21-00.00.00.000.tmp").write_bytes(b"\x1f\x8b broken")
+    (d / "debug" / "maafw.bak.2026.11.20-10.40.00.000.log.gz").write_bytes(b"\x1f\x8b not really gzip")
+    (d / "debug" / "maafw.log").write_text(FW, encoding="utf-8")
+    log = TMP / "gz.log"
+    log.write_text(HISTORY, encoding="utf-8")
+    out = C.parse_maaend_log(log, d)
+    causes = out.get("maaend_fail_causes") or {}
+    check("09:34 读到（压缩文件里；这里造的是每个任务开始后 1.5 秒）", out.get("maaend_agreement_at"), "09:34:29")
+    check("15 个失败的都是这个原因", (len(causes), set(causes.values())), (15, {C.AGREEMENT}))
+    names = [f.name for f in C._fw_files(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46))]
+    check("只读盖到这一趟的：前一天的不读、写到一半的 .tmp 不读、过了这一趟的只读紧接着的那一个",
+          names, ["maafw.bak.2026.11.20-09.40.02.867.log.gz", "maafw.bak.2026.11.20-10.13.19.711.log.gz",
+                  "maafw.bak.2026.11.20-10.40.00.000.log.gz", "maafw.bak.2026.11.20-10.46.38.827.log.gz",
+                  "maafw.bak.2026.11.20-11.30.00.000.log.gz", "maafw.log"])
+    check("坏的压缩文件跳过，不出错", len(C.maafw_grep(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46),
+                                               (C.AGREEMENT_TEXT,))) > 0, True)
+    check("不给时间段：跟以前一样只列不压缩的", [f.name for f in C._fw_files(d)], ["maafw.log"])
+    rotated(d, "2026.11.20-09.40.02.867", FW.replace("[2026-11-20 10:46:39.237]", "[2026-11-20 09:34:28.920]"), ".log")
+    names = [f.name for f in C._fw_files(d, datetime(2026, 11, 20, 9, 34, 22), datetime(2026, 11, 20, 10, 57, 46))]
+    check("同一次轮转既有 .log 又有 .log.gz（11-15 那样）：只读一份", sum("09.40.02.867" in n for n in names), 1)
+    old.unlink()
+
+    print("\n[没有这句、或者没有框架日志：不写原因，跟以前一样]")
+    out = parse("no-dialog", HISTORY, FW.replace(C.AGREEMENT_TEXT, "资源完整性"))
+    check("没有那句话：不记时刻、不写原因", ("maaend_agreement_at" in out, out.get("maaend_fail_causes")), (False, None))
+    out = parse("no-fw", HISTORY, None)
+    check("没有框架日志：不写原因", out.get("maaend_fail_causes"), None)
+
+    print("\n[两个框都有：被挤下线的说法排在协议窗口前面]")
+    both = every_task + OLD.replace("2026-11-05 11:43:57", "2026-11-20 10:30:00")
+    out = parse("both", HISTORY, both)
+    causes = out.get("maaend_fail_causes") or {}
+    check("10:30 之前失败的：协议窗口", causes.get("据点交易"), C.AGREEMENT)
+    check("10:30 之后失败的：被挤下线", causes.get("基质刷取"), C.LOGGED_OUT)
+
+    print("\n[边界回归：损坏 deflate 体、cpp-algo 独立轮转、毫秒级任务切分、首行 slack、点同意后不再记时刻]")
+    d_edge = TMP / "gz_edge"
+    (d_edge / "debug" / "cpp-algo" / "debug").mkdir(parents=True, exist_ok=True)
+    # M2: valid gzip header + corrupted deflate payload (raises zlib.error, not BadGzipFile)
+    good_gz = bytearray(gzip.compress(b"[2026-11-20 09:34:28.920] hello world\n" * 20))
+    good_gz[14:18] = b"\xff\xff\xff\xff"
+    (d_edge / "debug" / "maafw.bak.2026.11.20-09.45.00.000.log.gz").write_bytes(bytes(good_gz))
+    # M3: cpp-algo earlier rotation must not break main debug/ scan; invalid date must not raise
+    (d_edge / "debug" / "maafw.bak.2026.11.20-10.30.00.000.log.gz").write_bytes(
+        gzip.compress(read_at("2026-11-20 09:34:28.920").encode("utf-8")))
+    (d_edge / "debug" / "cpp-algo" / "debug" / "maafw.bak.2026.11.20-10.05.00.000.log.gz").write_bytes(
+        gzip.compress(b"[2026-11-20 09:35:00.000] cpp-algo line\n"))
+    (d_edge / "debug" / "maafw.bak.2026.99.99-99.99.99.000.log.gz").write_bytes(b"bad date")
+    sel = C._fw_files(d_edge, datetime(2026, 11, 20, 9, 30), datetime(2026, 11, 20, 10, 0))
+    check("cpp-algo 不截断主 debug/ 且包含 cpp-algo .log.gz，非法日期跳过",
+          (any(f.parent == d_edge / "debug" and "10.30.00" in f.name for f in sel),
+           any("cpp-algo" in str(f) and f.suffix == ".gz" for f in sel)), (True, True))
+    lines = C._fw_lines(sel, datetime(2026, 11, 20, 9, 30), datetime(2026, 11, 20, 10, 0))
+    check("损坏 deflate 体（zlib.error）跳过不崩，正常文件仍读出",
+          any(C.AGREEMENT_TEXT in x for x in lines), True)
+    # N2: maafw_text reads rotated .log.gz
+    (d_edge / "debug" / "maafw.bak.2026.11.20-10.30.00.000.log.gz").write_bytes(
+        gzip.compress(b"[2026-11-20 09:36:00.000] \xe4\xbb\x93\xe5\x82\xa8\xe7\xa9\xba\xe9\x97\xb4\xe5\xb7\xb2\xe6\xbb\xa1\n"))
+    check("maafw_text 也能从 .log.gz 读到仓储空间已满", "仓储空间已满" in C.maafw_text(d_edge), True)
+    # M5: adjacent task boundary (0.15s apart), millisecond precision, first-line slack, and no false stamp
+    h_adj = (
+        "[2026-11-20 09:34:27.524] 任务开始: 💝赠送干员礼物\n"
+        "[2026-11-20 09:40:02.875] 任务失败: 💝赠送干员礼物\n"
+        "[2026-11-20 09:40:03.020] 任务开始: 🔧装备制造\n"
+        "[2026-11-20 09:42:00.000] 任务失败: 🔧装备制造\n"
+    )
+    out = parse("adj", h_adj, read_at("2026-11-20 09:40:01.000"))
+    check("相邻任务 0.15s 切分：任务 1 末尾弹窗不串台给任务 2",
+          out.get("maaend_fail_causes"), {"赠送干员礼物": C.AGREEMENT})
+    h_ms = (
+        "[2026-11-20 10:41:05.000] 任务开始: ♻️基质分解回收\n"
+        "[2026-11-20 10:46:38.835] 任务失败: ♻️基质分解回收\n"
+        "[2026-11-20 10:46:38.927] 任务开始: 🎱基质刷取\n"
+        "[2026-11-20 10:52:11.606] 任务失败: 🎱基质刷取\n"
+    )
+    out = parse("ms", h_ms, read_at("2026-11-20 10:46:38.990"))
+    check("毫秒精度：同秒后半段的弹窗不反标给已结束的上一任务",
+          out.get("maaend_fail_causes"), {"基质刷取": C.AGREEMENT})
+    out = parse("slack", h_adj, read_at("2026-11-20 09:34:26.800"))
+    check("首行前 0.7s 读到弹窗：t0 向前扩 slack 不漏标",
+          (out.get("maaend_agreement_at"), out.get("maaend_fail_causes")),
+          ("09:34:26", {"赠送干员礼物": C.AGREEMENT}))
+    h_done = (
+        "[2026-11-20 09:34:27.524] 任务开始: 💝赠送干员礼物\n"
+        "[2026-11-20 09:35:00.000] 任务完成: 💝赠送干员礼物\n"
+        "[2026-11-20 09:35:01.000] 任务开始: 🔧装备制造\n"
+        "[2026-11-20 09:40:00.000] 任务失败: 🔧装备制造\n"
+    )
+    out = parse("done", h_done, read_at("2026-11-20 09:34:28.920"))
+    check("任务 1 读弹窗后成功、任务 2 无关失败：不标原因也不写 maaend_agreement_at",
+          ("maaend_agreement_at" in out, out.get("maaend_fail_causes")), (False, None))
+    # R2-M2: LOGGED_OUT appearing after all failures (no task failed after it) must NOT set maaend_logged_out_at
+    from ark_relay.features import makeup as _mk
+    from ark_relay.core.config import RunRecord as _RR, SERVER_TZ as _TZ
+    h_late_out = (
+        "[2026-11-20 09:34:00.000] 任务开始: 🎱基质刷取\n"
+        "[2026-11-20 09:38:00.000] 任务失败: 🎱基质刷取\n"
+        "[2026-11-20 09:39:00.000] 任务开始: 🏅日常奖励领取\n"
+        "[2026-11-20 09:40:00.000] 任务完成: 🏅日常奖励领取\n"
+        "[2026-11-20 09:42:05.000] 任务完成: ❌关闭游戏（PC）\n"
+    )
+    out = parse("late_out", h_late_out, OLD.replace("2026-11-05 11:43:57", "2026-11-20 09:42:00"))
+    check("关游戏前才弹登录失效（其后无失败任务）：不写 maaend_logged_out_at",
+          ("maaend_logged_out_at" in out, out.get("maaend_fail_causes")), (False, None))
+    t_now = datetime(2026, 11, 20, 10, 0, tzinfo=_TZ)
+    check("无关失败不因此被取消补跑",
+          _mk.eligible(_RR("r_late", "MaaEnd", "u", t_now, t_now, False, ["基质刷取"], raw=out), t_now), True)
+    # R2-N2: _bak_time parses unpadded milliseconds like shot_time (.93 = 93 ms, not 930 ms)
+    check("_bak_time 不补零毫秒（.93 = 93 ms）",
+          C._bak_time("maafw.bak.2026.11.20-09.40.02.93.log.gz"), datetime(2026, 11, 20, 9, 40, 2, 93000))
+
+
 def _part_maaend_recovered():
     """MaaEnd hung and the relay ends it: which of the two log lines is "recovered"."""
     import logging
@@ -3192,4 +3375,4 @@ def _part_unreachable_note_pushed_now():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now]))
+    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_agreement, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now]))

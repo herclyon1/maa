@@ -1353,6 +1353,134 @@ def _part_maaend_write_readback():
     require("a task switch that reads back unchanged is not a success", not ok, msg)
 
 
+def _watchdog_agreement(Rig, MAAEND_PID, RUNNING, texts, collect_watch):
+    """#187 (11-20): MaaEnd held at the 「协议更新」 dialog. Called from _part_maaend_watchdog_main with
+    its Rig; a function of its own so that part stays under the complexity limit."""
+    print("\n[11-20 (#187)：开屏停在「协议更新」窗口——日志一直在写，第二个任务开头又读到就结束 MaaEnd]")
+
+    class Agree(Rig):
+        def __init__(self, **kw):
+            super().__init__(**kw)
+            self.seen = 0
+            self.logged_out = 0
+
+        def step(self, seconds, *, new_lines=40, stamp=None, seen=0, logged_out=0):
+            self.t += seconds
+            self.lines += new_lines
+            self.seen += seen
+            self.logged_out += logged_out
+            return self.dog.tick(self.lines, self.stamp, self.seen, self.logged_out)
+    r = Agree()
+    r.step(60)
+    r.step(30, seen=1)                                 # 09:34:28 the dialog read
+    r.step(30)
+    check("只读到一次：不动", (r.killed, r.notes.sent), ([], []))
+    r.run_for(240)
+    check("日志一直在写：老的 10 分钟判据不会出手", r.killed, [])
+    got = r.step(30, seen=1)                            # 09:40:03 read again at the next task's start
+    check("隔 5 分多钟又读到：结束 MaaEnd（没碰游戏）", (got, r.killed[:1]), (texts.MAAEND_STUCK_KILLED, [MAAEND_PID]))
+    title, body, alert = r.notes.sent[0]
+    check("一条群报警，说清是协议窗口、要人点同意", (len(r.notes.sent), alert, "协议更新" in body, "点「同意」" in body),
+          (1, True, True, True))
+    check("正文是人话", texts.plain(body), [])
+    r = Agree()
+    r.step(60, seen=1)
+    r.step(30)
+    r.step(40, seen=1)
+    check("隔 70 秒又读到：结束（不用等任务失败）", r.killed[:1], [MAAEND_PID])
+    r = Agree()
+    r.step(60, seen=1)
+    r.step(20, seen=1)
+    check("20 秒内读到两次（同一屏）：还不算", r.killed, [])
+    r.run_for(600)
+    check("之后再没读到、也没任务失败（有人点了同意）：不动", r.killed, [])
+
+    print("\n[AUTO-MAS 重试拉起的下一个 MaaEnd 又停在那儿：照样结束，跟别的卡死一样每结束一个报一条]")
+    r = Agree()
+    r.step(60, seen=1)
+    r.step(70, seen=1)
+    r.procs = [(n, (p + 100 if n.lower() == "maaend.exe" else p)) for n, p in r.procs]
+    r.step(30)
+    r.step(30, seen=1)
+    r.step(70, seen=1)
+    check("两个 MaaEnd 都结束了", [p for p in r.killed if p in (MAAEND_PID, MAAEND_PID + 100)], [MAAEND_PID, MAAEND_PID + 100])
+    check("每结束一个 MaaEnd 报一条（不压）", len(r.notes.sent), 2)
+
+    print("\n[上一个 MaaEnd 读到过、这个只读到一次：不算到这个头上]")
+    r = Agree()
+    r.step(60, seen=1)
+    r.snap = {"tasks": []}                              # that MaaEnd finished
+    r.step(30)
+    r.snap = RUNNING
+    r.step(40, seen=1)
+    r.run_for(300)
+    check("新的一趟只读到一次：不动", r.killed, [])
+
+    print("\n[跨进程防误杀：旧 PID 读一次后退出，60 秒后新 PID 刚起读一次，绝不误杀]")
+    r = Agree()
+    r.step(30)                                          # PID 1000 seen at t=1030
+    r.step(1, seen=1)                                   # t=1031 (<30s, sighting recorded)
+    r.procs = [(n, (p + 100 if n.lower() == "maaend.exe" else p)) for n, p in r.procs]
+    r.step(63, seen=1)                                  # t=1094: new PID first sighting; 1094-1031=63s
+    check("新 PID 刚起首次读弹窗：绝不继承旧 PID 读数误杀", r.killed, [])
+    r = Agree()
+    r.step(30, seen=1)
+    saved_procs = list(r.procs)
+    r.procs = [(n, p) for n, p in saved_procs if n.lower() != "maaend.exe"]
+    r.step(30)                                          # pid is None clears sightings
+    r.procs = saved_procs
+    r.step(65, seen=1)
+    check("MaaEnd 退出过后再起只读一次：不误杀", r.killed, [])
+
+    print("\n[被挤下线弹「登录认证已失效」：隔 60 秒以上再读到同样提前结束]")
+    r = Agree()
+    r.step(60, logged_out=1)
+    r.step(70, logged_out=1)
+    check("被挤下线也提前结束 MaaEnd", r.killed[:1], [MAAEND_PID])
+    check("报警写明登录认证已失效且过人话检查",
+          ("登录认证已失效" in r.notes.sent[0][1], texts.plain(r.notes.sent[0][1])), (True, []))
+
+    print("\n[真数据回放：11-20 09:32-10:13 的任务事件和弹窗读字行（两份轮转日志里原样摘出），一行一行喂]")
+    import types
+    from datetime import datetime as _dt
+    from ark_relay.core.config import SERVER_TZ
+    real = (fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-20" / "maafw-0932-1013-events-and-dialog.log"
+            ).read_text(encoding="utf-8").splitlines()
+
+    def _ts_real(s):
+        return _dt.strptime(s, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=SERVER_TZ).timestamp()
+
+    r = Rig()
+    first_t = _ts_real(real[0][1:24])
+    r.t = first_t - collect_watch.TICK_SECONDS
+    r.dog._progress_at = r.dog._pid_seen_at = r.dog._dialog_since = r.t
+    w = collect_watch.Watcher(types.SimpleNamespace(maaend_dir="", state_dir=str(tmpdir())), r.notes)
+    killed_at = None
+    ticks = 0
+    for ln in real:
+        stamp = ln[1:24]
+        line_t = _ts_real(stamp)
+        # Between two of these lines MaaFW wrote thousands more and the watcher thread woke at least
+        # every TICK_SECONDS: tick on that clock too, with no new dialog read.
+        while r.t + collect_watch.TICK_SECONDS < line_t:
+            r.t += collect_watch.TICK_SECONDS
+            r.lines += 100
+            ticks += 1
+            if r.dog.tick(r.lines, stamp[:19], w.agreement_seen, w.logout_seen) and killed_at is None:
+                killed_at = _dt.fromtimestamp(r.t, tz=SERVER_TZ).strftime("%H:%M:%S")
+        r.t = line_t
+        w.feed(ln)
+        r.lines += 1
+        ticks += 1
+        if r.dog.tick(r.lines, stamp[:19], w.agreement_seen, w.logout_seen) and killed_at is None:
+            killed_at = stamp[11:19]
+    check("回放只走合理步数（不再从 1970 步进到 2026）", ticks < 200, True)
+    check("读到几次（每个任务开头一次，09:34-10:07 共 7 个任务）", w.agreement_seen, 7)
+    check("09:40:03 第二个任务开头又读到，下一眼（至多 1 分钟内）就结束 MaaEnd，不是 10:57",
+          killed_at is not None and "09:40:03" <= killed_at <= "09:41:03", True)
+    print("    结束于", killed_at)
+
+
 def _part_maaend_watchdog_main():
     """MaaEnd hung -> end MaaEnd.exe so AUTO-MAS retries now, not 45 minutes later."""
     import logging
@@ -1459,6 +1587,9 @@ def _part_maaend_watchdog_main():
     r.run_for(600)
     check("同一个 MaaEnd 不再结束第二次", r.killed, [MAAEND_PID, 21932, 21940])
     check("也不再报第二次", len(r.notes.sent), 1)
+
+    _watchdog_agreement(Rig, MAAEND_PID, RUNNING, texts, collect_watch)
+
 
     print("\n[maafw.log 10 分钟没有新行 → 结束 + 报警；9 分钟不动作]")
     r = Rig()
@@ -1592,7 +1723,7 @@ def _part_maaend_watchdog_main():
         def __init__(self, *a, **kw):
             pass
 
-        def tick(self, lines, stamp):
+        def tick(self, lines, stamp, agreement_seen=0, logout_seen=0):
             ticks.append(lines)
 
     real_dog, real_tick = maaend_watchdog.Watchdog, collect_watch.TICK_SECONDS

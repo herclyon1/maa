@@ -173,6 +173,84 @@ AFTER_SHIFT = ("uptime", "running", "farming", "pending", "report")
 UPDATE_HOLD = "游戏客户端正在更新或重跑"
 
 
+# A failed run nobody here can fix: the game's servers down (maintenance / maaend_unreachable /
+# okww_unreachable), MAA short on sanity (maa_sanity_short, ledger.episode_kinds "nosanity"),
+# a MaaEnd update restart after the round was already done, or the user's own stop (manual_stop).
+UNFIXABLE = ("maintenance", "maaend_unreachable", "okww_unreachable", "maa_sanity_short",
+             "maaend_update_after_done", "manual_stop")
+
+
+def _incomplete_unfixed(e: dict) -> str:
+    """Remaining undone summary of an ok=True record after dropping gathering-only items
+    (which collect_retry re-runs at the power-off moment); '' when nothing else is undone."""
+    why = str(e.get("incomplete") or "").strip()
+    if not why:
+        return ""
+    if e.get("script") == "MaaEnd":
+        from ark_relay.core.ledger import strip_incomplete_items  # noqa: PLC0415
+        from ark_relay.features.collect_retry import GATHERING_UNDONE  # noqa: PLC0415
+        why = strip_incomplete_items(why, GATHERING_UNDONE).strip()
+    return why
+
+
+def _shift_unfixed(shift: list[dict], entries: list[dict], off: "set[int] | frozenset" = frozenset()) -> list[str]:
+    """「明日方舟（开始唤醒）」 for each (script, user, mode) of the current shift (_current_shift)
+    whose latest record since the shift's time failed or ended incomplete, unless that failure is
+    UNFIXABLE or gathering only. A later clean record (an AUTO-MAS retry, the make-up, a run by
+    hand) fixes it. manual_stop records neither fix nor fail (ledger.manual_stop) and are skipped
+    so they never mask an earlier real failure. Off-shift (`off`: test or hand-started) runs that
+    failed or ended incomplete do not count against the shift; a clean off-shift run fixes it.
+    Transitional records are superseded by any non-transitional record of the same key, while a
+    shift whose only record for a key is a failed transitional one (e.g. a MaaEnd update restart
+    with RunTimesLimit=1) still holds."""
+    from ark_relay.core import ledger as core  # noqa: PLC0415
+    from ark_relay.features.handle import GAME  # noqa: PLC0415 - handle imports this module
+    from ark_relay.features.collector_maaend import _strip_emoji  # noqa: PLC0415
+    from ark_relay.features.makeup import GATHERING  # noqa: PLC0415
+    cur = _current_shift(shift)
+    if not cur:
+        return []
+    since = min(q["due"] for q in cur) - timedelta(minutes=5)
+    kinds = {k for q in cur for k in q.get("kinds", [])}
+    latest_final: dict = {}
+    latest_trans: dict = {}
+    for e in entries:
+        try:
+            if e.get("script") not in kinds or _entry_time(e) < since or core.manual_stop(e):
+                continue
+            clean_ok = bool(e.get("ok")) and not _incomplete_unfixed(e)
+            if id(e) in off and not clean_ok:
+                continue
+            key = (e["script"], str(e.get("user") or ""), core.maa_mode(e))
+            bucket = latest_trans if e.get("transitional") else latest_final
+            if key not in bucket or _entry_time(e) >= _entry_time(bucket[key]):
+                bucket[key] = e
+        except (KeyError, TypeError, ValueError):
+            continue
+    latest = {**latest_trans, **latest_final}
+    out = []
+    for (script, _user, mode), e in sorted(latest.items()):
+        raw = e.get("raw") or {}
+        label = ({"OK-WW": "鸣潮", **GAME}).get(script, script) + ("剿灭" if mode == "剿灭" else "")
+        if e.get("ok"):
+            if undone := _incomplete_unfixed(e):
+                out.append(f"{label}（{core._incomplete_note(undone)}）")
+            continue
+        if any(raw.get(k) for k in UNFIXABLE):
+            continue
+        if raw.get("automas_config_skip") and any(
+                s2 == script and m2 == mode and _entry_time(e2) >= _entry_time(e)
+                and bool(e2.get("ok")) and not _incomplete_unfixed(e2)
+                for (s2, _u2, m2), e2 in latest_final.items()):
+            continue
+        failed = [str(t) for t in e.get("failed_tasks") or []]
+        if failed and all(_strip_emoji(t) == GATHERING for t in failed):
+            continue
+        what = "、".join(failed[:3]) + ("…" if len(failed) > 3 else "")
+        out.append(f"{label}（{what or '没说是哪一项'}）")
+    return out
+
+
 def _newest_shift(shift: list[dict]) -> "dict | None":
     return max(shift, key=lambda q: q["due"]) if shift else None
 
@@ -702,6 +780,12 @@ def decide(eng, now: datetime) -> Verdict:
     from ark_relay.features import activity  # noqa: PLC0415
     if why := activity.holding(eng, now):
         return Verdict(False, "makeup", why)
+    # The user, 2026-11-20 (B 10477): 「早班的游戏任务没跑完，没修好，就不能关机，你们要修好。」
+    # That morning the 终末地 shift failed and the machine stayed on only because debug mode
+    # happened to be on. Not in HELD_PAST_SHIFT: once a later run of the script goes through,
+    # the machine powers off as usual.
+    if unfixed := _shift_unfixed(shift, entries, _off_shift(eng, entries)):
+        return Verdict(False, "shift-failed", "这一班有游戏任务没跑完、还没修好：" + "；".join(unfixed))
     day = now.strftime("%Y-%m-%d")
     cutoff = eng._report_cutoff(now)   # same source as the report itself
     # An empty ledger means nothing ran today, so there is no daily report to wait

@@ -122,7 +122,8 @@ def eligible(rec, now: datetime | None = None) -> bool:
         return False
     raw = rec.raw or {}
     return not (raw.get("maintenance") or raw.get("maaend_unreachable") or raw.get("manual_stop")
-                or raw.get("hand_started"))
+                or raw.get("hand_started")
+                or raw.get("maaend_agreement_at") or raw.get("maaend_logged_out_at"))
 
 
 def candidates(eng, now: datetime | None = None) -> list:

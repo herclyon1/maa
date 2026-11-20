@@ -20,13 +20,23 @@ which takes a desktop picture at each task end on its own thread.
 """
 from __future__ import annotations
 
+import gzip
+import json
 import logging
 import re
 import threading
 import time
+import zlib
 from pathlib import Path
 
 log = logging.getLogger("ark.collect_watch")
+
+# Blocking Endfield dialogs as MaaFW's OCR logs them (collector_maaend):
+# only counted here (raw or JSON-escaped), maaend_watchdog judges them.
+from ark_relay.features.collector_maaend import AGREEMENT_TEXT, LOGGED_OUT_TEXT  # noqa: E402 - after the logger, as above
+
+_AGREE_FORMS = (AGREEMENT_TEXT, json.dumps(AGREEMENT_TEXT).strip('"'))
+_LOGOUT_FORMS = (LOGGED_OUT_TEXT, json.dumps(LOGGED_OUT_TEXT).strip('"'))
 
 ENTRY = "AutoCollectSchedule"
 _TASK = re.compile(r"\[msg=Tasker\.Task\.(Starting|Completed|Failed)\].*?\"entry\":\"" + ENTRY + r"\"")
@@ -51,10 +61,16 @@ class Watcher:
         self.failed: list[str] = []      # caseNames of this attempt, e.g. Route10
         self._offset = 0
         self._tail = ""
+        self._last_mtime = 0.0           # mtime of maafw.log at last poll: guards against re-reading old .bak files on restart
+        self._read_baks: set[str] = set()
         # For the MaaEnd watchdog: complete lines read so far (rotation included)
         # and the timestamp of the newest one.
         self.lines_seen = 0
         self.last_stamp = ""
+        # For the watchdog's blocking-dialog check: chunks read with each dialog's line in them,
+        # counted since the relay started.
+        self.agreement_seen = 0
+        self.logout_seen = 0
         self._shots_broken = False       # the picture queue failed once in this attempt (said once)
 
     # ---------------------------------------------------------------- parsing
@@ -62,6 +78,10 @@ class Watcher:
     def feed(self, text: str) -> list[str]:
         """Consume log text (any number of lines). Returns the notes it logged."""
         notes: list[str] = []
+        if any(x in text for x in _AGREE_FORMS):
+            self.agreement_seen += 1
+        if any(x in text for x in _LOGOUT_FORMS):
+            self.logout_seen += 1
         for line in text.splitlines():
             if _NOTIFY not in line:
                 continue
@@ -120,29 +140,45 @@ class Watcher:
         if p is None:
             return []
         try:
-            size = p.stat().st_size
+            st = p.stat()
+            size, mtime = st.st_size, st.st_mtime
         except OSError:
             return []
         notes: list[str] = []
         if size < self._offset:
-            # MaaFW renamed the file to maafw.bak.<stamp>.log and started a new one;
-            # the last lines of the old one (the Failed nodes come right before
-            # MaaEnd exits) are still unread there.
-            baks = sorted(p.parent.glob("maafw.bak.*.log"), key=lambda q: q.stat().st_mtime)
+            # MaaFW renamed the file to maafw.bak.<stamp>.log and gzips it to .log.gz;
+            # the last lines of the old one (the Failed nodes and dialog OCR lines) are
+            # still unread there. Only pick a rotated file created since our last read of
+            # maafw.log (never an older run's leftover .log.gz when MaaEnd restarts fresh).
+            baks = []
+            for q in [*p.parent.glob("maafw.bak.*.log"), *p.parent.glob("maafw.bak.*.log.gz")]:
+                if q.name in self._read_baks:
+                    continue
+                try:
+                    qm = q.stat().st_mtime
+                except OSError:
+                    continue
+                if self._last_mtime and qm < self._last_mtime - 2.0:
+                    continue
+                baks.append((qm, q))
             if baks:
+                chosen = max(baks)[1]
+                self._read_baks.add(chosen.name)
                 # final: the old file is closed, so its last line is whole even without a
                 # newline - kept as the tail it was dropped by the reset below (audit B-06).
-                notes.extend(self._read_from(baks[-1], self._offset, final=True))
+                notes.extend(self._read_from(chosen, self._offset, final=True))
             self._offset, self._tail = 0, ""
+        self._last_mtime = mtime
         notes.extend(self._read_from(p, self._offset, track=True))
         return notes
 
     def _read_from(self, p: Path, offset: int, *, track: bool = False, final: bool = False) -> list[str]:
         try:
-            with p.open("rb") as fh:
+            opener = gzip.open(p, "rb") if p.suffix == ".gz" else p.open("rb")
+            with opener as fh:
                 fh.seek(offset)
                 data = fh.read()
-        except OSError:
+        except (OSError, EOFError, zlib.error):
             return []
         if not data:
             return []
@@ -185,7 +221,10 @@ def start(cfg, notifier) -> bool:
         log.warning("任务截图线程起不来，不截图", exc_info=True)
     w = Watcher(cfg, notifier, shots)
     try:
-        w._offset = w.log_path().stat().st_size   # start from now, not from the last run
+        st = w.log_path().stat()
+        w._offset = st.st_size   # start from now, not from the last run
+        w._last_mtime = st.st_mtime
+        w._read_baks = {q.name for q in [*debug.glob("maafw.bak.*.log"), *debug.glob("maafw.bak.*.log.gz")]}
     except OSError:
         pass
     from ark_relay.features import maaend_watchdog  # noqa: PLC0415
@@ -206,7 +245,7 @@ def start(cfg, notifier) -> bool:
                 log.exception("盯采集日志出错，继续")
             # Separate guard: a watchdog fault must not stop the log reading.
             try:
-                dog.tick(w.lines_seen, w.last_stamp)
+                dog.tick(w.lines_seen, w.last_stamp, w.agreement_seen, w.logout_seen)
             except Exception:
                 log.exception("MaaEnd 卡死看门狗出错，继续")
 

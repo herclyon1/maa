@@ -10,8 +10,10 @@ collector_maaend re-exports the readers it used to hold, under their old names.
 """
 from __future__ import annotations
 
+import gzip
 import json
 import re
+import zlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import Counter
@@ -35,23 +37,102 @@ UPDATE_AT_START_S = (-2, 30)
 UPDATE_INSTALL_S = 30
 
 
-def _fw_files(maaend_dir) -> list[Path]:
+# MaaFW rotates maafw.log to maafw.bak.<YYYY.MM.DD-HH.MM.SS.mmm>.log and gzips it (….log.gz; one
+# still being written ends in .tmp and is left alone). The stamp is the moment of the rotation, so
+# a file holds what was logged before it. 2026-11-20 the 09:34-10:46 part of the 早班 was in three
+# such files (09.40.02.867, 10.13.19.711, 10.46.38.827) and maafw.log began at 10:46:38: read
+# without them, the 「协议更新」 dialog of 09:34:28 was not there for _dialog_seen.
+_BAK_END = re.compile(r"maafw\.bak\.(\d{4})\.(\d{2})\.(\d{2})-(\d{2})\.(\d{2})\.(\d{2})(?:\.(\d{1,6}))?")
+
+
+def _naive(t: datetime) -> datetime:
+    """`t` on the machine's clock (MaaFW stamps its lines in it) without a zone."""
+    return t.astimezone(SERVER_TZ).replace(tzinfo=None) if t.tzinfo else t
+
+
+def _bak_time(name: str) -> "datetime | None":
+    """Rotation stamp parsed from a maafw.bak.<stamp>.log[.gz] name; None if invalid."""
+    m = _BAK_END.search(name)
+    if not m:
+        return None
+    try:
+        base = datetime(*map(int, m.groups()[:6]))
+    except ValueError:
+        return None
+    frac = m.group(7) or ""
+    if not frac:
+        return base
+    # Unpadded milliseconds, matching shot_time (17/160 maafw.bak names have 2 digits, e.g. .93 = 93 ms).
+    return base + (timedelta(milliseconds=int(frac)) if len(frac) <= 3
+                   else timedelta(microseconds=int(frac[:6].ljust(6, "0"))))
+
+
+def _bak_stem(f: Path) -> str:
+    return f.name[:-3] if f.suffix == ".gz" else f.name
+
+
+def _fw_files(maaend_dir, t0: "datetime | None" = None, t1: "datetime | None" = None,
+              *, include_gz: bool = False) -> list[Path]:
+    """MaaFW's logs (main debug/ and cpp-algo/debug/, each rotated independently).
+    Without a window: the plain ones (or plain + gzipped when `include_gz`), preferring plain
+    when both exist for one rotation. With one: maafw.log plus, per directory, the rotated
+    ones (plain or gzipped) covering [t0, t1] - each ending at or after t0, up to the first
+    ending after t1."""
     debug = Path(maaend_dir) / "debug"
-    return sorted([*debug.glob("maafw*.log"), *(debug / "cpp-algo" / "debug").glob("maafw*.log")])
+    dirs = (debug, debug / "cpp-algo" / "debug")
+    if t0 is None or t1 is None:
+        if not include_gz:
+            return sorted(f for d in dirs for f in d.glob("maafw*.log"))
+        files: list[Path] = []
+        for d in dirs:
+            plain = list(d.glob("maafw*.log"))
+            files.extend(f for f in plain if not _BAK_END.search(f.name))
+            rot = []
+            for f in [*plain, *d.glob("maafw.bak.*.log.gz")]:
+                if (end := _bak_time(f.name)) is not None:
+                    rot.append((end, f.suffix == ".gz", _bak_stem(f), f))
+            rot.sort()
+            seen: set[str] = set()
+            for _end, _is_gz, stem, f in rot:
+                if stem not in seen:
+                    seen.add(stem)
+                    files.append(f)
+        return sorted(files)
+    lo, hi = _naive(t0).replace(microsecond=0), _naive(t1)
+    files = []
+    for d in dirs:
+        plain = list(d.glob("maafw*.log"))
+        files.extend(f for f in plain if not _BAK_END.search(f.name))
+        rotated = []
+        for f in [*plain, *d.glob("maafw.bak.*.log.gz")]:
+            if (end := _bak_time(f.name)) is not None:
+                rotated.append((end, f.suffix == ".gz", _bak_stem(f), f))
+        rotated.sort()
+        seen = set()     # 11-15 left both maafw.bak.<stamp>.log and its .log.gz: the same lines once
+        for end, _is_gz, stem, f in rotated:
+            if stem in seen or end < lo:
+                continue
+            seen.add(stem)
+            files.append(f)
+            if end.replace(microsecond=0) > hi:
+                break
+    return sorted(files)
 
 
 def _fw_lines(files: list[Path], t0: datetime, t1: datetime, want=None) -> list[str]:
     """Lines of `files` stamped from t0 to t1 (whole seconds) for which `want(line)`
-    holds (every line when `want` is None), trailing newline removed. Unreadable
-    files are skipped."""
-    lo, hi = f"[{t0:%Y-%m-%d %H:%M:%S}", f"[{t1:%Y-%m-%d %H:%M:%S}~"
+    holds (every line when `want` is None), trailing newline removed. A .gz is read
+    through gzip. Unreadable or corrupt files are skipped."""
+    lo, hi = f"[{_naive(t0):%Y-%m-%d %H:%M:%S}", f"[{_naive(t1):%Y-%m-%d %H:%M:%S}~"
     out: list[str] = []
     for f in files:
         try:
-            with f.open(encoding="utf-8", errors="replace") as fh:
+            opener = gzip.open(f, "rt", encoding="utf-8", errors="replace") if f.suffix == ".gz" \
+                else f.open(encoding="utf-8", errors="replace")
+            with opener as fh:
                 out.extend(line.rstrip("\n") for line in fh
                            if lo <= line[:24] <= hi and (want is None or want(line)))
-        except OSError:
+        except (OSError, EOFError, zlib.error):
             continue
     return out
 
@@ -62,17 +143,20 @@ def _short(line: str) -> "tuple[str, str]":
     return short, short.split("]", 2)[-1]
 
 
-def maafw_text(maaend_dir) -> str:
-    """The storage-full lines of MaaEnd's framework logs, or "" when there is no
-    directory or nothing to read."""
+def maafw_text(maaend_dir, t0: "datetime | None" = None, t1: "datetime | None" = None) -> str:
+    """The storage-full lines of MaaEnd's framework logs (including rotated .log.gz),
+    or "" when there is no directory or nothing to read."""
     if not maaend_dir:
         return ""
+    files = _fw_files(maaend_dir, t0, t1) if (t0 is not None and t1 is not None) else _fw_files(maaend_dir, include_gz=True)
     out: list[str] = []
-    for f in _fw_files(maaend_dir):
+    for f in files:
         try:
-            with f.open(encoding="utf-8", errors="replace") as fh:
+            opener = gzip.open(f, "rt", encoding="utf-8", errors="replace") if f.suffix == ".gz" \
+                else f.open(encoding="utf-8", errors="replace")
+            with opener as fh:
                 out.extend(line for line in fh if _END_STORAGE_FULL in line)
-        except OSError:
+        except (OSError, EOFError, zlib.error):
             continue
     return "".join(out)
 
@@ -85,7 +169,7 @@ def maafw_window(maaend_dir, t0: datetime, t1: datetime) -> tuple[list[str], str
     (lines, why there are none - '' when there are)."""
     if not maaend_dir:
         return [], "没配终末地的目录"
-    files = _fw_files(maaend_dir)
+    files = _fw_files(maaend_dir, t0, t1)
     if not files:
         return [], "框架日志的文件夹里没有日志（终末地每次重启会清掉它）"
     stretch = _fw_lines(files, t0, t1)
@@ -111,7 +195,7 @@ def maafw_grep(maaend_dir, t0: datetime, t1: datetime, needles: "tuple[str, ...]
         return []
     forms = list(dict.fromkeys(f for n in needles
                                for f in (n, json.dumps(n).strip('"'))))
-    found = _fw_lines(_fw_files(maaend_dir), t0, t1, lambda line: any(x in line for x in forms))
+    found = _fw_lines(_fw_files(maaend_dir, t0, t1), t0, t1, lambda line: any(x in line for x in forms))
     out: list[str] = []
     seen: set[str] = set()
     for line in sorted(found):
@@ -175,7 +259,7 @@ def task_events(maaend_dir, t0: datetime, t1: datetime) -> list:
         return []
     lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
     hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
-    lines = _fw_lines(_fw_files(maaend_dir), lo, hi,
+    lines = _fw_lines(_fw_files(maaend_dir, lo, hi), lo, hi,
                       lambda line: "[msg=Tasker.Task." in line or "[msg=Node.PipelineNode.Succeeded]" in line)
     events = []
     for line in lines:
@@ -822,34 +906,89 @@ LOGGED_OUT_TEXT = "登录认证已失效"
 LOGGED_OUT = "这个号在别的设备上登录了，游戏弹「登录认证已失效」，之后进不了游戏"
 
 
-def _logged_out(text: str, maaend_dir) -> "tuple[str, dict]":
-    """('HH:MM:SS' of the first 「登录认证已失效」 MaaEnd's framework log has within this run,
-    {failed task: LOGGED_OUT} for the tasks that failed at or after it), or ('', {})."""
-    stamps = [t for line in text.splitlines() if (t := _stamp(line))]
-    if not maaend_dir or not stamps:
+# 2026-11-20 09:32 (#187): the game opened on a one-time 「协议更新」 dialog (游戏个人信息保护政策,
+# [取消]/[同意]); MaaEnd has no node for it, so each of 15 tasks waited 5 min 33 s and failed,
+# and the alarm said 「卡在 赠送干员礼物、装备制造、拜访好友…」 with nothing about the dialog. MaaEnd's
+# OCR reads the dialog's line into its framework log. Nothing here clicks 同意: that is
+# accepting an agreement, which is the account owner's to do.
+AGREEMENT_TEXT = "请您仔细阅读并同意以下协议"
+AGREEMENT = "游戏停在「协议更新」窗口，要人点同意"
+
+
+# A dialog read this long before the task's own 「任务开始」 line still counts as read during it:
+# MaaFW's start event and AUTO-MAS's line differ by up to a second (11-20: 09:34:27.414 / .524).
+TASK_START_SLACK_S = 5
+
+
+def _line_or_stamp(line: str) -> "datetime | None":
+    return line_time(line) or _stamp(line)
+
+
+def _causes_from_reads(text: str, reads: list[datetime], cause: str, *, during: bool = False) -> "tuple[str, dict]":
+    """Match framework-log dialog timestamps `reads` against failed tasks in `text`."""
+    if not reads:
         return "", {}
-    hits = maafw_grep(maaend_dir, min(stamps), max(stamps), (LOGGED_OUT_TEXT,))
-    at = next((t for h in hits if (t := _stamp(h))), None)
-    if at is None:
-        return "", {}
-    causes = {}
+    at = reads[0]
+    causes: dict = {}
+    started: "tuple[str, datetime] | None" = None
+    prev_end: "datetime | None" = None
+    matched_reads: list[datetime] = []
     for line in text.splitlines():
-        if (m := _END_TASK_FAIL.search(line)) and (t := _stamp(line)) and t >= at:
-            causes[_strip_emoji(m.group(1))] = LOGGED_OUT
+        if (m := _END_TASK_START.search(line)) and (t := _line_or_stamp(line)):
+            started = (_strip_emoji(m.group(1)), t)
+        elif _END_TASK_DONE.search(line) and (t := _line_or_stamp(line)):
+            prev_end = t
+            started = None
+        elif (m := _END_TASK_FAIL.search(line)) and (t := _line_or_stamp(line)):
+            name = _strip_emoji(m.group(1))
+            if during:
+                if started is not None and started[0] == name:
+                    lo_t = started[1] - timedelta(seconds=TASK_START_SLACK_S)
+                    if prev_end is not None:
+                        lo_t = max(lo_t, prev_end)
+                    hits = [r for r in reads if lo_t <= r <= t and (prev_end is None or r > prev_end)]
+                    if hits:
+                        causes[name] = cause
+                        matched_reads.append(hits[0])
+            elif t >= at:
+                causes[name] = cause
+            prev_end = t
+            started = None
+    if not causes:
+        return "", {}
+    if during:
+        return min(matched_reads).strftime("%H:%M:%S"), causes
     return at.strftime("%H:%M:%S"), causes
 
 
 def _add_logged_out(text: str, maaend_dir, failed: list[str], causes: dict, out: dict) -> dict:
-    """`causes` with LOGGED_OUT for the tasks that failed at or after the dialog, and
-    out["maaend_logged_out_at"] set; unchanged when nothing failed or the dialog was not
-    seen. Only a run with a failure reads the framework log for it (~90 MB a file)."""
-    if not failed:
+    """`causes` with LOGGED_OUT for the tasks that failed at or after that dialog and
+    AGREEMENT for those with a read during the task, out["maaend_logged_out_at"] /
+    out["maaend_agreement_at"] set; unchanged when nothing failed or neither was seen.
+    A cause already proven (a full bag) stays; for a task after both, the logout is named.
+    Scans the framework logs once for both dialogs (~90 MB a file)."""
+    if not failed or not maaend_dir:
         return causes
-    at, lost = _logged_out(text, maaend_dir)
-    if not at:
+    stamps = [t for line in text.splitlines() if (t := _line_or_stamp(line))]
+    if not stamps:
         return causes
-    out["maaend_logged_out_at"] = at
-    return {**lost, **causes}
+    t0, t1 = min(stamps), max(stamps)
+    q0 = t0 - timedelta(seconds=TASK_START_SLACK_S)
+    out_forms = (LOGGED_OUT_TEXT, json.dumps(LOGGED_OUT_TEXT).strip('"'))
+    agr_forms = (AGREEMENT_TEXT, json.dumps(AGREEMENT_TEXT).strip('"'))
+    all_forms = out_forms + agr_forms
+    hits = _fw_lines(_fw_files(maaend_dir, q0, t1), q0, t1, lambda line: any(x in line for x in all_forms))
+    out_reads = sorted(t for h in hits if any(x in h for x in out_forms) and (t := _line_or_stamp(h)) and t >= t0)
+    agr_reads = sorted(t for h in hits if any(x in h for x in agr_forms) and (t := _line_or_stamp(h)) and t >= q0)
+    at, lost = _causes_from_reads(text, out_reads, LOGGED_OUT, during=False)
+    if at:
+        out["maaend_logged_out_at"] = at
+    agreed_at, held = _causes_from_reads(text, agr_reads, AGREEMENT, during=True)
+    if agreed_at:
+        out["maaend_agreement_at"] = agreed_at
+    if not (at or agreed_at):
+        return causes
+    return {**held, **lost, **causes}
 
 
 def _cap(lines: list[str]) -> list[str]:
@@ -1338,8 +1477,12 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     if failed:
         out["tasks_failed"] = list(dict.fromkeys(failed))
     # The framework logs run to ~90 MB each; read them only when a claim click
-    # is there to be explained.
-    fw = maafw_text(maaend_dir) if _END_CLAIM_CLICK.search(text) else ""
+    # is there to be explained, bounded to this run's window (+ storage-full slack).
+    fw = ""
+    if _END_CLAIM_CLICK.search(text):
+        stamps = [t for ln in text.splitlines() if (t := _line_or_stamp(ln))]
+        fw = (maafw_text(maaend_dir, min(stamps), max(stamps) + timedelta(seconds=_STORAGE_FULL_AFTER_S))
+              if stamps else maafw_text(maaend_dir))
     causes = _add_logged_out(text, maaend_dir, failed, _maaend_fail_causes(text, fw), out)
     if causes:
         out["maaend_fail_causes"] = causes
@@ -1390,4 +1533,4 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     out.update(out_flags)
     return out
 
-__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'in_window', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']
+__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'AGREEMENT', 'AGREEMENT_TEXT', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'in_window', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']
