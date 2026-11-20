@@ -61,6 +61,8 @@ class Watcher:
         self.failed: list[str] = []      # caseNames of this attempt, e.g. Route10
         self._offset = 0
         self._tail = ""
+        self._last_mtime = 0.0           # mtime of maafw.log at last poll: guards against re-reading old .bak files on restart
+        self._read_baks: set[str] = set()
         # For the MaaEnd watchdog: complete lines read so far (rotation included)
         # and the timestamp of the newest one.
         self.lines_seen = 0
@@ -138,25 +140,35 @@ class Watcher:
         if p is None:
             return []
         try:
-            size = p.stat().st_size
+            st = p.stat()
+            size, mtime = st.st_size, st.st_mtime
         except OSError:
             return []
         notes: list[str] = []
         if size < self._offset:
             # MaaFW renamed the file to maafw.bak.<stamp>.log and gzips it to .log.gz;
             # the last lines of the old one (the Failed nodes and dialog OCR lines) are
-            # still unread there. Pick the newest rotated file, plain or gzipped.
+            # still unread there. Only pick a rotated file created since our last read of
+            # maafw.log (never an older run's leftover .log.gz when MaaEnd restarts fresh).
             baks = []
             for q in [*p.parent.glob("maafw.bak.*.log"), *p.parent.glob("maafw.bak.*.log.gz")]:
+                if q.name in self._read_baks:
+                    continue
                 try:
-                    baks.append((q.stat().st_mtime, q))
+                    qm = q.stat().st_mtime
                 except OSError:
                     continue
+                if self._last_mtime and qm < self._last_mtime - 2.0:
+                    continue
+                baks.append((qm, q))
             if baks:
+                chosen = max(baks)[1]
+                self._read_baks.add(chosen.name)
                 # final: the old file is closed, so its last line is whole even without a
                 # newline - kept as the tail it was dropped by the reset below (audit B-06).
-                notes.extend(self._read_from(max(baks)[1], self._offset, final=True))
+                notes.extend(self._read_from(chosen, self._offset, final=True))
             self._offset, self._tail = 0, ""
+        self._last_mtime = mtime
         notes.extend(self._read_from(p, self._offset, track=True))
         return notes
 
@@ -209,7 +221,10 @@ def start(cfg, notifier) -> bool:
         log.warning("任务截图线程起不来，不截图", exc_info=True)
     w = Watcher(cfg, notifier, shots)
     try:
-        w._offset = w.log_path().stat().st_size   # start from now, not from the last run
+        st = w.log_path().stat()
+        w._offset = st.st_size   # start from now, not from the last run
+        w._last_mtime = st.st_mtime
+        w._read_baks = {q.name for q in [*debug.glob("maafw.bak.*.log"), *debug.glob("maafw.bak.*.log.gz")]}
     except OSError:
         pass
     from ark_relay.features import maaend_watchdog  # noqa: PLC0415

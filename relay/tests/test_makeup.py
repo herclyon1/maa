@@ -1271,6 +1271,19 @@ lists an older relay version narrowed go back at the next attempt's start.
     log_gz.write_text("[2026-11-20 09:40:03.000][INF] fresh\n", encoding="utf-8")
     w_gz.poll()
     check("轮转成 .log.gz 后仍补读旧文件尾巴里的弹窗", w_gz.agreement_seen, 1)
+    # R2-M1: clean MaaEnd restart truncating maafw.log must NOT replay an older run's leftover .log.gz
+    import os as _os
+    cfg_old, _f_old, n_old = _setup()
+    w_old = collect_watch.Watcher(cfg_old, n_old)
+    log_old = w_old.log_path()
+    stale_gz = log_old.parent / "maafw.bak.2026.11.19-09.40.02.867.log.gz"
+    stale_gz.write_bytes(gzip.compress((head_txt * 20 + agree).encode("utf-8")))
+    _os.utime(stale_gz, (1700000000, 1700000000))
+    log_old.write_text(head_txt * 10, encoding="utf-8")
+    w_old.poll()
+    log_old.write_text("[2026-11-20 09:00:00.000][INF] clean restart\n", encoding="utf-8")
+    w_old.poll()
+    check("重启清空 maafw.log 不误读昨天的残留 .log.gz", w_old.agreement_seen, 0)
     check("collect_retry._maafw_text 也能读 .log.gz", "请您仔细阅读并同意以下协议" in _cr._maafw_text(log_gz.parent), True)
     # N1: makeup.eligible skips agreement / logged_out dialogs
     now_t = _dt(2026, 11, 20, 10, 0, tzinfo=_TZ)

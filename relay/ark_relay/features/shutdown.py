@@ -238,6 +238,11 @@ def _shift_unfixed(shift: list[dict], entries: list[dict], off: "set[int] | froz
             continue
         if any(raw.get(k) for k in UNFIXABLE):
             continue
+        if raw.get("automas_config_skip") and any(
+                s2 == script and m2 == mode and _entry_time(e2) >= _entry_time(e)
+                and bool(e2.get("ok")) and not _incomplete_unfixed(e2)
+                for (s2, _u2, m2), e2 in latest_final.items()):
+            continue
         failed = [str(t) for t in e.get("failed_tasks") or []]
         if failed and all(_strip_emoji(t) == GATHERING for t in failed):
             continue

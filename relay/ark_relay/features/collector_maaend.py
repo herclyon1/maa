@@ -59,7 +59,12 @@ def _bak_time(name: str) -> "datetime | None":
         base = datetime(*map(int, m.groups()[:6]))
     except ValueError:
         return None
-    return base.replace(microsecond=int((m.group(7) or "0").ljust(6, "0")))
+    frac = m.group(7) or ""
+    if not frac:
+        return base
+    # Unpadded milliseconds, matching shot_time (17/160 maafw.bak names have 2 digits, e.g. .93 = 93 ms).
+    return base + (timedelta(milliseconds=int(frac)) if len(frac) <= 3
+                   else timedelta(microseconds=int(frac[:6].ljust(6, "0"))))
 
 
 def _bak_stem(f: Path) -> str:
@@ -949,9 +954,9 @@ def _causes_from_reads(text: str, reads: list[datetime], cause: str, *, during: 
                 causes[name] = cause
             prev_end = t
             started = None
+    if not causes:
+        return "", {}
     if during:
-        if not causes:
-            return "", {}
         return min(matched_reads).strftime("%H:%M:%S"), causes
     return at.strftime("%H:%M:%S"), causes
 

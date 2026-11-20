@@ -746,6 +746,10 @@ def _part_shutdown_unfixed_shift():
           ["终末地（赠送干员礼物、装备制造、拜访好友…）"])
     check("鸣潮也点名", shutdown._shift_unfixed([MORNING], [rec("OK-WW", 11, 0, False, ["每日活跃奖励"])]),
           ["鸣潮（每日活跃奖励）"])
+    check("config_skip 账号名 fallback 与修好后真实账号名不同：仍算已修好",
+          shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 30, False, ["启动前配置检查未通过"],
+                                                  user="", automas_config_skip=True),
+                                              rec("MaaEnd", 9, 45, True, user="endfield")]), [])
     print("\n[早上的失败不拖到晚班：晚班跑成了照常关机]")
     check("晚班只看晚班", shutdown._shift_unfixed([MORNING, EVENING], [rec("MaaEnd", 9, 34, False, TASKS),
                                                                     rec("MaaEnd", 21, 34, True)]), [])

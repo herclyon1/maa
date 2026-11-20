@@ -1927,6 +1927,25 @@ def _part_maaend_agreement():
     out = parse("done", h_done, read_at("2026-11-20 09:34:28.920"))
     check("任务 1 读弹窗后成功、任务 2 无关失败：不标原因也不写 maaend_agreement_at",
           ("maaend_agreement_at" in out, out.get("maaend_fail_causes")), (False, None))
+    # R2-M2: LOGGED_OUT appearing after all failures (no task failed after it) must NOT set maaend_logged_out_at
+    from ark_relay.features import makeup as _mk
+    from ark_relay.core.config import RunRecord as _RR, SERVER_TZ as _TZ
+    h_late_out = (
+        "[2026-11-20 09:34:00.000] 任务开始: 🎱基质刷取\n"
+        "[2026-11-20 09:38:00.000] 任务失败: 🎱基质刷取\n"
+        "[2026-11-20 09:39:00.000] 任务开始: 🏅日常奖励领取\n"
+        "[2026-11-20 09:40:00.000] 任务完成: 🏅日常奖励领取\n"
+        "[2026-11-20 09:42:05.000] 任务完成: ❌关闭游戏（PC）\n"
+    )
+    out = parse("late_out", h_late_out, OLD.replace("2026-11-05 11:43:57", "2026-11-20 09:42:00"))
+    check("关游戏前才弹登录失效（其后无失败任务）：不写 maaend_logged_out_at",
+          ("maaend_logged_out_at" in out, out.get("maaend_fail_causes")), (False, None))
+    t_now = datetime(2026, 11, 20, 10, 0, tzinfo=_TZ)
+    check("无关失败不因此被取消补跑",
+          _mk.eligible(_RR("r_late", "MaaEnd", "u", t_now, t_now, False, ["基质刷取"], raw=out), t_now), True)
+    # R2-N2: _bak_time parses unpadded milliseconds like shot_time (.93 = 93 ms, not 930 ms)
+    check("_bak_time 不补零毫秒（.93 = 93 ms）",
+          C._bak_time("maafw.bak.2026.11.20-09.40.02.93.log.gz"), datetime(2026, 11, 20, 9, 40, 2, 93000))
 
 
 def _part_maaend_recovered():
