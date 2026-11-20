@@ -26,7 +26,6 @@
 # the arguments are not written at all. `-B`: no __pycache__ next to redact.py.
 # Local only - nothing here is sent anywhere.
 
-ARK_ACTION_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || ARK_ACTION_LIB_DIR=""
 
 # argv: <dir holding redact.py> <calling script's name> <its arguments...>; prints one
 # line of at most 120 characters, secrets masked.
@@ -45,15 +44,18 @@ sys.stdout.buffer.write(s[:120].encode("utf-8", "replace"))
 '
 
 ark_action_log() {
+  # Nothing to write (the tests point it at the null device): no process started at all - the relay's tests
+  # call these scripts hundreds of times and must stay under deploy-relay.sh's 10 s a file.
+  [ "${ARK_ACTION_LOG:-}" = /dev/null ] && return 0
   (
     set +e +u +o pipefail
     umask 077
+    ARK_ACTION_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || ARK_ACTION_LIB_DIR=""
     file="${ARK_ACTION_LOG:-}"
     if [ -z "$file" ]; then
       [ -n "${HOME:-}" ] || exit 0
       file="$HOME/.cache/ark-relay/mac_actions.log"
     fi
-    [ "$file" = /dev/null ] && exit 0
     me=$(basename -- "$0")
     if [ -n "$ARK_ACTION_LIB_DIR" ] && [ -f "$ARK_ACTION_LIB_DIR/../redact.py" ]; then
       args=$(python3 -I -B -c "$ARK_ACTION_PY" "$ARK_ACTION_LIB_DIR/.." "$me" "$@") || args="<参数没记：脱敏没跑成>"
