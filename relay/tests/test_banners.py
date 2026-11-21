@@ -2003,12 +2003,43 @@ def _part_banners():  # noqa: C901
         check("silent 1631: both known shapes",
               (_b._ef_brief_time("2026/10/15 7:00:00"), _b._ef_brief_time("2026-11-05T11:59")),
               (datetime(2026, 10, 15, 7, 0), datetime(2026, 11, 5, 11, 59)))
-        try:
-            _b._ef_brief_time("2026年10月15日 07:00")
-            got = "None"
-        except ValueError:
-            got = "ValueError"
-        check("silent 1631: an unknown shape raises", got, "ValueError")
+        check("11-21 #188: v1d7 ISO-with-seconds and slash/space variants",
+              (_b._ef_brief_time("2026-12-23T11:59:00"),
+               _b._ef_brief_time("2026/11/25 7:00"),
+               _b._ef_brief_time("2026-11-25 07:00:00"),
+               _b._ef_brief_time("2026-11-25 07:00")),
+              (datetime(2026, 12, 23, 11, 59),
+               datetime(2026, 11, 25, 7, 0),
+               datetime(2026, 11, 25, 7, 0),
+               datetime(2026, 11, 25, 7, 0)))
+        for bad_ts in ("2026年10月15日 07:00", "2026-12-23T11:59:00Z"):
+            try:
+                _b._ef_brief_time(bad_ts)
+                got = "None"
+            except ValueError:
+                got = "ValueError"
+            check(f"silent 1631: an unknown shape raises ({bad_ts})", got, "ValueError")
+        v1d7_bundle = (
+            """var a=JSON.parse('{"page.title":{"zh-cn":"《明日方舟：终末地》「丹青渡」新版本导览"}}');"""
+            """var b=JSON.parse('{"characters":["""
+            """{"id":"chr_0040_sweetpie","name":{"zh-cn":"小刻"},"gachaPoolName":{"zh-cn":"锻砧、行囊与蜜糖"},"""
+            """"gachaTimeByServer":{"cn":{"openTime":"2026/11/25 7:00:00","closeTime":"2026-12-23T11:59:00","startsAfterUpdate":true}}},"""
+            """{"id":"chr_0039_mimino","name":{"zh-cn":"米米诺"},"gachaPoolName":{},"""
+            """"gachaTimeByServer":{"cn":{"openTime":"2026-12-17T12:00:00","closeTime":"2027-01-07T06:00:00"}}}]}');"""
+            """var c=JSON.parse('{"page.title":{"zh-cn":"《明日方舟：终末地》「穿越甚大蘑境与你相逢」新版本导览"}}');"""
+        )
+        v1d7_ver, v1d7_rows = _b.ef_briefing_banners(v1d7_bundle)
+        check("11-21 #188: v1d7 version title overrides base title", v1d7_ver, "穿越甚大蘑境与你相逢")
+        check("11-21 #188: v1d7 banner closeTime with seconds parsed and free operator skipped",
+              v1d7_rows,
+              [{"who": "小刻「锻砧、行囊与蜜糖」",
+                "open": None,
+                "listed": datetime(2026, 11, 25, 7, 0),
+                "close": datetime(2026, 12, 23, 11, 59),
+                "after_update": True}])
+        check("11-21 #188: v1d7 next banner reported cleanly on 11-21",
+              _b.ef_briefing_next(datetime(2026, 11, 21, 21, 45), {"明河"}, v1d7_ver, v1d7_rows),
+              (None, "小刻「锻砧、行囊与蜜糖」", "穿越甚大蘑境与你相逢", datetime(2026, 11, 25, 7, 0)))
         fx = FX / "ef-briefing-v1d6"
         page = (fx / "latest.html").read_text(encoding="utf-8")
         bundle = re.sub(r'openTime":"(\d{4})/(\d{1,2})/(\d{1,2}) ', r'openTime":"\1年\2月\3日 ',

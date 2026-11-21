@@ -631,7 +631,14 @@ def _js_unescape(lit: str) -> str:
 def _ef_brief_time(s: str) -> "datetime | None":
     if not s.strip():
         return None
-    for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M"):
+    for fmt in (
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+    ):
         try:
             return datetime.strptime(s.strip(), fmt)
         except ValueError:
