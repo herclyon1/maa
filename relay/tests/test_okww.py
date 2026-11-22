@@ -715,6 +715,14 @@ msgstr ""
     check("captured echo, full message",
           I.normalize(line("战斗中已吸收声骸，跳过搜索。"), real), line("Captured echo during combat, skipping search."))
 
+    print("[v3.8.9 moved zh_CN.ts under working/ok/ui/qt/i18n/zh_CN.ts (ledger #189)]")
+    real_work = TMP / "real_work"
+    (real_work / I.TS_WORK_REL).parent.mkdir(parents=True)
+    shutil.copy(fx_dir(HERE, "fixtures") / "okww-i18n" / "okscript-3.0.3-zh_CN.ts", real_work / I.TS_WORK_REL)
+    check("working/ok zh_CN.ts is loaded when site-packages copy is absent",
+          I.normalize(line("当前游戏或模拟器不支持选择的截图方式!", "start_controller", "ERROR"), real_work),
+          line("Selected capture method is not supported by the game or your system!", "start_controller", "ERROR"))
+
     print("[outcome.normalize_okww_log: catalogs first, then the hand-written pairs]")
     os.environ["ARK_OKWW_DIR"] = str(real)
     check("catalog line", outcome.normalize_okww_log(line("战斗中已吸收声骸，跳过搜索。")),

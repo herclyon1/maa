@@ -3593,6 +3593,7 @@ def _part_gamelog_errors():
         ],
         "OK-WW": [
             "2026-09-27 09:17:33,335 ERROR ok.core.start_controller start_controller:Game window is not connected BitBlt_True_1920x1080",
+            "2026-11-22 09:25:05,233 ERROR ok.core.start_controller bitblt_utils:capture_by_bitblt invalid params: hwnd=0, w=1920, h=1080",
             "2026-09-27 09:17:33,339 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮   is not connected, please select the game window.",
             "2026-09-29 09:20:35,119 ERROR ok.core.start_controller start_controller:waiting for game to start error Selected capture method is not supported by the game or your system!",
             "2026-09-27 09:18:09,708 ERROR TaskExecutor bitblt_utils:capture_by_bitblt exception: BitBlt failed",
@@ -3630,6 +3631,8 @@ TypeError: 'NoneType' object is not subscriptable
             "2026-10-05 10:34:52,359 ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常:  Traceback (most recent call last):",
             "2026-10-15 09:25:00,000 ERROR TaskExecutor DeviceManager:refresh error Traceback (most recent call last):",
             "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:waiting for game to start error 'NoneType' object has no attribute 'hwnd'",
+            "2026-11-22 09:30:00,000 ERROR TaskExecutor bitblt_utils:capture_by_bitblt invalid params: hwnd=0, w=1920, h=1080",
+            "2026-11-22 09:25:05,233 ERROR ok.core.start_controller bitblt_utils:capture_by_bitblt invalid params: hwnd=1312226, w=0, h=1080",
         ],
         "MAA": [
             "[2026-10-02 23:40:26.537][ERR][VersionUpdateDialogViewModel] <2> mirrorc failed",
@@ -3777,6 +3780,24 @@ TypeError: 'NoneType' object is not subscriptable
           [e.pattern.pattern for e, _, _ in ge.recovered_kinds("OK-WW", ZH_1104)] ==
           [ge.known("OK-WW", "2026-10-10 09:20:00,000 ERROR ok.core.start_controller start_controller:waiting for game "
                 "to start error Selected capture method is not supported by the game or your system!").pattern.pattern],
+          True)
+
+    print("[OK-WW v3.8.9 start-wait BitBlt hwnd=0 and zh_CN window-not-connected lines (ledger #189, 11-22 09:25)]")
+    ROUND_1122 = "\n".join([
+        "2026-11-22 09:25:05,233 ERROR ok.core.start_controller bitblt_utils:capture_by_bitblt invalid params: hwnd=0, w=1920, h=1080",
+        "2026-11-22 09:25:05,234 ERROR ok.core.start_controller start_controller:Game window is not connected BitBlt_True_0x0",
+        "2026-11-22 09:25:05,235 ERROR ok.core.start_controller start_controller:waiting for game to start error 鸣潮  未连接，请选择正确的游戏窗口。",
+    ])
+    check("11-22 #189: all three start-wait lines are registered", ge.unregistered("OK-WW", ROUND_1122), [])
+    check("11-22 #189: all three count as recovered",
+          [(e.kind, n) for e, _, n in ge.recovered_kinds("OK-WW", ROUND_1122)],
+          [("recovered", 1), ("recovered", 1), ("recovered", 1)])
+    ZH_1122 = ("2026-11-22 09:25:05,235 ERROR ok.core.start_controller start_controller:waiting for game to start error "
+               "鸣潮  未连接，请选择正确的游戏窗口。")
+    check("11-22 #189: zh not-connected maps to the listed English not-connected entry",
+          [e.pattern.pattern for e, _, _ in ge.recovered_kinds("OK-WW", ZH_1122)] ==
+          [ge.known("OK-WW", "2026-09-27 09:17:33,339 ERROR ok.core.start_controller start_controller:waiting for game "
+                "to start error 鸣潮   is not connected, please select the game window.").pattern.pattern],
           True)
     check("a real failure in zh still reaches the group", len(ge.unregistered(
         "OK-WW", "2026-11-04 09:30:00,000 ERROR TaskExecutor 无法领取先约电台奖励")), 1)

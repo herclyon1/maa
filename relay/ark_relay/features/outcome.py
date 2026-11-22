@@ -34,6 +34,7 @@ from ark_relay.core.config import okww_root
 PO_REL = Path("data") / "apps" / "ok-ww" / "working" / "i18n" / "zh_CN" / "LC_MESSAGES" / "ok.po"
 TS_REL = (Path("data") / "apps" / "ok-ww" / "python" / "Lib" / "site-packages" / "ok" / "ui" / "qt"
           / "i18n" / "zh_CN.ts")
+TS_WORK_REL = Path("data") / "apps" / "ok-ww" / "working" / "ok" / "ui" / "qt" / "i18n" / "zh_CN.ts"
 
 _HAN = re.compile(r"[\u4e00-\u9fff]")
 _LATIN = re.compile(r"[A-Za-z]")
@@ -211,8 +212,9 @@ def tables(okww_dir: Path | None = None) -> Tables:
     """The reverse tables from the catalogs under OK-WW's install root, rebuilt when a file changes;
     empty tables when neither catalog is there."""
     root = Path(okww_dir) if okww_dir else config.okww_root()
-    po, ts = root / PO_REL, root / TS_REL
-    stamp = _stamp(po, ts)
+    po, ts_work, ts_legacy = root / PO_REL, root / TS_WORK_REL, root / TS_REL
+    ts = ts_work if ts_work.is_file() else ts_legacy
+    stamp = _stamp(po, ts_work, ts_legacy)
     got = _CACHE.get(str(root))
     if got and got[0] == stamp:
         return got[1]
@@ -462,6 +464,7 @@ _OKWW_ZH_TO_EN = (
     ("每日任务异常停止", "Daily Task exception stopped"),
     ("等待游戏启动错误", "waiting for game to start error"),
     ("游戏窗口未连接", "Game window is not connected"),
+    ("未连接，请选择正确的游戏窗口。", " is not connected, please select the game window."),
     ("当前游戏或模拟器不支持选择的截图方式!", "Selected capture method is not supported by the game or your system!"),
 )
 
