@@ -12,8 +12,8 @@ Every rule below is one row of the "safe" column of the 10-13 22:45 disk invento
 that is re-checked on every run: is it merged, is it clean, is a process using it, did anything
 in it change lately, does a running session or workflow still name it, does a tool reuse it.
 
-    ~/.local/bin/python3.14 scripts/mac/disk-tidy.py            # dry run: what would go, how big
-    ~/.local/bin/python3.14 scripts/mac/disk-tidy.py --apply    # remove; one log line per removal
+    /opt/homebrew/bin/python3 scripts/mac/disk-tidy.py            # dry run: what would go, how big
+    /opt/homebrew/bin/python3 scripts/mac/disk-tidy.py --apply    # remove; one log line per removal
 
 Removals are appended to ~/Library/Logs/disk-tidy.log (time, rule, path, size). Below the
 free-space floor (--floor-gb, default 30) the "floor" rules run too: the same checks with a

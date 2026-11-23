@@ -139,7 +139,7 @@ fi
 # pyflakes catches a name read before it is bound (F823), which the tests can miss; the strict 3.14
 # compile catches invalid escapes ('\d') that the Mac's own 3.9 accepts in silence.
 echo "▶ 8/17 静态检查（pyflakes + 3.14 严格编译）"
-PY314="$HOME/.local/bin/python3.14"
+PY314="/opt/homebrew/bin/python3"   # 11-22 全机统一最新 Python（方案 p01）；原 ~/.local/bin/python3.14 已删
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），pyflakes 跑不了"
 else

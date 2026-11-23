@@ -15,7 +15,7 @@
 # 3.14 is installed - callers stop instead of falling back to /usr/bin/python3.
 set -euo pipefail
 
-PY314="${RELAY_PY314:-$HOME/.local/bin/python3.14}"
+PY314="${RELAY_PY314:-/opt/homebrew/bin/python3}"   # 11-22 全机统一最新 Python（方案 p01）；原 ~/.local/bin/python3.14 已删
 if [ ! -x "$PY314" ]; then
   echo "relay-python: $PY314 not found; install Python 3.14 (uv python install 3.14), never fall back to /usr/bin/python3" >&2
   exit 3

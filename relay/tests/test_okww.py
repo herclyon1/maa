@@ -8,6 +8,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+def _fake_module(name):
+    """A stand-in module with a real __spec__: Python 3.15's traceback looks the
+    package up through importlib.resources and raises TypeError when __spec__ is None."""
+    import importlib.machinery
+    import types
+    m = types.ModuleType(name)
+    m.__spec__ = importlib.machinery.ModuleSpec(name, None)
+    return m
 # relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -1450,7 +1460,7 @@ def _part_okww_battle_pass_claim():
         scope = {}
         exec(compile(Path(fh.name).read_text(encoding="utf-8"), fh.name, "exec"), scope)
         mod.DailyTask.claim_battle_pass = scope["DailyTask"].claim_battle_pass
-        sys.modules.update({"src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        sys.modules.update({"src": _fake_module("src"), "src.task": _fake_module("src.task"),
                             "src.task.DailyTask": mod})
         n = overlay()
         n["_install_battle_pass"]()
@@ -1651,7 +1661,7 @@ def _part_okww_claim_readback():  # noqa: C901
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
                                         info=lambda *a, **k: None, error=lambda *a, **k: None))),
-        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src": _fake_module("src"), "src.task": _fake_module("src.task"),
         "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
         "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
         "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
@@ -2693,7 +2703,7 @@ def _part_okww_farm_hook():  # noqa: C901
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
                                         info=lambda *a, **k: None, error=lambda *a, **k: None))),
-        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src": _fake_module("src"), "src.task": _fake_module("src.task"),
         "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
         "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
         "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=_Any("FarmEchoTask", (), {})),
@@ -3685,7 +3695,7 @@ def _part_okww_revive_and_retry():  # noqa: C901
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
                                         info=lambda *a, **k: None, error=lambda *a, **k: None))),
-        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src": _fake_module("src"), "src.task": _fake_module("src.task"),
         "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
         "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
         "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
@@ -4201,7 +4211,7 @@ def _part_okww_nest_capture():
         onetime = types.ModuleType("src.task.WWOneTimeTask")
         onetime.WWOneTimeTask = WWOneTimeTask
         sys.modules.update({"ok": ok, "cv2": types.ModuleType("cv2"), "config": types.SimpleNamespace(config={}),
-                            "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+                            "src": _fake_module("src"), "src.task": _fake_module("src.task"),
                             "src.task.BaseCombatTask": combat, "src.task.WWOneTimeTask": onetime})
         path = tmpdir() / "NightmareNestTask.py"
         path.write_text(text, encoding="utf-8")
@@ -4602,7 +4612,7 @@ def _part_okww_nest_v373():
         onetime = types.ModuleType("src.task.WWOneTimeTask")
         onetime.WWOneTimeTask = WWOneTimeTask
         sys.modules.update({"ok": ok, "cv2": types.ModuleType("cv2"), "config": types.SimpleNamespace(config={}),
-                            "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+                            "src": _fake_module("src"), "src.task": _fake_module("src.task"),
                             "src.task.BaseCombatTask": combat, "src.task.WWOneTimeTask": onetime})
         ok.run_task = lambda *a, **kw: None
         path = tmpdir() / "NightmareNestTask.py"
@@ -5126,7 +5136,7 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
                                         info=lambda *a, **k: None, error=lambda *a, **k: None))),
-        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src": _fake_module("src"), "src.task": _fake_module("src.task"),
         "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
         "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
         "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
