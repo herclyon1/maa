@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -51,6 +52,50 @@ def forget_scripts_cache() -> None:
 
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
+_TASK_DONE = {"success", "error", "cancelled"}
+_SNAP_STATE = threading.local()
+
+
+def _is_timeout(exc: BaseException) -> bool:
+    """True when talking to AUTO-MAS timed out (listener is up, event loop is busy)."""
+    if isinstance(exc, TimeoutError):
+        return True
+    return isinstance(getattr(exc, "reason", None), TimeoutError)
+
+
+def _task_items(task) -> list[dict]:
+    """Per-script status dicts ({name, status, ...}) of one runtime-snapshot task.
+
+    AUTO-MAS <= v5.8 kept them at task["task_info"]; v5.9+ moved them into the
+    nested task tree at task["task"]["scripts"] (order + data[uid]["info"]).
+    Returns [] when a task was just dispatched and has no script items yet.
+    """
+    if not isinstance(task, dict):
+        return []
+    if "task_info" in task:
+        return [i for i in (task.get("task_info") or []) if isinstance(i, dict)]
+    tree = task.get("task")
+    scripts = tree.get("scripts") if isinstance(tree, dict) else None
+    if not isinstance(scripts, dict):
+        return []
+    data = scripts.get("data")
+    if not isinstance(data, dict):
+        return []
+    out: list[dict] = []
+    seen: set[str] = set()
+    for ref in scripts.get("order") or []:
+        uid = ref.get("uid") if isinstance(ref, dict) else None
+        if uid and uid in data and uid not in seen:
+            seen.add(uid)
+            info = data[uid].get("info") if isinstance(data[uid], dict) else None
+            if isinstance(info, dict):
+                out.append(info)
+    for uid, entry in data.items():
+        if uid not in seen and isinstance(entry, dict):
+            info = entry.get("info")
+            if isinstance(info, dict):
+                out.append(info)
+    return out
 
 
 def _task_unfinished(task) -> bool:
@@ -60,9 +105,11 @@ def _task_unfinished(task) -> bool:
     (redbutton._estop_live_tasks), so the two can never disagree about what
     "still running" means.
     """
-    info = (task or {}).get("task_info") or []
+    info = _task_items(task)
     if not info:
-        return True              # just dispatched, no status of any kind yet
+        top = ((task or {}).get("task") or {}).get("info") if isinstance(task, dict) else None
+        status = str((top or {}).get("status") or "") if isinstance(top, dict) else ""
+        return status not in _TASK_DONE   # just dispatched, no status of any kind yet
     return any(str(item.get("status") or "") not in _SNAPSHOT_DONE for item in info)
 
 
@@ -78,9 +125,11 @@ def _script_unfinished(snap, name: str) -> bool:
     has to wait for that script's own retries, not for the rest of the queue.
     """
     for task in (snap or {}).get("tasks") or []:
-        info = (task or {}).get("task_info") or []
+        info = _task_items(task)
         if not info:
-            return True          # just dispatched, cannot tell which script yet
+            if _task_unfinished(task):
+                return True      # just dispatched, cannot tell which script yet
+            continue
         if any(str(item.get("name") or "") == name
                and str(item.get("status") or "") not in _SNAPSHOT_DONE for item in info):
             return True
@@ -93,10 +142,12 @@ def _automas_snapshot():
     import urllib.request  # noqa: PLC0415
 
     from ark_relay.core.config import mas_base  # noqa: PLC0415
+    _SNAP_STATE.timed_out = False
     try:
         with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=3) as r:
             raw = r.read()
     except Exception as exc:  # noqa: BLE001 - no endpoint -> fall back to the process check
+        _SNAP_STATE.timed_out = _is_timeout(exc)
         tape.answer("mas", _RUNTIME_PATH, error=exc)
         return None
     tape.answer("mas", _RUNTIME_PATH, body=raw, resp=r)
@@ -107,9 +158,18 @@ def _automas_snapshot():
 
 
 def _automas_busy():
-    """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked."""
+    """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked.
+
+    A timeout means AUTO-MAS's listener is up while its event loop is blocked
+    (e.g. MaaEnd's 10 s launch setup on 2026-11-23 10:24:53-10:25:03): treat as
+    busy rather than falling through to tasklist before the game process exists.
+    """
+    _SNAP_STATE.timed_out = False
     snap = _automas_snapshot()
     if snap is None:
+        if getattr(_SNAP_STATE, "timed_out", False):
+            log.info("AUTO-MAS 运行快照超时，暂按有脚本在跑处理")
+            return True
         return None
     busy = _judge_snapshot(snap)
     _note_other_modes(snap, busy)
@@ -186,7 +246,7 @@ def _note_other_modes_in(state_dir: Path, automas_dir, snap, busy: bool, now: da
         listed.add(tid)
         mode = str((task or {}).get("mode") or "")
         if mode and mode != "AutoProxy" and _task_unfinished(task):
-            states = "、".join(f"{i.get('name')} {i.get('status')}" for i in task.get("task_info") or [])
+            states = "、".join(f"{i.get('name')} {i.get('status')}" for i in _task_items(task))
             found.append({"at": at, "task": tid, "mode": mode, "busy": True,
                           "line": f"快照里列着、没完成：{states or '还没有状态'}"})
     if not busy and automas_dir:
@@ -663,14 +723,19 @@ class Engine:
     def _script_running(self, name: str) -> bool:
         """Is this one script still running or waiting its turn in AUTO-MAS?
 
-        Asks runtime-snapshot for that script alone. When AUTO-MAS cannot be
-        asked, falls back to the queue-wide `_scripts_running` - waiting too long
-        beats alarming on a script that is still retrying.
+        Asks runtime-snapshot for that script alone. When AUTO-MAS timed out
+        (alive and busy), waits at once without paying a second timeout; when
+        AUTO-MAS cannot be reached at all, falls back to `_scripts_running`.
         """
         if not config.IS_WINDOWS:
             return False
+        _SNAP_STATE.timed_out = False
         snap = _automas_snapshot()
         if snap is None:
+            if getattr(_SNAP_STATE, "timed_out", False):
+                log.info("AUTO-MAS 运行快照超时，暂按 %s 还在跑处理", name)
+                _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = time.monotonic(), True
+                return True
             return self._scripts_running()
         return _script_unfinished(snap, name)
 
@@ -785,7 +850,8 @@ class Engine:
         try:
             entries = self._recent_entries(now)
             for q in plan.recent_due_queues(self.cfg.automas_dir, now, window_minutes=self.cfg.partial_window):
-                moment = q["due"] + timedelta(minutes=self.cfg.partial_grace)
+                matched = missed._matched_runs(entries, q, q["due"])
+                moment = missed._partial_deadline(q["due"], self.cfg.partial_grace, matched)
                 day, hhmm = q["due"].strftime("%Y-%m-%d"), q["due"].strftime("%H:%M")
                 if moment > now and any(not missed._settled(self, day, f"{day}/{q['name']}/{hhmm}/{k}")
                                         for k in shutdown._missing_kinds(self, q, entries)):

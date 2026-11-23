@@ -115,7 +115,7 @@ def _estop_alive() -> list[str]:
 def _estop_live_tasks() -> "list[tuple[str, str]] | None":
     """AUTO-MAS's unfinished dispatch tasks: [(taskId, label)]. None when it cannot be asked."""
     from ark_relay.core.config import mas_base  # noqa: PLC0415 - avoids an import cycle
-    from ark_relay.core.engine import _RUNTIME_PATH, _task_unfinished  # noqa: PLC0415
+    from ark_relay.core.engine import _RUNTIME_PATH, _task_items, _task_unfinished  # noqa: PLC0415
     try:
         with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=10) as r:
             snap = json.loads(r.read().decode("utf-8"))
@@ -127,7 +127,7 @@ def _estop_live_tasks() -> "list[tuple[str, str]] | None":
     for t in tasks:
         if not _task_unfinished(t):
             continue
-        names = [str(i.get("name") or "") for i in (t.get("task_info") or []) if i.get("name")]
+        names = [str(i.get("name") or "") for i in _task_items(t) if i.get("name")]
         live.append((str(t.get("taskId") or ""), "、".join(names) or str(t.get("mode") or "?")))
     log.info("红按钮：runtime-snapshot 里 %d 个任务，未结束 %d 个 %s",
              len(tasks), len(live), [(tid[:8], label) for tid, label in live])

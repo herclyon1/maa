@@ -1356,6 +1356,11 @@ _log_missed = logging.getLogger("ark.missed")
 
 # How long past a queue's time before "it produced nothing" becomes a fault.
 MISSED_GRACE_MIN = 25
+# After another script in the same queue finishes, wait at least this many
+# minutes before declaring the next script missing (covers the hand-off /
+# startup gap when an earlier script ran past due + partial_grace, e.g. a
+# Monday OK-WW finishing at 10:24 while MaaEnd starts at 10:24:51).
+PARTIAL_SETTLE_MIN = 5
 
 
 # ---------- a run that should have happened and did not ----------
@@ -1365,6 +1370,25 @@ def _queue_run(e: dict, q: dict) -> bool:
     """A ledger line that can be queue `q`'s run: one of its scripts, not started by hand."""
     kinds = q.get("kinds") or ()
     return (not kinds or e.get("script") in kinds) and not (e.get("raw") or {}).get("hand_started")
+
+
+def _matched_runs(entries: list[dict], q: dict, due: datetime) -> list[dict]:
+    """Ledger entries belonging to queue `q`'s run due at `due`."""
+    return [e for e in entries
+            if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
+            >= due - timedelta(minutes=5) and _queue_run(e, q)]
+
+
+def _partial_deadline(due: datetime, partial_grace: int, matched: list[dict]) -> datetime:
+    """Earliest moment a missing item in `q` may be declared absent: at least
+    `due + partial_grace`, and at least `PARTIAL_SETTLE_MIN` after the latest
+    finished run already recorded for that queue."""
+    deadline = due + timedelta(minutes=partial_grace)
+    for e in matched:
+        end = _at(e.get("finished")) or _at(e.get("started"))
+        if end is not None:
+            deadline = max(deadline, end.astimezone(SERVER_TZ) + timedelta(minutes=PARTIAL_SETTLE_MIN))
+    return deadline
 
 
 def _check_missed_runs(eng, now: datetime | None = None,
@@ -1479,13 +1503,12 @@ def _check_partial_queues(eng, now: datetime, day: str,
     for q in plan.recent_due_queues(eng.cfg.automas_dir, now,
                                     window_minutes=eng.cfg.partial_window):
         due = q["due"]
-        if now < due + timedelta(minutes=eng.cfg.partial_grace):
-            continue  # still legitimately in progress
-        ran = {e["script"] for e in entries
-               if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
-               >= due - timedelta(minutes=5) and _queue_run(e, q)}
-        if not ran:
+        matched = _matched_runs(entries, q, due)
+        if not matched:
             continue  # nothing at all - already covered by the check above
+        if now < _partial_deadline(due, eng.cfg.partial_grace, matched):
+            continue  # still legitimately in progress or handing off to the next script
+        ran = {e["script"] for e in matched}
         for kind in q["kinds"]:
             if kind in ran:
                 continue

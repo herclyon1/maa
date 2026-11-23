@@ -80,9 +80,10 @@ class Start:
 
 
 def _maa_running(snap) -> bool:
+    from ark_relay.core.engine import _task_items  # noqa: PLC0415
     return any(str(i.get("name") or "") == SCRIPT and str(i.get("status") or "") == RUNNING
                for t in (snap or {}).get("tasks") or []
-               for i in (t or {}).get("task_info") or [])
+               for i in _task_items(t))
 
 
 class Watchdog:

@@ -2959,6 +2959,120 @@ def _part_scripts_running_asks_automas():
     check("空回复 → 没在跑", engine._judge_snapshot(None), False)
     check("没见过的状态 → 当作在跑", engine._judge_snapshot({"tasks": [{"task_info": [{"status": "重试中"}]}]}), True)
 
+    print("\n[AUTO-MAS v5.9 新版快照（无 task_info，改放 task.scripts）以及接口超时不误判空闲（#190）]")
+    import json
+    import urllib.error
+    import urllib.request
+    from ark_relay.features import maa_start_watchdog, maaend_watchdog, redbutton, runwatch
+
+    V59 = {"tasks": [{
+        "taskId": "41453325-c293-4d0d-a6a2-779b58d52477",
+        "mode": "AutoProxy",
+        "trigger": "timed",
+        "stopping": False,
+        "task": {
+            "info": {"name": "早班", "mode": "AutoProxy", "status": "running", "trigger": "timed"},
+            "scripts": {
+                "order": [
+                    {"uid": "s1", "type": "TaskScriptItem"},
+                    {"uid": "s2", "type": "TaskScriptItem"},
+                    {"uid": "s3", "type": "TaskScriptItem"},
+                ],
+                "data": {
+                    "s1": {"info": {"name": "MAA", "status": "完成", "script_type": "MAA"}},
+                    "s2": {"info": {"name": "OK-WW", "status": "完成", "script_type": "Okww"}},
+                    "s3": {"info": {"name": "MaaEnd", "status": "运行", "script_type": "MaaEnd"}},
+                },
+            },
+        },
+    }]}
+    check("v5.9 拆出顺序正确的 3 项", [(i["name"], i["status"]) for i in engine._task_items(V59["tasks"][0])],
+          [("MAA", "完成"), ("OK-WW", "完成"), ("MaaEnd", "运行")])
+    check("v5.9 MaaEnd 运行中 → 整体在跑", engine._judge_snapshot(V59), True)
+    check("v5.9 MAA 已完成 → MAA 不在跑", engine._script_unfinished(V59, "MAA"), False)
+    check("v5.9 OK-WW 已完成 → OK-WW 不在跑", engine._script_unfinished(V59, "OK-WW"), False)
+    check("v5.9 MaaEnd 运行中 → MaaEnd 在跑", engine._script_unfinished(V59, "MaaEnd"), True)
+    check("v5.9 maaend_watchdog 认出 MaaEnd 在跑", maaend_watchdog._maaend_running(V59), True)
+    check("v5.9 maa_start_watchdog 认出 MAA 不在跑", maa_start_watchdog._maa_running(V59), False)
+    check("v5.9 runwatch 按队列名匹配到早班",
+          runwatch._queue_task(V59, "missing-uid", "早班") is V59["tasks"][0], True)
+
+    V59_DONE = {"tasks": [{
+        "taskId": "41453325",
+        "mode": "AutoProxy",
+        "task": {
+            "info": {"name": "早班", "status": "running"},
+            "scripts": {
+                "order": [{"uid": "s1"}, {"uid": "s2"}, {"uid": "s3"}],
+                "data": {
+                    "s1": {"info": {"name": "MAA", "status": "完成"}},
+                    "s2": {"info": {"name": "OK-WW", "status": "异常"}},
+                    "s3": {"info": {"name": "MaaEnd", "status": "完成"}},
+                },
+            },
+        },
+    }]}
+    check("v5.9 全部终态 → 没在跑", engine._judge_snapshot(V59_DONE), False)
+    check("v5.9 全部终态 → MaaEnd 不在跑", engine._script_unfinished(V59_DONE, "MaaEnd"), False)
+
+    # Redbutton reads v5.9 task labels too
+    real_open = urllib.request.urlopen
+
+    class _Resp:
+        def __init__(self, body: bytes):
+            self._body = body
+            self.status = 200
+
+        def read(self):
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    try:
+        urllib.request.urlopen = lambda *a, **k: _Resp(json.dumps(V59).encode("utf-8"))
+        check("v5.9 红按钮读出任务名称", redbutton._estop_live_tasks(),
+              [("41453325-c293-4d0d-a6a2-779b58d52477", "MAA、OK-WW、MaaEnd")])
+
+        # Timeout talking to AUTO-MAS -> alive & busy (never fall back to tasklist and cry wolf)
+        calls = []
+
+        def _timeout(*a, **k):
+            calls.append(1)
+            raise TimeoutError("timed out")
+
+        urllib.request.urlopen = _timeout
+        check("超时（直抛 TimeoutError）→ 判在跑", engine._automas_busy(), True)
+
+        def _url_timeout(*a, **k):
+            calls.append(1)
+            raise urllib.error.URLError(TimeoutError("timed out"))
+
+        urllib.request.urlopen = _url_timeout
+        check("超时（URLError 包 TimeoutError）→ 判在跑", engine._automas_busy(), True)
+
+        # _script_running returns True on timeout in ONE call without paying a second timeout
+        real_win = engine.config.IS_WINDOWS
+        try:
+            engine.config.IS_WINDOWS = True
+            calls.clear()
+            dummy = object.__new__(engine.Engine)
+            dummy._scripts_running = lambda: (_ for _ in ()).throw(AssertionError("should not fall back on timeout"))
+            check("单脚本超时直接判在跑且不重问", (dummy._script_running("MaaEnd"), len(calls)), (True, 1))
+        finally:
+            engine.config.IS_WINDOWS = real_win
+
+        # Connection refused (AUTO-MAS down) -> None (falls back to tasklist)
+        urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(
+            urllib.error.URLError(ConnectionRefusedError("refused")))
+        check("连接被拒（后端没起）→ 返回 None 退回进程表", engine._automas_busy(), None)
+    finally:
+        urllib.request.urlopen = real_open
+        engine._SCRIPTS_CACHE.update(at=-1e9, val=False)
+
 
 if __name__ == "__main__":
     sys.exit(run_parts([_part_evidence_main, _part_evidence_archive, _part_evidence_cli_window, _part_evidence_daily_silent, _part_evidence_maaend_live_logs, _part_evidence_notify_once, _part_evidence_relay_after_run, _part_evidence_saved_count, _part_evidence_sources_unreachable, _part_error_evidence, _part_game_evidence, _part_held_push_keeps_evidence, _part_task_shots, _part_tacet_shots, _part_self_attrs_main, _part_self_heal_red, _part_undefined_names, _part_module_table, _part_parts, _part_scripts_relay_attrs, _part_scripts_running_asks_automas]))

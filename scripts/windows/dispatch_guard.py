@@ -366,7 +366,15 @@ def live_tasks(timeout: int = 10, quiet: bool = False):
         return None
     out = []
     for t in d.get("tasks") or []:
-        names = [i.get("name", "") for i in (t.get("task_info") or [])]
+        if "task_info" in t:
+            items = t.get("task_info") or []
+        else:
+            scripts = (t.get("task") or {}).get("scripts") or {}
+            data = scripts.get("data") or {}
+            order = [r.get("uid") for r in (scripts.get("order") or []) if isinstance(r, dict)]
+            uids = [u for u in order if u in data] + [u for u in data if u not in order]
+            items = [(data[u] or {}).get("info") or {} for u in uids if isinstance(data[u], dict)]
+        names = [i.get("name", "") for i in items if isinstance(i, dict) and i.get("name")]
         out.append((t.get("taskId", ""), "、".join(names) or t.get("mode", "?")))
     return out
 

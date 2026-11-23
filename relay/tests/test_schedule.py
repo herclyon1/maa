@@ -2752,6 +2752,14 @@ def _part_dispatch_guard_silent():
     check("not JSON -> None", quiet(g.live_tasks)[0], None)
     g.urllib.request.urlopen = snapshots(SNAP_EMPTY)
     check("an empty snapshot -> []", quiet(g.live_tasks)[0], [])
+    g.urllib.request.urlopen = snapshots(json.dumps({"tasks": [{
+        "taskId": "t-v59", "mode": "AutoProxy",
+        "task": {"scripts": {
+            "order": [{"uid": "a"}, {"uid": "b"}],
+            "data": {"a": {"info": {"name": "MAA"}}, "b": {"info": {"name": "MaaEnd"}}},
+        }},
+    }]}).encode())
+    check("v5.9 nested scripts -> labels", quiet(g.live_tasks)[0], [("t-v59", "MAA、MaaEnd")])
 
     def stop_with(urlopen, running_seq):
         """stop_all with the snapshot answered by `urlopen` and running() giving `running_seq` in turn."""
@@ -3898,6 +3906,37 @@ when the machine simply was not awake for it.
     E._check_missed_runs(at(22, 0))
     check("a run 停一切 stopped did start: no missed-run alarm", len(sent), 0)
     E._recent_entries = _real_recent
+
+    print("\n[#190 2026-11-23 周一 OK-WW 跑到 10:24:40（已过 10:15 宽限）：刚交棒给 MaaEnd 时 5 分钟内不误报缺项]")
+    from datetime import timedelta
+    reset()
+    BOOT[0] = at(8, 45)
+    E._started_at = at(8, 45)
+    (STATE / "ledger-2026-08-21.jsonl").write_text("\n".join(json.dumps(r) for r in (
+        {"script": "MAA", "started": (at(9, 0) + timedelta(seconds=31)).isoformat(),
+         "finished": (at(9, 18) + timedelta(seconds=54)).isoformat(), "ok": True, "run_id": "m1"},
+        {"script": "OK-WW", "started": (at(9, 21) + timedelta(seconds=11)).isoformat(),
+         "finished": (at(10, 24) + timedelta(seconds=40)).isoformat(), "ok": True, "run_id": "w1"},
+    )) + "\n", encoding="utf-8")
+    _plan.recent_due_queues = lambda d, n, window_minutes=120: [
+        {"name": "早班", "due": at(9, 0), "kinds": ["MAA", "OK-WW", "MaaEnd"]}]
+    E._script_running = lambda kind: False
+    entries_190 = E.state.read_ledger("2026-08-21")
+    E._check_partial_queues(at(10, 25) + timedelta(seconds=2), "2026-08-21", entries_190)
+    check("OK-WW 刚结束 22 秒不误报 MaaEnd 没跑", len(sent), 0)
+    nd_190 = E.next_deadline(at(10, 25) + timedelta(seconds=2))
+    check("next_deadline 延到 OK-WW 结束 + 5 分钟（10:29:40）再查",
+          nd_190[0] if nd_190 else None, at(10, 29) + timedelta(seconds=40))
+    # Still running at 10:29:45 -> still quiet
+    E._script_running = lambda kind: kind == "MaaEnd"
+    E._check_partial_queues(at(10, 29) + timedelta(seconds=45), "2026-08-21", entries_190)
+    check("5 分钟后 MaaEnd 真在跑 → 不报", len(sent), 0)
+    # Really never started at 10:29:45 -> alarms cleanly
+    E._script_running = lambda kind: False
+    E._check_partial_queues(at(10, 29) + timedelta(seconds=45), "2026-08-21", entries_190)
+    check("5 分钟后仍没跑 → 照常报缺项", len(sent), 1)
+    _plan.recent_due_queues = _orig
+    (STATE / "ledger-2026-08-21.jsonl").unlink()
 
 
 def _part_missed_weekdays():

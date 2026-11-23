@@ -584,10 +584,14 @@ def last_log_line(log_text, limit: int = 200) -> str:
     return ""
 
 
-def _queue_task(snap, uid):
+def _queue_task(snap, uid, name: str = ""):
     for task in (snap or {}).get("tasks") or []:
         if uid and task.get("queueId") == uid:
             return task
+        if name and not task.get("queueId"):
+            info = (task.get("task") or {}).get("info") if isinstance(task.get("task"), dict) else None
+            if isinstance(info, dict) and str(info.get("name") or "") == name:
+                return task
     return None
 
 
@@ -648,7 +652,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
         if (handle._already_alerted(eng, day, key)
                 or handle._already_alerted(eng, day, f"{shutdown.OVERDUE_KEY}|{q['name']}|{hhmm}")):
             continue
-        task = _queue_task(snap, uid)
+        task = _queue_task(snap, uid, q["name"])
         if task is None or not _engine._task_unfinished(task):
             continue
         # The queue's planned end is past; the script whose turn it is may not have spent
@@ -674,7 +678,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
             if now < (restarted or started) + timedelta(minutes=limit + OVERRUN_SLACK_MIN):
                 continue
         states = "、".join(f"{i.get('name')} {i.get('status')}"
-                          for i in task.get("task_info") or [])
+                          for i in _engine._task_items(task))
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
                                         states, last_log_line(task.get("log")), days,
                                         restarted=restarted, started=started)
