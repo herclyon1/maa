@@ -2961,6 +2961,7 @@ def _part_scripts_running_asks_automas():
 
     print("\n[AUTO-MAS v5.9 新版快照（无 task_info，改放 task.scripts）以及接口超时不误判空闲（#190）]")
     import json
+    import time
     import urllib.error
     import urllib.request
     from ark_relay.features import maa_start_watchdog, maaend_watchdog, redbutton, runwatch
@@ -3037,13 +3038,14 @@ def _part_scripts_running_asks_automas():
         check("v5.9 红按钮读出任务名称", redbutton._estop_live_tasks(),
               [("41453325-c293-4d0d-a6a2-779b58d52477", "MAA、OK-WW、MaaEnd")])
 
-        # Timeout talking to AUTO-MAS -> alive & busy (never fall back to tasklist and cry wolf)
+        # Timeout talking to AUTO-MAS -> alive & busy within 3 min cap, falls back after cap
         calls = []
 
         def _timeout(*a, **k):
             calls.append(1)
             raise TimeoutError("timed out")
 
+        engine._SNAP_TIMEOUT.update(since=None, capped_logged=False)
         urllib.request.urlopen = _timeout
         check("超时（直抛 TimeoutError）→ 判在跑", engine._automas_busy(), True)
 
@@ -3062,6 +3064,21 @@ def _part_scripts_running_asks_automas():
             dummy = object.__new__(engine.Engine)
             dummy._scripts_running = lambda: (_ for _ in ()).throw(AssertionError("should not fall back on timeout"))
             check("单脚本超时直接判在跑且不重问", (dummy._script_running("MaaEnd"), len(calls)), (True, 1))
+
+            # Consecutive timeouts past 3 min (e.g. 4 min) -> stop claiming busy and fall back
+            engine._SNAP_TIMEOUT["since"] = time.monotonic() - 240.0
+            check("连续超时 4 分钟 → _automas_busy 返回 None 退回进程表", engine._automas_busy(), None)
+            fallback_hit = []
+            dummy._scripts_running = lambda: (fallback_hit.append(1) or False)
+            check("连续超时 4 分钟 → _script_running 退回查进程表",
+                  (dummy._script_running("MaaEnd"), len(fallback_hit)), (False, 1))
+
+            # Once AUTO-MAS answers 200 OK again, timeout streak resets cleanly
+            urllib.request.urlopen = lambda *a, **k: _Resp(json.dumps(V59).encode("utf-8"))
+            check("接口恢复正常 → 重置连续超时计时", engine._automas_busy(), True)
+            check("连续超时起点已清空", engine._SNAP_TIMEOUT["since"], None)
+            urllib.request.urlopen = _timeout
+            check("恢复后再次短暂超时 → 重新判在跑", engine._automas_busy(), True)
         finally:
             engine.config.IS_WINDOWS = real_win
 
@@ -3072,6 +3089,7 @@ def _part_scripts_running_asks_automas():
     finally:
         urllib.request.urlopen = real_open
         engine._SCRIPTS_CACHE.update(at=-1e9, val=False)
+        engine._SNAP_TIMEOUT.update(since=None, capped_logged=False)
 
 
 if __name__ == "__main__":

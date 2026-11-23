@@ -1,6 +1,6 @@
 {
- "version": 20261123024421,
- "ref": "relay-20261123024421",
+ "version": 20261123025410,
+ "ref": "relay-20261123025410",
  "files": {
   "RELEASE-NOTES.md": "bcdf18ed03cf6706d7e704daddb7f2e714f2c232",
   "app_main.py": "f39c46e3878537a3f7a65de1f44fcf1265fe0666",
@@ -10,7 +10,7 @@
   "ark_relay/core/collector.py": "d8a9c61aa3bc2d4cbdb8fbba33ca859bcf45eb77",
   "ark_relay/core/config.py": "f2f14a81afa6bfa1d67b9f013f634b74838525d2",
   "ark_relay/core/desktop.py": "0d0dee59309fe1e2bcc1fb653a6e04d9c1f0294c",
-  "ark_relay/core/engine.py": "45ebee2b499a68d58a7d33d08848381b7864a3f5",
+  "ark_relay/core/engine.py": "79ee089b81724282fb977f093764c399448e3ed4",
   "ark_relay/core/ledger.py": "1c54ed9fcb555fd74ee9d4051a917370fb56b557",
   "ark_relay/core/mastercfg.py": "a215905e55a3e3dd183981623deefafc5c6d0d5b",
   "ark_relay/core/notify.py": "48bcdb0e5269d64e4563ed49d8e0379244f8c432",
@@ -93,7 +93,7 @@
   "ark_relay/core/collector.py": "bf429618199b0d79af3be30314f203f7d35c4e48cee2b3a753d430500e0529d6",
   "ark_relay/core/config.py": "38fd65b3d4292cad9fd922f8fd4b1a653b2c872a44cbfd596b105a6db87fb373",
   "ark_relay/core/desktop.py": "4f731f78817ef3835024150e29769829ce42a6e07bee8ce3314ef2a9f7c2582a",
-  "ark_relay/core/engine.py": "e7c32d97f512b3f29a16f7f3324759c449ae31da6960ea2dfdc201e19c4f790b",
+  "ark_relay/core/engine.py": "10e9b2654d6a7176fded5480139e2e66d4d7d6d78f8823efa797ccb0350485b4",
   "ark_relay/core/ledger.py": "509b910494db794fc81f446de56aad51c689851167c93f5ef27b1f15a06efecb",
   "ark_relay/core/mastercfg.py": "d3db13e8980829343b555afeb7a9c48706140d3354641632daab7fa379902431",
   "ark_relay/core/notify.py": "4f827322ced70afd18251e14c68310ad054d8a4ff705f1807a875e4faa8b276d",

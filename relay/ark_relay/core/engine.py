@@ -53,6 +53,11 @@ def forget_scripts_cache() -> None:
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
 _TASK_DONE = {"success", "error", "cancelled"}
+# Consecutive runtime-snapshot timeouts count as "busy" only up to this cap (covers
+# transient event-loop blocks like MaaEnd's 10 s startup setup on 2026-11-23 without
+# letting a permanently deadlocked AUTO-MAS hold missed-run checks and shutdown forever).
+_SNAP_TIMEOUT_CAP_S = 180.0
+_SNAP_TIMEOUT: dict = {"since": None, "capped_logged": False}
 _SNAP_STATE = threading.local()
 
 
@@ -147,9 +152,23 @@ def _automas_snapshot():
         with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=3) as r:
             raw = r.read()
     except Exception as exc:  # noqa: BLE001 - no endpoint -> fall back to the process check
-        _SNAP_STATE.timed_out = _is_timeout(exc)
+        if _is_timeout(exc):
+            now_m = time.monotonic()
+            if _SNAP_TIMEOUT["since"] is None:
+                _SNAP_TIMEOUT["since"] = now_m
+                _SNAP_TIMEOUT["capped_logged"] = False
+            if now_m - _SNAP_TIMEOUT["since"] <= _SNAP_TIMEOUT_CAP_S:
+                _SNAP_STATE.timed_out = True
+            elif not _SNAP_TIMEOUT["capped_logged"]:
+                _SNAP_TIMEOUT["capped_logged"] = True
+                log.info("AUTO-MAS 运行快照已连续超时超过 %d 秒，改回查进程表", int(_SNAP_TIMEOUT_CAP_S))
+        else:
+            _SNAP_TIMEOUT["since"] = None
+            _SNAP_TIMEOUT["capped_logged"] = False
         tape.answer("mas", _RUNTIME_PATH, error=exc)
         return None
+    _SNAP_TIMEOUT["since"] = None
+    _SNAP_TIMEOUT["capped_logged"] = False
     tape.answer("mas", _RUNTIME_PATH, body=raw, resp=r)
     try:
         return json.loads(raw.decode("utf-8"))
