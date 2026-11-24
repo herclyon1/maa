@@ -51,9 +51,9 @@ WD_STAGED='C:\Users\Administrator\ark-watchdog-new.py'
 pkg_sha1() { python3 -c 'import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
 
 pkg_ssh() { ssh "${SSH_OPTS[@]}" "$USER_AT" "$@" 2>&1 | tr -d '\r'; }
-# Python 3.14 on the Mac, for packaging/build.py --runtime-only (its pip must know the
-# cp314 wheels; /usr/bin/python3 is 3.9 with pip 21). scripts/mac/lint-repo.sh uses it too.
-PY314="${PY314:-$HOME/.local/bin/python3.14}"
+# Python on the Mac, for packaging/build.py --runtime-only (its pip must know the
+# cp314 wheels; /usr/bin/python3 is 3.9 with pip 21). Variable name PY314 stays for test_pkg.py.
+PY314="${PY314:-/opt/homebrew/bin/python3}"
 # Commands whose program path has a space go through base64 pwsh (repo rule 3): cmd.exe
 # keeps a quoted program path only when the line holds exactly two quotes (cmd /? on /C),
 # and these need a quoted argument as well. pkg_py <args...> runs the package's Python
@@ -115,7 +115,7 @@ pkg_runtime_prepare() {
   # shellcheck disable=SC2206  # one word per line on purpose (versions, name==version)
   RUNTIME_WANT=($want)
   if [ ! -x "$PY314" ]; then
-    RUNTIME_WHY="Mac 上没有 Python 3.14（${PY314}），打不了运行环境"
+    RUNTIME_WHY="Mac 上找不到用于打包运行环境的 Python（${PY314}），打不了运行环境"
     return 1
   fi
   dir=$(mktemp -d)

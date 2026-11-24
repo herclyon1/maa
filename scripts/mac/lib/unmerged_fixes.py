@@ -53,7 +53,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 # a `/` (a plain pathspec's `relay/*.py` also matches relay/tests/x.py).
 PATHS = (":(glob)relay/ark_relay/**/*.py", ":(glob)relay/ark_relay/**/*.txt", ":(glob)relay/*.py",
          ":(exclude)relay/make-manifest.py", "relay/RELEASE-NOTES.md", "scripts/windows")
-BASE_REFS = ("origin/main", "HEAD")
+BASE_REFS = ("origin/main", "main", "HEAD")
 SKIP_REFS = {"refs/heads/main", "refs/remotes/origin/main", "refs/remotes/origin/HEAD"}
 LINE = re.compile(r"^([0-9a-f]{8})\s+(a|b|declined)\s+(\S.*)$")
 # The two sides of the patch-id comparison must be diffed the same way whatever the

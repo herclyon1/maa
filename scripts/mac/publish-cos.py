@@ -21,6 +21,9 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
+import socket
+import subprocess
 import sys
 import time
 import urllib.error
@@ -112,6 +115,41 @@ def stale_files(manifest: dict) -> list[str]:
             or hashlib.sha1((RELAY / rel).read_bytes()).hexdigest() != sha]
 
 
+DEFAULT_GAME_HOST = "100.65.39.119"
+
+
+def _online_check(manifest_ver: int) -> "str | None":
+    """Refuse standalone COS publish while the game PC is online and not yet running `manifest_ver`.
+
+    Returns None to allow publishing (machine offline, or already running `manifest_ver` /
+    `<manifest_ver>-N` so a retry after COS upload jitter is permitted), or an error string
+    to refuse (fail-closed if TCP 22 is reachable and SSH cannot prove `manifest_ver` is live).
+    """
+    host = os.environ.get("ARK_HOST") or DEFAULT_GAME_HOST
+    try:
+        with socket.create_connection((host, 22), timeout=2):
+            pass
+    except OSError:
+        print(f"已核实游戏机 {host} 离线，仅发 COS 供下次开机自更新")
+        return None
+    try:
+        r = subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes",
+             f"Administrator@{host}", r'type "C:\Program Files\ArkRelay\current.txt"'],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return (f"游戏机 {host} 当前在线，但核验运行版本失败（{type(exc).__name__}），"
+                "严禁跳过上机直接发 COS；重启中继不影响在跑队列，请直接跑 scripts/mac/deploy-relay.sh")
+    cur = (r.stdout or "").strip()
+    if r.returncode == 0 and cur and cur.split("-", 1)[0] == str(manifest_ver):
+        print(f"已核实游戏机 {host} 已在运行 v{manifest_ver}（{cur}），允许补发 COS")
+        return None
+    shown = cur or f"未知（SSH 退出码 {r.returncode}）"
+    return (f"游戏机 {host} 当前在线且尚未装上 v{manifest_ver}（机上 {shown}），"
+            "严禁跳过上机直接发 COS；重启中继不影响在跑队列，请直接跑 scripts/mac/deploy-relay.sh")
+
+
 USAGE = """usage: scripts/mac/publish-cos.py            publish relay/ as it is on disk (manifest, bundle, latest.json)
        scripts/mac/publish-cos.py --check    only say which version COS gives the machine"""
 
@@ -122,6 +160,24 @@ def main(argv: list[str]) -> int:
     if args and args != ["--check"]:
         print(USAGE)
         return 0 if args in (["--help"], ["-h"]) else 2
+    if "--check" in argv:
+        cos = _client()
+        try:
+            reason = cos.probe()
+        except OSError as exc:      # URLError is an OSError; probe() raises a failed connection (11-08)
+            reason = f"连不上 COS（{getattr(exc, 'reason', exc)}）"
+        if reason:
+            print(f"✗ {reason}")
+            return 1
+        data = _get(cos, COS_LATEST)
+        print("COS latest.json:", data.decode() if data else "（没有）")
+        return 0
+    manifest = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
+    ver = int(manifest["version"])
+    if os.environ.get("ARK_FROM_DEPLOY_RELAY") != "1":
+        if block := _online_check(ver):
+            print(f"✗ {block}")
+            return 1
     cos = _client()
     try:
         reason = cos.probe()
@@ -130,12 +186,6 @@ def main(argv: list[str]) -> int:
     if reason:
         print(f"✗ {reason}")
         return 1
-    if "--check" in argv:
-        data = _get(cos, COS_LATEST)
-        print("COS latest.json:", data.decode() if data else "（没有）")
-        return 0
-    manifest = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
-    ver = int(manifest["version"])
     # The machine drops the whole bundle when one file it needs is off by a byte
     # (selfupdate._cos_bundle). Until 2026-09-29 deploy-relay.sh emptied
     # RELEASE-NOTES.md before calling this, so every bundle it published carried

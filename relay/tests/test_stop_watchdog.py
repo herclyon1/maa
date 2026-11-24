@@ -560,38 +560,130 @@ def _part_deploy_watch():
 
 
 def _part_publish_cos_args():
-    """publish-cos.py: only a bare call publishes."""
+    """publish-cos.py: only a bare call publishes, and standalone runs refuse while the game PC is online on an older version."""
     import importlib.util
+    import os
+    import subprocess as _sp
+    import types as _types
 
     ROOT = Path(__file__).resolve().parents[2]
     spec = importlib.util.spec_from_file_location("publish_cos", ROOT / "scripts/mac/publish-cos.py")
     pc = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(pc)
 
-
     reached = []
-
+    probed = []
 
     class _Stop(Exception):
         pass
-
 
     def _client():
         reached.append(True)
         raise _Stop
 
+    orig_client = pc._client
+    orig_online = pc._online_check
+    orig_relay = pc.RELAY
+    orig_env = os.environ.get("ARK_FROM_DEPLOY_RELAY")
+    d = tmpdir()
+    (d / "manifest.json").write_text('{"version": 20261124015958, "files": {}}', encoding="utf-8")
+    try:
+        os.environ.pop("ARK_FROM_DEPLOY_RELAY", None)
+        pc._client = _client
+        pc.RELAY = d
+        pc._online_check = lambda ver: probed.append(ver) or None
 
-    pc._client = _client
-    for args, rc in ((["--help"], 0), (["-h"], 0), (["--dry-run"], 2), (["--check", "x"], 2)):
+        for args, rc in ((["--help"], 0), (["-h"], 0), (["--dry-run"], 2), (["--check", "x"], 2)):
+            reached.clear()
+            probed.clear()
+            check(f"{' '.join(args)}：不连 COS、不探测、退出码 {rc}",
+                  (pc.main(list(args)), reached, probed), (rc, [], []))
+
         reached.clear()
-        check(f"{' '.join(args)}：不连 COS、退出码 {rc}", (pc.main(list(args)), reached), (rc, []))
-    for args in ([], ["--check"]):
-        reached.clear()
+        probed.clear()
         try:
-            pc.main(list(args))
+            pc.main(["--check"])
         except _Stop:
             pass
-        check(f"{' '.join(args) or '不带参数'}：照常连 COS", reached, [True])
+        check("--check：跳过在线探测、照常连 COS", (reached, probed), ([True], []))
+
+        reached.clear()
+        probed.clear()
+        try:
+            pc.main([])
+        except _Stop:
+            pass
+        check("不带参数（离线放行）：先查在线状态、再连 COS", (reached, probed), ([True], [20261124015958]))
+
+        reached.clear()
+        probed.clear()
+        pc._online_check = lambda ver: probed.append(ver) or "游戏机当前在线且尚未装上"
+        check("不带参数（在线旧版）：拒发、不连 COS、退出码 1",
+              (pc.main([]), reached, probed), (1, [], [20261124015958]))
+
+        reached.clear()
+        probed.clear()
+        os.environ["ARK_FROM_DEPLOY_RELAY"] = "1"
+        try:
+            pc.main([])
+        except _Stop:
+            pass
+        check("ARK_FROM_DEPLOY_RELAY=1：跳过在线探测直接连 COS", (reached, probed), ([True], []))
+        os.environ.pop("ARK_FROM_DEPLOY_RELAY", None)
+
+        # Test _online_check itself (cross-platform: mock socket + subprocess, zero network).
+        pc._online_check = orig_online
+        orig_conn = pc.socket.create_connection
+        orig_run = pc.subprocess.run
+
+        class _DummySock:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        try:
+            def _offline(*a, **kw):
+                raise OSError("timed out")
+
+            pc.socket.create_connection = _offline
+            check("_online_check：机器离线放行", pc._online_check(20261124015958), None)
+
+            pc.socket.create_connection = lambda *a, **kw: _DummySock()
+            pc.subprocess.run = lambda *a, **kw: _types.SimpleNamespace(returncode=0, stdout="20261123025410\n")
+            msg = pc._online_check(20261124015958)
+            check("_online_check：在线且旧版拒发并指明 deploy-relay.sh",
+                  bool(msg) and "deploy-relay.sh" in msg and "20261123025410" in msg, True)
+
+            pc.subprocess.run = lambda *a, **kw: _types.SimpleNamespace(returncode=0, stdout="20261124015958\n")
+            check("_online_check：在线且同版放行（COS 抖动补推）", pc._online_check(20261124015958), None)
+
+            pc.subprocess.run = lambda *a, **kw: _types.SimpleNamespace(returncode=0, stdout="20261124015958-1\n")
+            check("_online_check：在线且重部署同版后缀 -1 放行", pc._online_check(20261124015958), None)
+
+            pc.subprocess.run = lambda *a, **kw: _types.SimpleNamespace(returncode=255, stdout="")
+            check("_online_check：在线但 SSH 非零 fail-closed 拒发", bool(pc._online_check(20261124015958)), True)
+
+            pc.subprocess.run = lambda *a, **kw: _types.SimpleNamespace(returncode=0, stdout="   \n")
+            check("_online_check：在线但读空 fail-closed 拒发", bool(pc._online_check(20261124015958)), True)
+
+            def _ssh_timeout(*a, **kw):
+                raise _sp.TimeoutExpired("ssh", 10)
+
+            pc.subprocess.run = _ssh_timeout
+            check("_online_check：在线但 SSH 超时 fail-closed 拒发", bool(pc._online_check(20261124015958)), True)
+        finally:
+            pc.socket.create_connection = orig_conn
+            pc.subprocess.run = orig_run
+    finally:
+        pc._client = orig_client
+        pc._online_check = orig_online
+        pc.RELAY = orig_relay
+        if orig_env is None:
+            os.environ.pop("ARK_FROM_DEPLOY_RELAY", None)
+        else:
+            os.environ["ARK_FROM_DEPLOY_RELAY"] = orig_env
 
     print()
     if fails:
@@ -604,6 +696,7 @@ def _part_publish_cos_notes():
     """The COS bundle must hold the bytes the manifest names."""
     import hashlib
     import importlib.util
+    import re
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay"))
@@ -627,12 +720,27 @@ def _part_publish_cos_notes():
     (d / "a.py").unlink()
     check("文件没了也拦", pc.stale_files(manifest), ["RELEASE-NOTES.md", "a.py"])
 
-    print("\n[部署脚本：先发 COS，再清空说明]")
+    print("\n[部署脚本：先发 COS，再清空说明；默认不推公开 GitHub、加 --push 才推；COS 失败不清空]")
     sh = (ROOT / "scripts" / "mac" / "deploy-relay.sh").read_text(encoding="utf-8")
     pub = sh.index('python3 "$HERE/../scripts/mac/publish-cos.py"')
-    clear = sh.index('\n: > "$NOTES"\n')          # the command, not a comment quoting it
-    check("发 COS 在清空之前", pub < clear, True)
+    m_clear = re.search(r'\n[ \t]*: > "\$NOTES"\n', sh)
+    clear = m_clear.start() if m_clear else -1
+    check("发 COS 在清空之前", clear > 0 and pub < clear, True)
     check("只发一次", sh.count('python3 "$HERE/../scripts/mac/publish-cos.py"'), 1)
+    check("仅在该行前置 ARK_FROM_DEPLOY_RELAY=1（不全局 export）",
+          'ARK_FROM_DEPLOY_RELAY=1 python3 "$HERE/../scripts/mac/publish-cos.py"' in sh
+          and "export ARK_FROM_DEPLOY_RELAY" not in sh, True)
+    check("默认 PUSH_GITHUB=0 且支持 --push",
+          "\nPUSH_GITHUB=0\n" in sh and "--push) PUSH_GITHUB=1 ;;" in sh, True)
+    push_gate = sh.index('if [ "$PUSH_GITHUB" = 1 ]; then')
+    push_cmd = sh.index("push -q origin HEAD:refs/heads/main")
+    check("推公开 GitHub 受 --push 门控", push_gate < push_cmd, True)
+    check("COS 失败不清空说明且不提交清空提交",
+          sh.count('if [ "$COS_OK" = 1 ]; then') >= 3, True)
+    branch_chk = sh.index('if [ "$BRANCH" != main ]; then')
+    mk_man = sh.index("python3 make-manifest.py > /dev/null")
+    check("非 --dry-run 必须在 main 分支，且在 make-manifest 之前检查",
+          branch_chk < mk_man, True)
 
     print("\n[上传失败重试：10-05 两次部署都被链路打断（SSL EOF、HTTP 400），手动重发都成]")
     import io as _io

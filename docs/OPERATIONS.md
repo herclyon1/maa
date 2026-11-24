@@ -779,7 +779,8 @@ that schema before suspecting the write.
 ## Deploying relay code
 
 ```bash
-ARK_HOST=<tailscale ip> scripts/mac/deploy-relay.sh
+scripts/mac/deploy-relay.sh          # deploys live to 100.65.39.119 (override via ARK_HOST) + COS + local commit/tag; does not push public GitHub
+scripts/mac/deploy-relay.sh --push   # same, plus pushes main + tag to origin and purges CDN (requires user confirmation)
 ```
 
 Two more hard gates sit in `deploy-relay.sh` (user 2026-10-06): step 0.75 replays the
@@ -792,7 +793,7 @@ after the next boot). The whole day's relay.log is read with
 
 Step 0.6: `scripts/mac/lib/unmerged_fixes.py` lists
 every commit on a local branch or origin/* ref that touches `relay/` or `scripts/windows/`, is not
-in origin/main or HEAD and has no same-patch twin there, and stops the deploy unless each one is in
+in origin/main, main, or HEAD and has no same-patch twin there, and stops the deploy unless each one is in
 `docs/UNMERGED-REVIEWED.txt` (`<hash8> <a|b|declined> <reason>`: same fix in main, superseded,
 or decided not to ship). The list is hand-checked because `git cherry` cannot match a fix whose
 files moved. A stale local origin/main makes merged commits look unmerged: `git fetch origin` first.
@@ -825,8 +826,8 @@ and that each file compiles / parses, then swaps them with the old ones kept; a 
 back, `current.txt` back and exits 8; a failed start or watch also puts them back
 (`appfiles-back`). Step 5.3 (`pkg_deploy.py watchdog`, after the watch) swaps the watchdog file
 under the stop marker: copy, `ark_watchdog.py install`, stop, start, verify RUNNING; a failure
-puts the previous file back and starts it, and `deploy-relay.sh` still publishes COS and pushes
-the manifest, then exits 14. `{app}\runtime\python` stays the installer's: the relay and the
+puts the previous file back and starts it, and `deploy-relay.sh` still publishes COS and commits
+the manifest locally (pushing only with `--push`), then exits 14. `{app}\runtime\python` stays the installer's: the relay and the
 watchdog hold its DLLs while they run, the deploy's own machine half runs on it, and the
 embeddable Python has no pip. So `deploy-pkg.sh` compares its Python version and pinned packages
 (`info`'s `RUNTIME_PY` / `RUNTIME_PKG`) with `packaging/build.py` and `relay/requirements.txt`
@@ -1049,8 +1050,8 @@ never serve a stale copy, so it stays as the final fallback. Both fetchers query
 config change silently do nothing.
 
 **Files are fetched at the manifest's tag, not at `main`.** `make-manifest.py` writes `"ref": "relay-<version>"` into the
-manifest and `deploy-relay.sh` pushes a tag of that name on the deploy commit,
-in the same push. `selfupdate._pinned_base` swaps the branch segment of the
+manifest and `deploy-relay.sh` creates a local tag of that name on the deploy commit
+(pushed together with `main` when `--push` is passed). `selfupdate._pinned_base` swaps the branch segment of the
 raw URL for that tag before `_alternates` fans it out to the mirrors, so every
 door serves `gh/herclyon1/maa@relay-<version>/relay/<file>`. Why: jsDelivr
 caches a branch for 12 hours and its purge is only promised for semver
@@ -1085,7 +1086,7 @@ writes COS last, so GitHub cannot be ahead of it, and each GitHub round costs
 unusable COS (no object, refused key, dead link, manifest/latest disagreeing)
 falls through to GitHub.
 
-After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr (only
+When pushing to public GitHub (`deploy-relay.sh --push`), `scripts/mac/purge-cdn.py` runs automatically to purge jsDelivr (only
 `manifest.json` and the two queue files - the code files are read at the tag and
 need no purge) and then waits until the machine could actually fetch the new
 version. Its success test mirrors

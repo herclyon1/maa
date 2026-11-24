@@ -97,8 +97,8 @@ if ! RELAY_PY=$(scripts/mac/lib/relay-python.sh); then
 fi
 export RELAY_PY
 case "$("${RELAY_PY:-false}" -V 2>&1)" in
-  "Python 3.14."*) ok "中继测试用的 Python：$("$RELAY_PY" -V 2>&1)（和游戏机同一版）" ;;
-  *) note "中继测试用的不是 3.14：${RELAY_PY:-无}" ;;
+  "Python 3.14."*|"Python 3.15."*) ok "中继测试用的 Python：$("$RELAY_PY" -V 2>&1)" ;;
+  *) note "中继测试用的不是 3.14/3.15：${RELAY_PY:-无}" ;;
 esac
 # Nothing that runs relay tests may call the bare python3 (= /usr/bin/python3 3.9).
 if bare=$(grep -nE '(^|[^"$A-Za-z_])python3 +("?\$\{?TEST_DIR|"?\$1"? *>|"?tests/|-m +(py_compile +ark_relay|ark_relay))' scripts/mac/lint-repo.sh scripts/mac/deploy-relay.sh); then

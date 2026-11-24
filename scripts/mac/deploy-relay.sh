@@ -21,16 +21,18 @@ fi
 
 REDEPLOY=0
 DRY_RUN=0
+PUSH_GITHUB=0
 for a in "$@"; do
   case "$a" in
     --redeploy) REDEPLOY=1 ;;
     --dry-run) DRY_RUN=1 ;;
+    --push) PUSH_GITHUB=1 ;;
     *) echo "不认识的参数: $a" >&2; exit 2 ;;
   esac
 done
 
 # A dry run stops before step 1, the first step that reaches the machine, so it needs no host.
-if [ "$DRY_RUN" = 1 ]; then HOST="${ARK_HOST:-dry-run}"; else HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"; fi
+if [ "$DRY_RUN" = 1 ]; then HOST="${ARK_HOST:-dry-run}"; else HOST="${ARK_HOST:-100.65.39.119}"; fi
 USER_AT="Administrator@${HOST}"
 # 跨境到乌鲁木齐，每次 ssh/scp 都要重新握手一次；这个脚本要跑四十多次，
 # 光握手就占掉大半时间。开连接复用：第一次连上之后所有后续调用走同一条
@@ -47,6 +49,14 @@ PY='D:\ark\automas\environment\python\python.exe'
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
 cd "$HERE"
+
+if [ "$DRY_RUN" = 0 ]; then
+  BRANCH=$(git -C "$HERE/.." symbolic-ref -q --short HEAD || true)
+  if [ "$BRANCH" != main ]; then
+    echo "  ✋ 请先切回并合进本地 main 分支再部署（当前：${BRANCH:-游离 HEAD}），避免部署提交落在孤立分支或覆盖本地 main" >&2
+    exit 2
+  fi
+fi
 
 # 分段计时。2026-08-31 用户说部署慢到承受不起，而当时谁也说不出慢在哪一段——
 # 我第一次量到的 90 秒其实是在「更新说明为空」那道闸上中止的，压根没走到网络。
@@ -684,7 +694,11 @@ printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 # docs/OPERATIONS.md). The machine already has this code over ssh, so a failed
 # publish does not undo the deploy - but it does mean the next self-update
 # (a version pushed while the machine is off) has nothing to read.
-python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机器开机自更新只看 COS，请重跑 scripts/mac/publish-cos.py" >&2
+COS_OK=1
+ARK_FROM_DEPLOY_RELAY=1 python3 "$HERE/../scripts/mac/publish-cos.py" || {
+  COS_OK=0
+  echo "  ✋ COS 没推上：机器已跑新版，已保留更新说明未清，网稳后直接重跑 scripts/mac/publish-cos.py 补发" >&2
+}
 
 # 说明已经推上去也播报过了，**本地清零**。
 # 用户 2026-08-26：「每次更新中继的时候把通知更新内容清零并且要求填写更新内容」。
@@ -695,7 +709,9 @@ python3 "$HERE/../scripts/mac/publish-cos.py" || echo "  ✋ COS 没推上：机
 # tree whose RELEASE-NOTES.md matches the manifest's hash (audit s25, 10-13).
 DEPLOYED_NOTES=$(mktemp)
 cp "$NOTES" "$DEPLOYED_NOTES"
-: > "$NOTES"
+if [ "$COS_OK" = 1 ]; then
+  : > "$NOTES"
+fi
 # 补丁贴不上／叠了两层，是**静默失败**：服务照样 RUNNING、部署照样成功，
 # 只有启动日志里那一行会说。2026-09-01 我 grep 部署输出时只筛了
 # 「部署完成/❌」，把「贴不上了」漏了过去，机器上空转了 95 分钟我却
@@ -756,13 +772,17 @@ fi
 # GitHub below, but this is not a finished deploy (exit 14 at the very end).
 if [ -n "$WATCHDOG_FAIL_WHY" ]; then
   echo "❌❌ 中继已上线、冒烟已过，但$WATCHDOG_FAIL_WHY"
-  echo "     这次不算「部署完成」：看门服务那一步要有人处理（下面照常把 manifest 推上 GitHub）"
+  echo "     这次不算「部署完成」：看门服务那一步要有人处理（下面照常完成本地 manifest 提交与标签）"
 else
   echo "✅ 部署完成：文件哈希已核对，服务已确认 RUNNING，机器上冒烟已通过"
 fi
 lap
 printf "⏱  全程 %d 秒\n" "$((SECONDS-_T0))"
-echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚这次改了什么）"
+if [ "$COS_OK" = 1 ]; then
+  echo "   （relay/RELEASE-NOTES.md 已清空——下次部署前必须写清楚这次改了什么）"
+else
+  echo "   （COS 未推上，已保留 relay/RELEASE-NOTES.md——网稳后重跑 scripts/mac/publish-cos.py 补发）"
+fi
 
 # 把这次部署的 manifest 推上 GitHub。**不推的话自更新永远用不成**：
 # 部署会把 manifest.json 的 version 改成这一刻的时间戳，但那是本地改动；
@@ -816,33 +836,38 @@ else
     echo "✋ 打标签 $REF 失败：清单说文件在这个标签下，机器会拿不到" >&2
     exit 9
   fi
-  if ! git -C "$HERE/.." add relay/RELEASE-NOTES.md \
-     || { ! git -C "$HERE/.." diff --cached --quiet -- relay/RELEASE-NOTES.md \
-          && ! git -C "$HERE/.." commit -q -m "deploy: clear release notes after $STAMP"; }; then
-    echo "✋ 清空更新说明没能提交：工作区里留着空的 RELEASE-NOTES.md，手动提交它" >&2
-    exit 9
+  if [ "$COS_OK" = 1 ]; then
+    if ! git -C "$HERE/.." add relay/RELEASE-NOTES.md \
+       || { ! git -C "$HERE/.." diff --cached --quiet -- relay/RELEASE-NOTES.md \
+            && ! git -C "$HERE/.." commit -q -m "deploy: clear release notes after $STAMP"; }; then
+      echo "✋ 清空更新说明没能提交：工作区里留着空的 RELEASE-NOTES.md，手动提交它" >&2
+      exit 9
+    fi
   fi
-  # Pushed to main by name, not as `HEAD`: from a worktree branch `HEAD` went to
-  # a same-named branch on origin, so on 2026-09-25 two deploy commits (manifest
-  # version, cleared RELEASE-NOTES) never reached main and the next deployer
-  # found stale release notes there. Fast-forward only: if main has moved past
-  # this commit the push fails loudly below.
-  if git -C "$HERE/.." push -q origin HEAD:refs/heads/main ${REF:+"refs/tags/$REF"}; then
-    echo "▶ manifest 已推上 GitHub${REF:+（标签 $REF 一起）}，自更新下次开机就能看到"
-    # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
-    # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
-    # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。
-    python3 "$HERE/../scripts/mac/purge-cdn.py" --no-wait || echo "⚠️ CDN 没清干净，自更新这条后路要等缓存自然过期" >&2
+  if [ "$PUSH_GITHUB" = 1 ]; then
+    # Pushed to main by name, not as `HEAD`: from a worktree branch `HEAD` went to
+    # a same-named branch on origin, so on 2026-09-25 two deploy commits (manifest
+    # version, cleared RELEASE-NOTES) never reached main and the next deployer
+    # found stale release notes there. Fast-forward only: if main has moved past
+    # this commit the push fails loudly below.
+    if git -C "$HERE/.." push -q origin HEAD:refs/heads/main ${REF:+"refs/tags/$REF"}; then
+      echo "▶ manifest 已推上 GitHub${REF:+（标签 ${REF} 一起）}，自更新下次开机就能看到"
+      # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
+      # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
+      # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。
+      python3 "$HERE/../scripts/mac/purge-cdn.py" --no-wait || echo "⚠️ CDN 没清干净，自更新这条后路要等缓存自然过期" >&2
+    else
+      echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，请手动 push" >&2
+      exit 9
+    fi
+    # Main has moved; move the shared top-level checkout along with it (fast-forward only,
+    # and only when clean). On 10-11 it was 359 commits behind and its estop.sh did not know
+    # the installed relay, because no step ever did this.
+    "$HERE/../scripts/mac/lib/ff-toplevel.sh" "$HERE/.." || true
   else
-    echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，请手动 push" >&2
-    exit 9
+    echo "▶ 已完成本地 manifest 提交与标签${REF:+（${REF}）}；未推公开 GitHub（需同步公开仓库时经用户确认后加 --push）"
   fi
 fi
-
-# Main has moved; move the shared top-level checkout along with it (fast-forward only,
-# and only when clean). On 10-11 it was 359 commits behind and its estop.sh did not know
-# the installed relay, because no step ever did this.
-"$HERE/../scripts/mac/lib/ff-toplevel.sh" "$HERE/.." || true
 
 if [ -n "$WATCHDOG_FAIL_WHY" ]; then
   echo "❌❌ 再说一遍：$WATCHDOG_FAIL_WHY" >&2
