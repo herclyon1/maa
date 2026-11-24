@@ -720,7 +720,7 @@ def _part_publish_cos_notes():
     (d / "a.py").unlink()
     check("文件没了也拦", pc.stale_files(manifest), ["RELEASE-NOTES.md", "a.py"])
 
-    print("\n[部署脚本：先发 COS，再清空说明；默认不推公开 GitHub、加 --push 才推；COS 失败不清空]")
+    print("\n[部署脚本：先发 COS，再清空说明；默认推 origin/main、清 CDN、快进顶层；COS 失败不清空]")
     sh = (ROOT / "scripts" / "mac" / "deploy-relay.sh").read_text(encoding="utf-8")
     pub = sh.index('python3 "$HERE/../scripts/mac/publish-cos.py"')
     m_clear = re.search(r'\n[ \t]*: > "\$NOTES"\n', sh)
@@ -730,11 +730,11 @@ def _part_publish_cos_notes():
     check("仅在该行前置 ARK_FROM_DEPLOY_RELAY=1（不全局 export）",
           'ARK_FROM_DEPLOY_RELAY=1 python3 "$HERE/../scripts/mac/publish-cos.py"' in sh
           and "export ARK_FROM_DEPLOY_RELAY" not in sh, True)
-    check("默认 PUSH_GITHUB=0 且支持 --push",
-          "\nPUSH_GITHUB=0\n" in sh and "--push) PUSH_GITHUB=1 ;;" in sh, True)
-    push_gate = sh.index('if [ "$PUSH_GITHUB" = 1 ]; then')
-    push_cmd = sh.index("push -q origin HEAD:refs/heads/main")
-    check("推公开 GitHub 受 --push 门控", push_gate < push_cmd, True)
+    check("不把公开仓库推送拆进 --push 开关，默认推 origin/main 并清 CDN 与快进顶层",
+          "PUSH_GITHUB" not in sh
+          and "push -q origin HEAD:refs/heads/main" in sh
+          and 'purge-cdn.py" --no-wait' in sh
+          and 'lib/ff-toplevel.sh"' in sh, True)
     check("COS 失败不清空说明且不提交清空提交",
           sh.count('if [ "$COS_OK" = 1 ]; then') >= 3, True)
     branch_chk = sh.index('if [ "$BRANCH" != main ]; then')

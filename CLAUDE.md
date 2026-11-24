@@ -30,7 +30,7 @@
 
 | 要做什么 | 用什么 |
 |---|---|
-| 部署中继 | `scripts/mac/deploy-relay.sh`（先写 `relay/RELEASE-NOTES.md`；默认上机＋发私库 COS 不推公开 GitHub，重启中继不影响在跑队列；游戏机在线禁单跑 `publish-cos.py`，仅离线才单发 COS；推公开远端另经确认加 `--push`） |
+| 部署中继 | `scripts/mac/deploy-relay.sh`（先写 `relay/RELEASE-NOTES.md`；上机盯稳后自动发 COS、推 `origin/main` 与标签并清 CDN；重启中继不影响在跑队列；游戏机在线禁单跑 `publish-cos.py`） |
 | 仓库自检 | `scripts/mac/lint-repo.sh` |
 | 给机器下指令 | 开着：`scripts/mac/order-now.sh '{"action":...}'`；关着：`scripts/mac/order.sh '{...}'`（`--clear` 清空） |
 | 在游戏机上跑脚本 / PowerShell | `scripts/mac/winrun.sh --py <本地.py>`（脱敏依赖 `scripts/mac/redact.py`）；`scripts/mac/winps.sh '<脚本>'` |
@@ -47,4 +47,4 @@
 ## 中英文与提交流程
 * 英文：`docs/**`、代码注释与 docstring、脚本输出、commit message、文件名。
 * 中文：根 `README.md`、推送通知（`ark_relay/core/texts.py`）、`relay/RELEASE-NOTES.md`；引他原话保留中文原文。
-* 中继改完合进本地 `main` 立刻跑 `scripts/mac/deploy-relay.sh` 上机＋发私库 COS（默认不推公开 GitHub，不用问；机器在线禁单跑 `publish-cos.py`），部署前写好 `relay/RELEASE-NOTES.md`。
+* 中继改完合进 `main` 立刻跑 `scripts/mac/deploy-relay.sh` 上机、发 COS 并推 `origin/main` 与清 CDN（已授权常驻运维仓，直接部署不问；机器在线禁单跑 `publish-cos.py`），部署前写好 `relay/RELEASE-NOTES.md`。

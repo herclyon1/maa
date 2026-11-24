@@ -21,12 +21,10 @@ fi
 
 REDEPLOY=0
 DRY_RUN=0
-PUSH_GITHUB=0
 for a in "$@"; do
   case "$a" in
     --redeploy) REDEPLOY=1 ;;
     --dry-run) DRY_RUN=1 ;;
-    --push) PUSH_GITHUB=1 ;;
     *) echo "不认识的参数: $a" >&2; exit 2 ;;
   esac
 done
@@ -844,30 +842,27 @@ else
       exit 9
     fi
   fi
-  if [ "$PUSH_GITHUB" = 1 ]; then
-    # Pushed to main by name, not as `HEAD`: from a worktree branch `HEAD` went to
-    # a same-named branch on origin, so on 2026-09-25 two deploy commits (manifest
-    # version, cleared RELEASE-NOTES) never reached main and the next deployer
-    # found stale release notes there. Fast-forward only: if main has moved past
-    # this commit the push fails loudly below.
-    if git -C "$HERE/.." push -q origin HEAD:refs/heads/main ${REF:+"refs/tags/$REF"}; then
-      echo "▶ manifest 已推上 GitHub${REF:+（标签 ${REF} 一起）}，自更新下次开机就能看到"
-      # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
-      # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
-      # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。
-      python3 "$HERE/../scripts/mac/purge-cdn.py" --no-wait || echo "⚠️ CDN 没清干净，自更新这条后路要等缓存自然过期" >&2
-    else
-      echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，请手动 push" >&2
-      exit 9
-    fi
-    # Main has moved; move the shared top-level checkout along with it (fast-forward only,
-    # and only when clean). On 10-11 it was 359 commits behind and its estop.sh did not know
-    # the installed relay, because no step ever did this.
-    "$HERE/../scripts/mac/lib/ff-toplevel.sh" "$HERE/.." || true
+  # Pushed to main by name, not as `HEAD`: from a worktree branch `HEAD` went to
+  # a same-named branch on origin, so on 2026-09-25 two deploy commits (manifest
+  # version, cleared RELEASE-NOTES) never reached main and the next deployer
+  # found stale release notes there. Fast-forward only: if main has moved past
+  # this commit the push fails loudly below.
+  if git -C "$HERE/.." push -q origin HEAD:refs/heads/main ${REF:+"refs/tags/$REF"}; then
+    echo "▶ manifest 已推上 GitHub${REF:+（标签 ${REF} 一起）}，自更新下次开机就能看到"
+    # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
+    # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
+    # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。
+    python3 "$HERE/../scripts/mac/purge-cdn.py" --no-wait || echo "⚠️ CDN 没清干净，自更新这条后路要等缓存自然过期" >&2
   else
-    echo "▶ 已完成本地 manifest 提交与标签${REF:+（${REF}）}；未推公开 GitHub（需同步公开仓库时经用户确认后加 --push）"
+    echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，请手动 push" >&2
+    exit 9
   fi
 fi
+
+# Main has moved; move the shared top-level checkout along with it (fast-forward only,
+# and only when clean). On 10-11 it was 359 commits behind and its estop.sh did not know
+# the installed relay, because no step ever did this.
+"$HERE/../scripts/mac/lib/ff-toplevel.sh" "$HERE/.." || true
 
 if [ -n "$WATCHDOG_FAIL_WHY" ]; then
   echo "❌❌ 再说一遍：$WATCHDOG_FAIL_WHY" >&2
