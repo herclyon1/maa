@@ -801,6 +801,59 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("路线10 还是只交给补跑一次", [c.label for c in checks if c.kind == outcome.RETRY],
           [texts.collect_blocked_check(R10)])
 
+    print("\n[2026-11-23 (#191): InteractPost 截图按 OCR 区分「战斗中无法使用」和路边捡掉落物]")
+    check("真战斗挡住（10:55 实机 OCR）算", cm.has_combat_block_text("战斗中无法使用请脱离战斗尝试 | 中继器"), True)
+    check("真战斗挡住（11:02 实机 OCR 错字 战→戲）也算", cm.has_combat_block_text("戲斗中无法使用，请离战斗后尝沣"), True)
+    check("真战斗挡住（无→天 容错）也算", cm.has_combat_block_text("战斗中天法使用请脱离战门后尝"), True)
+    check("路边捡协议纹石/灼壳虫（11:41 实机 OCR）不算",
+          cm.has_combat_block_text("背包空间已满，已丢弃部分物品在场景内 | 协议纹石 | 灼壳虫"), False)
+    check("大世界探索界面（11:49 实机 OCR）不算",
+          cm.has_combat_block_text("探索 | 日常·表象研究 | 前往异常点拍摄照片"), False)
+    check("空 OCR 文本不算", cm.has_combat_block_text(""), False)
+    md_ocr = maaend_dir(P1012, P1012A)
+    loot_ocr = lambda _p: "背包空间已满，已丢弃部分物品在场景内 | 协议纹石 | 灼壳虫"  # noqa: E731
+    combat_ocr = lambda _p: "戲斗中无法使用，请离战斗后尝沣"  # noqa: E731
+    broken_ocr = lambda _p: None  # noqa: E731
+    check("日志：路边捡东西的 InteractPost 不算被挡",
+          cm.blocked_routes(log("MaaEnd-06-58-38.log"), [P1012], maaend_dir=md_ocr, ocr_fn=loot_ocr), {})
+    check("日志：真「战斗中无法使用」仍算被挡",
+          cm.blocked_routes(log("MaaEnd-06-58-38.log"), [P1012], maaend_dir=md_ocr, ocr_fn=combat_ocr), {R10: [P1012]})
+    check("日志：OCR 失败（返回 None）时保守仍算被挡",
+          cm.blocked_routes(log("MaaEnd-06-58-38.log"), [P1012], maaend_dir=md_ocr, ocr_fn=broken_ocr), {R10: [P1012]})
+    check("补跑：路边捡东西的 InteractPost 不判路线失败",
+          cr.final_verdict(fw, ["AutoCollectRoute10"], "2026-10-12 10:40:00", [], "", [P1012A],
+                           maaend_dir=md_ocr, ocr_fn=loot_ocr),
+          ({"AutoCollectRoute10": True}, {}))
+    check("补跑：真「战斗中无法使用」仍判路线失败",
+          cr.final_verdict(fw, ["AutoCollectRoute10"], "2026-10-12 10:40:00", [], "", [P1012A],
+                           maaend_dir=md_ocr, ocr_fn=combat_ocr),
+          ({"AutoCollectRoute10": False}, {"AutoCollectRoute10": [P1012A]}))
+    from ark_relay.core import desktop as _desk
+    from ark_relay.features import machinechecks as _mcs
+    _orig_ocr = _desk.ocr_image_file
+    cm._COMBAT_SHOT_CACHE.clear()
+    try:
+        _desk.ocr_image_file = loot_ocr
+        done_log = log("MaaEnd-06-58-38.log") + "\n2026-10-12 11:32:00 自动执行任务完成\n"
+        loot_checks = outcome.maaend_checks(done_log, [P1012], maaend_dir=md_ocr)
+        check("核对：路边捡东西不记 RETRY", [c for c in loot_checks if c.kind == outcome.RETRY], [])
+        check("核对：落进「出错截图 1 张（已重试恢复）」且为绿",
+              [(c.label, c.ok) for c in loot_checks if "出错截图" in c.label],
+              [("出错截图 1 张（已重试恢复）", True)])
+        src_loot = tmpdir() / "MaaEnd-06-58-38-loot.log"
+        src_loot.write_text(log("MaaEnd-06-58-38.log"), encoding="utf-8")
+        raw_loot = cm.parse_maaend_log(src_loot, md_ocr)
+        check("日报：17/17 全部走通、无被挡路线",
+              (raw_loot.get("maaend_collect_blocked"), raw_loot.get("maaend_collect_done"), raw_loot.get("maaend_collect_total")),
+              (None, 17, 17))
+        ctx_loot = {"script": "MaaEnd", "rec": REC, "log_text": log("MaaEnd-06-58-38.log"),
+                    "raw": raw_loot, "maaend_dir": md_ocr,
+                    "outcome": {"checks": loot_checks, "shots": [P1012]}}
+        check("#29：路边捡东西不触发、不误报 FAIL", _mcs._c29(ctx_loot), None)
+    finally:
+        _desk.ocr_image_file = _orig_ocr
+        cm._COMBAT_SHOT_CACHE.clear()
+
     print("\n[补跑时又撞上「战斗中无法使用」的路线，在同一次补跑里单独再走一轮，按第二轮的结果算（账本 #170）]")
     A, B = "AutoCollectRoute10", "AutoCollectRoute11"
 

@@ -1287,7 +1287,8 @@ def _maaend_cut_short(text: str) -> list[Check]:
     return out
 
 
-def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -> list[Check]:
+def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False,
+                  maaend_dir=None) -> list[Check]:
     """Verify one MaaEnd run.
 
     `on_error_names` are the screenshot filenames newly added during that run.
@@ -1325,7 +1326,7 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
     # 「出错截图 N 张（已重试恢复）」 below - a false green. It is booked by route and
     # handed to collect_retry, which re-runs it before power-off: not a failed Check,
     # so nothing goes to the group now; the retry's outcome decides that.
-    blocked = collector_maaend.blocked_routes(text, on_error_names)
+    blocked = collector_maaend.blocked_routes(text, on_error_names, maaend_dir=maaend_dir)
     for label, pics in blocked.items():
         out.append(Check(texts.collect_blocked_check(label), True, "出错截图：" + "、".join(pics[:3]),
                          kind=RETRY))

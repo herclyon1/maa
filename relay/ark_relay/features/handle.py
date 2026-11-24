@@ -1302,7 +1302,8 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                 _mark_no_self_exit(eng, rec)
             # The pictures go with the checks: machine check #29 judges this booking
             # on the very same set (runs._c29).
-            return _judged(rec, outcome.maaend_checks(both, shots, own_log=own), "MaaEnd", shots=shots)
+            return _judged(rec, outcome.maaend_checks(both, shots, own_log=own, maaend_dir=eng.cfg.maaend_dir),
+                           "MaaEnd", shots=shots)
     except Exception as exc:
         log.exception("结果核对本身出错")
         # None would mean "everything was done"; a check that crashed has

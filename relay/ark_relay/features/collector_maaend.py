@@ -12,12 +12,15 @@ from __future__ import annotations
 
 import gzip
 import json
+import logging
 import re
 import zlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from collections import Counter
 from ark_relay.core.config import SERVER_TZ
+
+log = logging.getLogger("ark.collector_maaend")
 
 # The game's storage-full notice as MaaEnd's OCR logs it.
 _END_STORAGE_FULL = "仓储空间已满"
@@ -819,16 +822,75 @@ def route_windows(text: str) -> list[tuple[str, datetime, datetime]]:
     return spans(events, last)
 
 
-def blocked_routes(text: str, shot_names: list[str]) -> dict[str, list[str]]:
+# Arknights: Endfield's top-center toast when pressing [F] on a relay device during combat:
+# 「战斗中无法使用，请脱离战斗后尝试」.
+# Upstream MaaEnd's MapNavigatorObstacleDevice clicks any nearby [F] prompt when navigation
+# stalls, including ground loot pickups (协议纹石 / 灼壳虫 on 2026-11-23), which open no
+# device dialog and still leave an InteractPost on_error picture. On 2026-11-23 Windows OCR
+# read two real combat-block shots as 「战斗中无法使用请脱离战斗尝试」 and
+# 「戲斗中无法使用，请离战斗后尝沣」; the three ground-loot shots had none of these words.
+_OCR_STRIP = re.compile(r"[\s，,。\.、|!！?？:：;；'\"「」『』（）()]+")
+_COMBAT_SHOT_CACHE: dict[tuple[str, int, int], bool] = {}
+
+
+def has_combat_block_text(text: str) -> bool:
+    """Whether OCR text from an InteractPost screenshot shows 「战斗中无法使用」."""
+    from ark_relay.core import desktop  # noqa: PLC0415
+    clean = _OCR_STRIP.sub("", text or "")
+    if not clean:
+        return False
+    if "无法使用" in clean or "脱离战斗" in clean:
+        return True
+    return (desktop._name_in("战斗中无法使用", clean, max_miss=2)
+            or desktop._name_in("请脱离战斗后尝试", clean, max_miss=2))
+
+
+def is_combat_block_shot(maaend_dir, name: str, *, ocr_fn=None) -> bool:
+    """Whether `name` (an InteractPost screenshot) actually shows 「战斗中无法使用」.
+
+    Fail-safe: returns True when `maaend_dir` is omitted, the file is not on disk, or OCR
+    is unavailable (None), so filename-only tests and OCR outages never drop a real block.
+    """
+    if not maaend_dir:
+        return True
+    path = Path(maaend_dir) / "debug" / "on_error" / name
+    try:
+        st = path.stat()
+    except OSError:
+        return True
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    if ocr_fn is None and key in _COMBAT_SHOT_CACHE:
+        return _COMBAT_SHOT_CACHE[key]
+    if ocr_fn is None:
+        from ark_relay.core import desktop  # noqa: PLC0415
+        text = desktop.ocr_image_file(path)
+    else:
+        text = ocr_fn(path)
+    if text is None:
+        return True
+    hit = has_combat_block_text(text)
+    if ocr_fn is None:
+        if len(_COMBAT_SHOT_CACHE) >= 256:
+            _COMBAT_SHOT_CACHE.clear()
+        _COMBAT_SHOT_CACHE[key] = hit
+    if not hit:
+        preview = " ".join(text.split())[:80] or "（无文字）"
+        log.info("自动采集：%s 截图里没有「战斗中无法使用」（读到：%s），不算被挡", name, preview)
+    return hit
+
+
+def blocked_routes(text: str, shot_names: list[str], maaend_dir=None, *, ocr_fn=None) -> dict[str, list[str]]:
     """{route label: its relay-device pictures} for the routes of `text` that hit
-    「战斗中无法使用」, in route order. A picture outside every route window is left out."""
+    「战斗中无法使用」, in route order. A picture outside every route window is left out;
+    when `maaend_dir` holds the PNG on disk and OCR reads it, pictures without the
+    combat-block toast (e.g. ground loot pickups) are left out too."""
     shots = [(t, n) for n in shot_names if is_obstacle_shot(n) and (t := shot_time(n)) is not None]
     out: dict[str, list[str]] = {}
     if not shots:
         return out
     for label, start, end in route_windows(text):
         for t, n in shots:
-            if in_window(t, start, end):
+            if in_window(t, start, end) and is_combat_block_shot(maaend_dir, n, ocr_fn=ocr_fn):
                 out.setdefault(label, []).append(n)
     return out
 
@@ -1504,7 +1566,7 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     started = set(re.findall(r"(?:路线|线路)(\d+)[：:]", text))
     if started:
         failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
-        blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if maaend_dir else {}
+        blocked = blocked_routes(text, obstacle_shots(maaend_dir), maaend_dir=maaend_dir) if maaend_dir else {}
         blocked_r = {m.group(1) for lbl in blocked if (m := re.search(r"(\d+)[：:]", lbl))}
         if failed_lines := re.findall(r"((?:路线|线路)(\d+)[：:][^\n]*?)采集失败", text):
             out["maaend_collect_failed"] = list(dict.fromkeys(lbl.strip() for lbl, _ in failed_lines))
@@ -1515,7 +1577,7 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
         v236_failed = list(dict.fromkeys(re.findall(r"(?m)^\[[^\]]+\]\s*(?!(?:路线|线路)\d+[：:])([^\s：:]+?)采集失败\s*$", text)))
         _add_collector_failed(text, maaend_dir, v236_failed, out)
         failed_r = set(v236_failed) & started
-        blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if started and maaend_dir else {}
+        blocked = blocked_routes(text, obstacle_shots(maaend_dir), maaend_dir=maaend_dir) if started and maaend_dir else {}
         blocked_r = {lbl.removeprefix("采集") for lbl in blocked} & started
         if v236_failed:
             out["maaend_collect_failed"] = [f"采集{it}" for it in v236_failed if it in started] or v236_failed
@@ -1533,4 +1595,4 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     out.update(out_flags)
     return out
 
-__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'AGREEMENT', 'AGREEMENT_TEXT', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'in_window', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']
+__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'AGREEMENT', 'AGREEMENT_TEXT', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'has_combat_block_text', 'in_window', 'is_combat_block_shot', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']

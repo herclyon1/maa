@@ -846,7 +846,7 @@ _RELAY_PARTS = {
     "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
     "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
     "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.config": "读设置", "ark.makeup": "补跑", "ark.activity": "鸣潮活跃晚班补", "ark.core": "记账",
-    "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗", "ark.maa_start_watchdog": "明日方舟开游戏看门狗",
+    "ark.collector": "读运行记录", "ark.collector_maaend": "终末地日志解析", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗", "ark.maa_start_watchdog": "明日方舟开游戏看门狗",
     "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
     "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",
     "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",

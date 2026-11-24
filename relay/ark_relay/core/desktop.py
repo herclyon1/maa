@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 import hashlib
 import json
@@ -10,7 +11,7 @@ import threading
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from ark_relay.core.config import atomic_write_text, atomic_write_bytes
+from ark_relay.core.config import IS_WINDOWS, atomic_write_text, atomic_write_bytes
 
 _log_procs = logging.getLogger("ark.procs")
 
@@ -682,6 +683,67 @@ class Desktop:
             log.warning("桌面点击：没找到 %s 的窗口，不点 (%d, %d)", focus, x, y)
             return False
         return bool(data.get("ok")) and bool(data.get("clicked"))
+
+
+_OCR_FILE_PS = r'''
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? {
+  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+  $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+})[0]
+function Await($op, $t) { $asTaskGeneric.MakeGenericMethod($t).Invoke($null, @($op)).GetAwaiter().GetResult() }
+[Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime] | Out-Null
+[Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
+[Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
+[Windows.Globalization.Language,Windows.Globalization,ContentType=WindowsRuntime] | Out-Null
+[Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime] | Out-Null
+[Windows.Storage.FileAccessMode,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
+[Windows.Graphics.Imaging.SoftwareBitmap,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
+[Windows.Media.Ocr.OcrResult,Windows.Media.Ocr,ContentType=WindowsRuntime] | Out-Null
+$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:ARK_OCR_PATH)) ([Windows.Storage.StorageFile])
+$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+try {
+  $dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $bmp = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  $lang = New-Object Windows.Globalization.Language 'zh-Hans-CN'
+  $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
+  if ($null -eq $engine) { exit 2 }
+  $res = Await ($engine.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+  foreach ($line in $res.Lines) {
+    Write-Output (($line.Words | % { $_.Text }) -join '')
+  }
+} finally {
+  $stream.Dispose()
+}
+'''
+
+
+def ocr_image_file(path: Path, timeout: float = 15.0) -> "str | None":
+    """Read text off one local PNG/image file with Windows.Media.Ocr without touching the desktop.
+
+    Returns the joined OCR lines (possibly '') on success, or None off Windows / when the
+    file is missing / when OCR fails. Runs hidden (CREATE_NO_WINDOW) so it never steals
+    focus or flashes a console while games run.
+    """
+    if not IS_WINDOWS or not Path(path).is_file():
+        return None
+    env = dict(os.environ)
+    env["ARK_OCR_PATH"] = str(Path(path).resolve())
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    try:
+        r = subprocess.run(
+            [str(POWERSHELL), "-NoProfile", "-WindowStyle", "Hidden", "-Command", _OCR_FILE_PS],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout, env=env, creationflags=flags,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.info("本地读图失败（%s）：%s", Path(path).name, exc)
+        return None
+    if r.returncode != 0:
+        log.info("本地读图失败（%s，退出码 %s）：%s", Path(path).name, r.returncode, (r.stderr or "").strip()[:160])
+        return None
+    return (r.stdout or "").strip()
 
 
 # taskkill's exit code when no process has that image name: not being there is not

@@ -730,7 +730,7 @@ def _install_claim():
         # next lap in the realm presses ESC and leaves (FarmEchoTask.py:151-157), so
         # the reward was left behind without a word. Both are screens this code does
         # not understand, and the file's rule for those is a picture and a stop (_stop).
-        if not self.wait_until(self.find_treasure_icon, time_out=5, raise_if_not_found=False):
+        if not _find_weekly_crystal(self):
             _stop(self, "weekly_no_crystal",
                   f"周本领奖：这一圈打完没看到结晶，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
         self.log_info("周本领奖：打完了，去结晶按 F")
@@ -750,6 +750,36 @@ def _install_claim():
 
 class _EarlyOpen(Exception):
     """Confirmed the 限时提前开放 dialog and landed straight in the arena."""
+
+
+def _crystal_in_view(task) -> bool:
+    if task.find_treasure_icon():
+        return True
+    find_claim = getattr(task, "find_f_with_claim_text", None)
+    return bool(find_claim and find_claim())
+
+
+def _find_weekly_crystal(task) -> bool:
+    """Find the weekly-boss reward crystal: wait 5 s ahead, then pan 360° in 4 turns.
+
+    On 2026-11-24 09:24:26, pick_echo succeeded right in front of the character while
+    facing outward toward the arena rim (so upstream's yolo_find_echo never turned the
+    camera), leaving the crystal behind the camera. Uses BaseWWTask's own turn +
+    center_camera pattern (BaseWWTask.py:629-658) before declaring weekly_no_crystal.
+    """
+    if task.wait_until(lambda: _crystal_in_view(task), time_out=5, raise_if_not_found=False):
+        return True
+    center = getattr(task, "center_camera", None)
+    if not center:
+        return False
+    task.log_info("周本领奖：当前视角没看到结晶，转视角环顾场地")
+    for _ in range(4):
+        task.send_key("a", down_time=0.05)
+        task.sleep(0.5)
+        center()
+        if task.wait_until(lambda: _crystal_in_view(task), time_out=1.5, raise_if_not_found=False):
+            return True
+    return False
 
 
 _BOOK_SCREENS = ['fast_travel_custom', 'gray_teleport', 'remove_custom', 'team_close']

@@ -1965,6 +1965,37 @@ def _part_okww_claim_readback():  # noqa: C901
     check("pushed with the reason", len(t.errors) == 1 and t.errors[0][1] and "没看到结晶" in t.errors[0][0])
     check("picture", t.shots, ["weekly_no_crystal"])
 
+    print("\n[2026-11-24 09:24:26 (#192/#193): 打完背对结晶，转视角环顾后找到并领到]")
+    t = task(left=1, pages=[PAGE[0]], screens=[FULL, SETTLEMENT], crystal=False)
+    turns = {"n": 0}
+    def center_then_see():
+        turns["n"] += 1
+        t.events.append("center")
+        if turns["n"] >= 2:
+            t.crystal = True
+    t.center_camera = center_then_see
+    check("转视角找到结晶、领完 1/3→0/3 后有序停下", lap(t), "stop")
+    check("转了两次视角", [e for e in t.events if e in ("key:a", "center")], ["key:a", "center", "key:a", "center"])
+    check("走去结晶并按 F 确认", [e for e in t.events if e in ("walk", "key:f", "confirm")], ["walk", "key:f", "confirm"])
+    check("回读确认 1/3→0/3", "周本领奖：回读确认领到，本周剩余 1/3→0/3" in t.logs)
+    check("没报没看到结晶、没报错", ("weekly_no_crystal" in t.shots, t.errors), (False, []))
+
+    print("\n[已经站在结晶旁（直接看得到 F 领取）：不用转视角就能领]")
+    t = task(left=2, pages=[PAGE[1]], screens=[FULL, SETTLEMENT], crystal=False)
+    t.find_f_with_claim_text = lambda: True
+    t.center_camera = lambda: t.events.append("center")
+    check("没停", lap(t), "on")
+    check("没转视角", [e for e in t.events if e in ("key:a", "center")], [])
+    check("回读确认 2/3→1/3", "周本领奖：回读确认领到，本周剩余 2/3→1/3" in t.logs)
+
+    print("\n[转完一圈 360° 还是真没结晶：照旧留图报手机停下]")
+    t = task(left=1, crystal=False)
+    t.center_camera = lambda: t.events.append("center")
+    check("停下", lap(t), "stop")
+    check("转满 4 次", [e for e in t.events if e in ("key:a", "center")], ["key:a", "center"] * 4)
+    check("没走也没按 F", [e for e in t.events if e in ("walk", "key:f")], [])
+    check("留图并报手机", (t.shots, len(t.errors) == 1 and "没看到结晶" in t.errors[0][0]), (["weekly_no_crystal"], True))
+
     print("\n[领奖钩子遇到的不是领奖弹窗（退出副本的确认框也是这个取消按钮）：照上游按 ESC，不点确认]")
     t = task(screens=[["是否退出副本？", "取消", "确认"]])
     check("返回 True（上游的语义）", t.handle_claim_button(), True)

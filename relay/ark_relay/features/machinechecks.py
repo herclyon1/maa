@@ -2266,11 +2266,13 @@ def _c29(ctx):
     if shots is None:
         rec = ctx["rec"]
         shots = cm.round_shots(ctx.get("maaend_dir"), rec.started, cm.round_until(rec))
+    maaend_dir = ctx.get("maaend_dir")
     pics = [n for n in shots if cm.is_obstacle_shot(n)
-            and (t := cm.shot_time(n)) is not None and cm.in_window(t, t0, t1)]
+            and (t := cm.shot_time(n)) is not None and cm.in_window(t, t0, t1)
+            and cm.is_combat_block_shot(maaend_dir, n)]
     if not pics:
         return None
-    blocked = cm.blocked_routes(text, pics)
+    blocked = cm.blocked_routes(text, pics, maaend_dir=maaend_dir)
     if lost := [n for n in pics if not any(n in v for v in blocked.values())]:
         return _r(FAIL, f"撞了「{COMBAT_BLOCK}」，存了出错截图 {lost[0]}，日志里认不出是哪条路线")
     # A failed run is not outcome-checked (handle: AUTO-MAS's own retry follows), so its

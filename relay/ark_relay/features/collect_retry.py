@@ -126,12 +126,14 @@ def route_ids_by_label(zh_cn: dict) -> dict[str, str]:
     return out
 
 
-def blocked_route_ids(automas_log: str, shot_names: list[str], zh_cn: dict) -> dict[str, list[str]]:
+def blocked_route_ids(automas_log: str, shot_names: list[str], zh_cn: dict,
+                      maaend_dir=None, *, ocr_fn=None) -> dict[str, list[str]]:
     """{route id: its relay-device pictures} for the routes of the run that hit 「战斗中无法使用」."""
     from ark_relay.features import collector_maaend  # noqa: PLC0415
     ids = route_ids_by_label(zh_cn)
     out: dict[str, list[str]] = {}
-    for label, pics in collector_maaend.blocked_routes(automas_log, shot_names).items():
+    for label, pics in collector_maaend.blocked_routes(
+            automas_log, shot_names, maaend_dir=maaend_dir, ocr_fn=ocr_fn).items():
         if rid := ids.get(label):
             out[rid] = pics
         elif label not in _UNKNOWN_SAID:
@@ -158,7 +160,8 @@ def _after(line: str, since: str) -> bool:
     return len(line) >= 20 and line[0] == "[" and line[1:20] >= since
 
 
-def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: list[str]) -> dict[str, list[str]]:
+def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: list[str],
+                  maaend_dir=None, *, ocr_fn=None) -> dict[str, list[str]]:
     """{route: relay-device pictures} for the retried routes that hit 「战斗中无法使用」 again."""
     from ark_relay.features import collector_maaend as cm  # noqa: PLC0415
     events: list[tuple] = []
@@ -185,7 +188,7 @@ def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: lis
     out: dict[str, list[str]] = {}
     for rid, start, end in cm.spans(events, cm.line_time(last) if last else None):
         for t, n in shots:
-            if cm.in_window(t, start, end):
+            if cm.in_window(t, start, end) and cm.is_combat_block_shot(maaend_dir, n, ocr_fn=ocr_fn):
                 out.setdefault(rid, []).append(n)
     return out
 
@@ -516,7 +519,7 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
 
 
 def final_verdict(maafw_log: str, routes: list[str], since: str, second: list[str], since2: str,
-                  shot_names: list[str]) -> "tuple[dict[str, bool | None], dict[str, list[str]]]":
+                  shot_names: list[str], maaend_dir=None, *, ocr_fn=None) -> "tuple[dict[str, bool | None], dict[str, list[str]]]":
     """(verdict, blocked) of a retry whose routes `second` were walked once more from `since2`.
 
     A route walked once is judged from `since` (judge, retry_blocked). A route of the second
@@ -526,12 +529,12 @@ def final_verdict(maafw_log: str, routes: list[str], since: str, second: list[st
     blocked again only on a relay-device picture inside its second window."""
     verdict = judge(maafw_log, routes, since)
     if not second:
-        blocked = retry_blocked(maafw_log, routes, since, shot_names)
+        blocked = retry_blocked(maafw_log, routes, since, shot_names, maaend_dir=maaend_dir, ocr_fn=ocr_fn)
     else:
         later = judge(maafw_log, second, since2)
         for rid in second:
             verdict[rid] = bool(later[rid])
-        blocked = retry_blocked(maafw_log, second, since2, shot_names)
+        blocked = retry_blocked(maafw_log, second, since2, shot_names, maaend_dir=maaend_dir, ocr_fn=ocr_fn)
     for rid in blocked:
         verdict[rid] = False
     return verdict, blocked
@@ -614,7 +617,8 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
     second: list[str] = []
     since2 = ""
     if done and again is not None:
-        first = retry_blocked(_maafw_text(debug), routes, since, collector_maaend.obstacle_shots(maaend_dir))
+        first = retry_blocked(_maafw_text(debug), routes, since, collector_maaend.obstacle_shots(maaend_dir),
+                              maaend_dir=maaend_dir)
         if first:
             log.info("自动采集补跑：%s 这一轮撞上「战斗中无法使用」没采到，单独再补一轮", "、".join(first))
             _stop_agents(inst)
@@ -633,7 +637,8 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
     _stop_agents(inst)
     text = _maafw_text(debug)
     closed = closed or _closed_verdict(text, closing)
-    verdict, blocked = final_verdict(text, routes, since, second, since2, collector_maaend.obstacle_shots(maaend_dir))
+    verdict, blocked = final_verdict(text, routes, since, second, since2,
+                                     collector_maaend.obstacle_shots(maaend_dir), maaend_dir=maaend_dir)
     if evidence is not None:
         evidence["nodes"] = node_lines(text, routes, since)
         if blocked:
@@ -835,7 +840,7 @@ def _blocked_in(history_log: Path, maaend_dir, zh: dict) -> dict[str, list[str]]
         text = history_log.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return {}
-    return blocked_route_ids(text, shots, zh)
+    return blocked_route_ids(text, shots, zh, maaend_dir=maaend_dir)
 
 
 AHEAD, AHEAD_DEBUG, AHEAD_SPENT = "ahead", "debug", "spent"
