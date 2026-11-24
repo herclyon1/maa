@@ -107,6 +107,42 @@ SKIP_FAILED = "⚠️ 跳过队列没办成"
 ESTOP = "🛑 已停一切"
 ESTOP_FAILED = "🛑 没能停干净"
 SHUTDOWN_CANCELLED = "🌙 关机被取消"
+ALARM_HOLD_EXPIRED = "⏰ 故障留机锁到期释放"
+ALARM_SHUTDOWN_ABORTED = "🚨 故障留机期间拦下外部关机"
+ALARM_EARLY_SHUTDOWN = "🚨 上次故障未修完时被提前关机"
+ALARM_EARLY_NO_LOG = "系统日志读不到，无法确认上次关机发起方。"
+ALARM_EARLY_NO_1074 = "系统日志里没有正常关机记录（直接断电或系统崩溃，无法确认发起方）。"
+ALARM_HOLD_CORRUPT = "故障留机锁的保存内容损坏，已强制清理；请核查上次故障是否已修完。"
+
+
+def alarm_hold_expired_body(reason: str, boot: str, in_window: bool) -> str:
+    why = reason or "上次故障留机"
+    if in_window:
+        return (f"故障留机锁已到释放时刻（下次定时开机 {boot} 前 10 分钟），先放开以便按计划重启并准备下一班。\n"
+                f"原留机原因：{why}\n"
+                "如果问题还没修完，请在下次开机后第一时间补修。")
+    return (f"故障留机锁已过释放时刻（预定开机 {boot}），已解除留机锁；离下次开机太近，这次不再安排关机。\n"
+            f"原留机原因：{why}\n"
+            "如果问题还没修完，请在下次开机后第一时间补修。")
+
+
+def alarm_shutdown_aborted_body(ok: bool, rc: int, who: str, what: str, why: str) -> str:
+    parts = [p for p in (
+        f"发起账号：{who}" if who else "",
+        f"发起程序：{what}" if what else "",
+        f"说明：{why}" if why else "",
+    ) if p]
+    detail = "；".join(parts) if parts else "系统日志里没写发起方"
+    if ok:
+        return f"当前还有未修完的故障留机锁，刚才拦下了一次外部发起的关机。\n{detail}"
+    return (f"当前还有未修完的故障留机锁，刚才发现外部发起关机，但自动取消没成功（退出码 {rc}），"
+            f"机器会继续关机。\n{detail}")
+
+
+def alarm_early_shutdown_body(reason: str, until: str, detail: str) -> str:
+    why = reason or "上次故障留机"
+    return (f"上次开机还有未修完的故障留机锁（原定留机至 {until}，原因：{why}），"
+            f"但在到期前就已经关机。\n{detail}")
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
 # The receipt of a batch from the repo inbox (scripts/mac/order.sh, inbox.Inbox.poll) that
@@ -503,6 +539,10 @@ def cant_enter(script: str) -> str:
     return f"⏸ {script} 进不了游戏，稍后补跑"
 
 
+def is_cant_enter(title: str) -> bool:
+    return title.startswith("⏸ ") and " 进不了游戏" in title
+
+
 def healed_after_update(script: str) -> str:
     """A failure in the same streak as an update restart, and the rerun after it went
     through (handle._flush_pending, core.episode_kinds 「update」): relay.log only,
@@ -780,6 +820,7 @@ _ACTION_ZH = {
     "skip_today": "今天这趟跳过",
     "unskip_today": "取消今天的跳过",
     "debug_mode": "调试模式",
+    "alarm_hold": "故障留机锁",
     "set_config": "改设置",
     "set_master": "改设置",
     "weekly_boss": "改打第几个周本",
@@ -858,6 +899,7 @@ _RELAY_PARTS = {
     "ark.runs": "按每趟记录做的机器上核对", "ark.system": "中继自身的机器上核对",
     "ark.macpush": "报警直送", "ark.phone_banners": "手机通道和卡池核对", "ark.shiftcheck": "收工体检",
     "ark.stagegate": "关卡能不能去的检查", "ark.techlog": "技术日志", "ark.weekgate": "鸣潮周常开关",
+    "ark.procwatch": "关机防护",
 }
 
 
@@ -1425,7 +1467,14 @@ def samples() -> list[str]:
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30, 0),
         UNREACHABLE_SHAPE_NOTE, UNREACHABLE_UNREAD_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
-        ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ESSENCE_FILLER_FAILED, essence_filler_failed("写进去之后读出来和写的不一样"),
+        ESTOP_FAILED, SHUTDOWN_CANCELLED, ALARM_HOLD_EXPIRED, ALARM_SHUTDOWN_ABORTED, ALARM_EARLY_SHUTDOWN,
+        ALARM_EARLY_NO_LOG, ALARM_EARLY_NO_1074, ALARM_HOLD_CORRUPT,
+        alarm_hold_expired_body("这一轮没干完", "2026-11-24 21:20", True),
+        alarm_hold_expired_body("这一轮没干完", "2026-11-24 21:20", False),
+        alarm_shutdown_aborted_body(True, 0, "本机账号", "关机命令", "手动关机"),
+        alarm_shutdown_aborted_body(False, 5, "", "", ""),
+        alarm_early_shutdown_body("这一轮没干完", "2026-11-24 21:10", ALARM_EARLY_NO_1074),
+        SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ESSENCE_FILLER_FAILED, essence_filler_failed("写进去之后读出来和写的不一样"),
         essence_filler_on(["玉中身", "唤月"]), essence_filler_on([]), ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
         CONFIG_CHANGED, CONFIG_FAILED, INBOX_APPLIED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,

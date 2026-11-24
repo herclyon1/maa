@@ -24,7 +24,7 @@ use_relay_code()
 
 from ark_relay.core.config import SERVER_TZ                      # noqa: E402
 from ark_relay.core.engine import Engine                          # noqa: E402
-from ark_relay.features import echofarm                  # noqa: E402
+from ark_relay.features import echofarm, modes           # noqa: E402
 from ark_relay.features import collect_retry, makeup       # noqa: E402
 
 # The relay's tick is about a minute ("下一个闹钟"); two give the shutdown decision that
@@ -51,8 +51,15 @@ def reasons(now: datetime, state_dir, scripts_running, log_lines) -> list[str]:
         why.append(f"刷声骸在跑（{farm.get('name') or '?'}，到 {farm.get('until')}）")
     if going := makeup.in_flight(state_dir, now):
         why.append(f"补跑在跑（{'、'.join(going)}）")
+    alarm_hold_info = getattr(modes, "alarm_hold_info", None)
+    if callable(alarm_hold_info):
+        hold = alarm_hold_info(state_dir, now)
+        if hold:
+            why.append(f"故障留机锁开着（留机至 {hold.get('until') or '未知'}，{hold.get('reason') or '有未修完的故障'}）")
     if any("调试模式已关闭" in line for line in log_lines):
         why.append(f"调试模式 {DEBUG_OFF_GRACE_MINUTES} 分钟内刚关，先等中继判一次关机（它会先做该补的再自己关）")
+    if any("故障留机锁已关闭" in line for line in log_lines):
+        why.append(f"故障留机锁 {DEBUG_OFF_GRACE_MINUTES} 分钟内刚关，先等中继判一次关机（它会先做该补的再自己关）")
     return why
 
 

@@ -51,6 +51,12 @@ fi
 
 HOST="${ARK_HOST:-100.65.39.119}"
 USER_AT="Administrator@${HOST}"
+BUSY_NAMES='MAA,MaaEnd,Endfield,ok-ww,Client-Win64-Shipping,dnplayer'
+ARK_SG_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/shutdown-guard.sh"
+if [ -f "$ARK_SG_LIB" ]; then
+  # shellcheck source=lib/shutdown-guard.sh
+  . "$ARK_SG_LIB"
+fi
 
 # 连接复用。一次 winrun 里要开五六条 ssh/scp，每条重新握手＋认证要一两秒；
 # 跨境链路更明显。ControlMaster 让后面的都走第一条已经建好的通道，
@@ -192,6 +198,13 @@ if [ "${1:-}" = "--py1" ]; then
   LOCAL_PY="${2:?用法: winrun.sh --py1 <本地 .py 文件> [参数...]}"
   [ -f "$LOCAL_PY" ] || { echo "找不到 $LOCAL_PY" >&2; exit 1; }
   shift 2
+  PY1_GUARD_PS=""
+  if [ -f "$ARK_SG_LIB" ]; then
+    _sg_rc=0
+    ark_sg_preflight py1 "winrun --py1" "$USER_AT" "$BUSY_NAMES" 'C:\ProgramData\winrun.out' "$LOCAL_PY" "$*" || _sg_rc=$?
+    [ "$_sg_rc" = 5 ] && exit 5
+    [ "$_sg_rc" = 10 ] && PY1_GUARD_PS="$ARK_SG_SNIPPET"
+  fi
   scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PY" "${USER_AT}:C:/ProgramData/winrun-run.py"
   ARGS="$*"
   TMP="$(mktemp)"
@@ -201,6 +214,7 @@ if [ "${1:-}" = "--py1" ]; then
     cat <<PS1EOF
 \$ErrorActionPreference = "SilentlyContinue"
 Remove-Item C:\\ProgramData\\winrun.out -Force -ErrorAction SilentlyContinue
+${PY1_GUARD_PS}
 # 先清上一轮残留：脚本超时（比如误遍历整个 APPDATA）时任务会被注销，但 python
 # 进程还在，占着 winrun.out，下一次调用只能拿到 0 字节空文件。2026-08-24 连着
 # 两次静默失败就是这么来的，表面看像断网。
@@ -243,6 +257,11 @@ PS1EOF
     echo "winrun1: 脚本没有任何输出（0 字节）。检查是否有交互桌面会话在。" >&2
     rm -f "$TMP" "$LOCAL_PS1"; exit 5
   fi
+  if [ -n "$PY1_GUARD_PS" ] && grep -q 'WINPS_REFUSED: ' "$TMP"; then
+    busy=$(sed -n 's/.*WINPS_REFUSED: //p' "$TMP" | tr -d '\r' | head -1)
+    echo "winrun1: 拒绝关机——${busy}。请先处理完当前任务或故障。" >&2
+    rm -f "$TMP" "$LOCAL_PS1"; exit 5
+  fi
   python3 -c "$STRIP" "$TMP"
   rm -f "$TMP" "$LOCAL_PS1"
   exit 0
@@ -263,6 +282,13 @@ if [ "${1:-}" = "--py" ]; then
   # 2026-08-27 闸门自检就是这么发现这个顺序问题的。
   preflight_scan_check "$LOCAL_PY" || exit 2
   preflight_timefilter_check "$LOCAL_PY" || exit 2
+  PY_IS_SHUTDOWN=0
+  if [ -f "$ARK_SG_LIB" ]; then
+    _sg_rc=0
+    ark_sg_preflight py "winrun --py" "$USER_AT" "" "" "$LOCAL_PY" "$*" || _sg_rc=$?
+    [ "$_sg_rc" = 5 ] && exit 5
+    [ "$_sg_rc" = 10 ] && PY_IS_SHUTDOWN=1
+  fi
 
   # 只验闸门、不真发。guardcheck.sh（2026-11-17 已删）里那条「正常深路径不许被误杀」原来会
   # 真的去 SSH 一个不存在的测试地址（203.0.113.1），一直卡到连接超时——
@@ -329,7 +355,46 @@ sys.argv = ["winrun-run.py"] + sys.argv[1:]
 # bash 会把反引号当命令替换执行掉，把看门狗写坏（刚刚就这么栽了一次）。
 _rc = 0
 try:
-    runpy.run_path(r"${REMOTE_PY//\//\\}", run_name="__main__")
+GUARD
+  if [ "$PY_IS_SHUTDOWN" = 1 ] && [ -z "${ARK_SHUTDOWN_OVERRIDE:-}" ]; then
+    cat >> "$TMP.guard" <<'PYGUARD'
+    import datetime as _dt, json as _json, subprocess as _sp
+    _busy_want = {"maa.exe", "maaend.exe", "endfield.exe", "ok-ww.exe", "client-win64-shipping.exe", "dnplayer.exe"}
+    _refuse = ""
+    try:
+        _tl = _sp.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=10)
+        _hits = sorted({ln.split(",", 1)[0].strip().strip('"') for ln in (_tl.stdout or "").splitlines()
+                        if ln.strip() and ln.split(",", 1)[0].strip().strip('"').lower() in _busy_want})
+        if _hits:
+            _refuse = "任务在跑: " + ", ".join(_hits)
+        else:
+            _sf = r"C:\ProgramData\ark-relay\state\state.json"
+            if os.path.exists(_sf):
+                _st = _json.loads(open(_sf, encoding="utf-8").read())
+                _ah = (_st.get("modes") or {}).get("alarm_hold") if isinstance(_st, dict) else None
+                if _ah is not None:
+                    if not isinstance(_ah, dict) or not str(_ah.get("until") or "").strip():
+                        _refuse = "故障留机锁状态损坏(缺少 until)"
+                    else:
+                        _u = _dt.datetime.fromisoformat(str(_ah["until"]).strip())
+                        _bj = _dt.timezone(_dt.timedelta(hours=8))
+                        _u = _u.replace(tzinfo=_bj) if _u.tzinfo is None else _u.astimezone(_bj)
+                        if _dt.datetime.now(_bj) < _u:
+                            _why = str(_ah.get("reason") or "有未修完的故障报警")
+                            _refuse = f"故障留机锁生效至 {_u.strftime('%Y-%m-%d %H:%M')} ({_why})"
+    except Exception as _gexc:
+        _refuse = f"状态文件读不出或损坏: {type(_gexc).__name__}: {_gexc}"
+    if _refuse:
+        print("WINPS_REFUSED: " + _refuse, flush=True)
+        _rc = 5
+    else:
+        runpy.run_path(
+PYGUARD
+    printf '            r"%s", run_name="__main__")\n' "${REMOTE_PY//\//\\}" >> "$TMP.guard"
+  else
+    printf '    runpy.run_path(r"%s", run_name="__main__")\n' "${REMOTE_PY//\//\\}" >> "$TMP.guard"
+  fi
+  cat >> "$TMP.guard" <<'GUARDTAIL'
 except SystemExit as _e:
     _rc = _e.code if isinstance(_e.code, int) else (0 if _e.code is None else 1)
 except BaseException:
@@ -337,7 +402,7 @@ except BaseException:
     traceback.print_exc()
     _rc = 1
 print("[winrun-rc] %d" % _rc, flush=True)
-GUARD
+GUARDTAIL
   # 顺手送上 arklog.py：读日志的三个坑（时钟、字典序、格式）都在里面堵掉了，
   # 临时脚本 `from arklog import since` 就能用，不用每次自己拼过滤。
   if [ -f "$(dirname "${BASH_SOURCE[0]}")/lib/arklog.py" ]; then
@@ -407,6 +472,11 @@ GUARD
     echo "        也可能是远端 python 被杀/卡住。这不是成功，请当失败处理。" >&2
     exit 5
   fi
+  if [ "$PY_IS_SHUTDOWN" = 1 ] && grep -q 'WINPS_REFUSED: ' "$TMP"; then
+    busy=$(sed -n 's/.*WINPS_REFUSED: //p' "$TMP" | tr -d '\r' | head -1)
+    echo "winrun: 拒绝关机——${busy}。请先处理完当前任务或故障。" >&2
+    exit 5
+  fi
   python3 -c "$STRIP" "$TMP"
   # The remote's exit code has to come out as it is. This used to `exit 0`
   # unconditionally and only drop a line on stderr, so the 「拒绝派发必须非零退出」
@@ -428,6 +498,14 @@ MODE="cmd"
 if [ "${1:-}" = "--ps" ]; then MODE="ps"; shift; fi
 CMD="${1:?用法: winrun.sh [--ps|--get] '<命令或路径>'}"
 
+CMD_GUARD_PS=""
+if [ -f "$ARK_SG_LIB" ]; then
+  _sg_rc=0
+  ark_sg_preflight "$MODE" "winrun" "$USER_AT" "$BUSY_NAMES" 'C:\ProgramData\winrun.out' "$CMD" || _sg_rc=$?
+  [ "$_sg_rc" = 5 ] && exit 5
+  [ "$_sg_rc" = 10 ] && CMD_GUARD_PS="$ARK_SG_SNIPPET"
+fi
+
 LOCAL_PS="$(mktemp)"
 {
   # Windows PowerShell 5.1 reads a .ps1 as ANSI unless it opens with a
@@ -437,6 +515,9 @@ LOCAL_PS="$(mktemp)"
   printf '\xef\xbb\xbf'
   echo '$ErrorActionPreference = "Continue"'
   echo '$ProgressPreference = "SilentlyContinue"'
+  if [ -n "$CMD_GUARD_PS" ]; then
+    printf '%s\n' "$CMD_GUARD_PS"
+  fi
   if [ "$MODE" = ps ]; then
     # A child process that writes UTF-8 (python with PYTHONUTF8, curl, git) is
     # decoded by whatever [Console]::OutputEncoding says. Pin it to UTF-8 so
@@ -479,4 +560,9 @@ fi
 # 空输出在 cmd/ps 模式下可能是合法的（比如 Get-Process 没匹配到），
 # 所以不当失败，但要在 stderr 说一声，免得又被当成「成功且无事发生」。
 [ -s "$TMP" ] || echo "winrun: 命令执行了，但没有任何输出（可能正常，也可能是命令写错了）" >&2
+if [ -n "$CMD_GUARD_PS" ] && grep -q 'WINPS_REFUSED: ' "$TMP"; then
+  busy=$(sed -n 's/.*WINPS_REFUSED: //p' "$TMP" | tr -d '\r' | head -1)
+  echo "winrun: 拒绝关机——${busy}。请先处理完当前任务或故障。" >&2
+  exit 5
+fi
 python3 -c "$STRIP" "$TMP"

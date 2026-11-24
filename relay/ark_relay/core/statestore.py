@@ -293,8 +293,10 @@ FIELDS: dict[str, dict[str, str]] = {
     },
     "modes": {
         "skip_next_shutdown": "「下次跑完不关机」标记还没用上（一次性，人按的；下一趟早班/晚班跑完时用掉）",
-        "shutdown_skipped": "哪一次关机机会已经跳过（机会标识；调试模式、倒计时里按的或用掉的「下次跑完不关机」写的；手动关调试模式只清调试模式自己写的那条，其余的留着）",
+        "shutdown_skipped": "哪一次关机机会已经跳过（机会标识；调试模式、倒计时里按的、用掉的「下次跑完不关机」或故障留机锁写的；手动关调试模式只清调试模式自己写的那条，其余的留着）",
         "debug_until": "调试模式到什么时候（YYYY-MM-DD HH:MM）",
+        "alarm_hold": "故障留机锁：{until, boot, reason, created_at, at, boot_at}（本班有未修完群报警时挂起，防机器自动/提前关机）",
+        "alarm_hold_cleared_at": "最近一次解锁故障留机锁的北京时间高水位（ISO +08:00，防迟到外部留机指令僵尸复锁）",
     },
     "versions": {
         "announced_notes": "上一条「已更新」推送的说明原文（一模一样就不再推）",
@@ -513,6 +515,12 @@ def write_waiting(path: Path, text: str, write=None, waits=None) -> None:
 # Re-entrant: _sweep_legacy runs inside __init__, which a caller may reach while
 # holding it.
 _WRITE_LOCK = threading.RLock()
+_WRITE_DEPTH = threading.local()
+
+
+def in_store_write() -> bool:
+    """Whether the current thread is inside a StateStore write lock."""
+    return getattr(_WRITE_DEPTH, "n", 0) > 0
 
 
 class StateStore:
@@ -527,7 +535,11 @@ class StateStore:
             _SWEPT.add(str(self.dir))
             try:
                 with _WRITE_LOCK:
-                    self._sweep_legacy()
+                    _WRITE_DEPTH.n = getattr(_WRITE_DEPTH, "n", 0) + 1
+                    try:
+                        self._sweep_legacy()
+                    finally:
+                        _WRITE_DEPTH.n -= 1
             except OSError:
                 # Swept again by the next StateStore: an unmigrated report-*.sent makes
                 # that day's report count as unsent. Only state.json's own read or write
@@ -625,9 +637,13 @@ class StateStore:
         if not _registered(section, key):
             raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
         with _WRITE_LOCK:
-            data = self._writable()
-            data[section][key] = value
-            self._flush(data)
+            _WRITE_DEPTH.n = getattr(_WRITE_DEPTH, "n", 0) + 1
+            try:
+                data = self._writable()
+                data[section][key] = value
+                self._flush(data)
+            finally:
+                _WRITE_DEPTH.n -= 1
 
     def update(self, section: str, key: str, change) -> None:
         """state[section][key] = change(its value on disk, None when unset), the read
@@ -638,16 +654,46 @@ class StateStore:
         if not _registered(section, key):
             raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
         with _WRITE_LOCK:
-            data = self._writable()
-            data[section][key] = change(data[section].get(key))
-            self._flush(data)
+            _WRITE_DEPTH.n = getattr(_WRITE_DEPTH, "n", 0) + 1
+            try:
+                data = self._writable()
+                data[section][key] = change(data[section].get(key))
+                self._flush(data)
+            finally:
+                _WRITE_DEPTH.n -= 1
 
     def pop(self, section: str, key: str) -> None:
         with _WRITE_LOCK:
-            data = self._writable()
-            if key in data.get(section, {}):
-                del data[section][key]
-                self._flush(data)
+            _WRITE_DEPTH.n = getattr(_WRITE_DEPTH, "n", 0) + 1
+            try:
+                data = self._writable()
+                if key in data.get(section, {}):
+                    del data[section][key]
+                    self._flush(data)
+            finally:
+                _WRITE_DEPTH.n -= 1
+
+    def atomic(self, section: str, fn):
+        """Read-modify-write a whole `section` dict under one hold of _WRITE_LOCK.
+        Validates every added/modified key against FIELDS and flushes once iff changed."""
+        if section not in SECTIONS:
+            raise KeyError(f"没有 {section!r} 这一段")
+        with _WRITE_LOCK:
+            _WRITE_DEPTH.n = getattr(_WRITE_DEPTH, "n", 0) + 1
+            try:
+                data = self._writable()
+                sec = data[section]
+                before = copy.deepcopy(sec)
+                res = fn(sec)
+                if sec != before:
+                    for k, v in sec.items():
+                        if k not in before or before[k] != v:
+                            if not _registered(section, k):
+                                raise KeyError(f"state.{section}.{k} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
+                    self._flush(data)
+                return res
+            finally:
+                _WRITE_DEPTH.n -= 1
 
     def _writable(self) -> dict:
         """state.json as on disk (_load fresh), its sections copied: a change is made

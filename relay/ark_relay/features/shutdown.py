@@ -7,6 +7,8 @@ countdown when a phone order asks for it.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -705,6 +707,30 @@ def _cancel_verdict(at: datetime, when) -> Verdict:
     return Verdict(False, "cancelled", f"关机命令 {at:%H:%M} 发出后，{clock} 被取消了（系统事件 1075），中继不会再自己关机", say)
 
 
+def _boot_imminent(eng, now: datetime) -> str:
+    """Return a wait reason when `now` is inside [boot-2m, due) for an imminent scheduled shift."""
+    cur = now.astimezone(SERVER_TZ)
+    cands: list[datetime] = []
+    for day in (-1, 0, 1):
+        for hhmm in modes.BOOT_TIMES:
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            cands.append((cur + timedelta(days=day)).replace(
+                hour=hh, minute=mm, second=0, microsecond=0))
+    if not cands:
+        return ""
+    for q in plan.recent_due_queues(eng.cfg.automas_dir, cur + timedelta(minutes=62), window_minutes=62):
+        due = q["due"].astimezone(SERVER_TZ)
+        if due <= cur:
+            continue
+        for boot in cands:
+            if boot - timedelta(minutes=2) <= cur < due and boot <= due <= boot + timedelta(minutes=60):
+                return f"距下次定时开机（{boot:%H:%M}）与排期（{due:%H:%M}）太近，先不关机"
+    return ""
+
+
 def decide(eng, now: datetime) -> Verdict:
     """Pure decision: reads state, writes nothing.
 
@@ -745,6 +771,8 @@ def decide(eng, now: datetime) -> Verdict:
             return Verdict(False, code, f"等排期的那趟跑完再判关机（{why}）")
         # 「shift-held」 (_forfeited) is a not-shift to everything downstream.
         return Verdict(False, "not-shift", f"不是早班/晚班跑完，不关机（{why}）")
+    if imminent := _boot_imminent(eng, now):
+        return Verdict(False, "boot-imminent", imminent)
     # The minimum-uptime floor guards against a "boot, power off at once" loop.
     if (now - eng._started_at).total_seconds() < eng.cfg.shutdown_min_uptime:
         return Verdict(False, "uptime", "开机不够久")
@@ -798,7 +826,17 @@ def decide(eng, now: datetime) -> Verdict:
     # skipped. Recording the key is a side effect and happens in _maybe_shutdown.
     if modes.debug_active(eng.state.dir):
         return Verdict(False, "debug", "调试模式开着，这一次关机跳过")
-    if modes.shutdown_skipped(eng.state.dir) == eng._shutdown_key(now):
+    key = eng._shutdown_key(now)
+    raw_skip = modes.shutdown_skipped_raw(eng.state.dir)
+    if raw_skip in (key, key + modes.DEBUG_SKIP_TAG):
+        return Verdict(False, "skipped",
+                       "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
+    if hold := modes.alarm_hold_info(eng.state.dir, now):
+        why = str(hold.get("reason") or "有未修完的故障报警")
+        until = str(hold.get("until") or "")
+        tail = f"（留机至 {until}）" if until else ""
+        return Verdict(False, "alarm-hold", f"故障留机锁开着，先不关机：{why}{tail}")
+    if modes.shutdown_skipped(eng.state.dir) == key:
         return Verdict(False, "skipped",
                        "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
     return Verdict(True, "go", "本轮已处理完毕")
@@ -920,17 +958,125 @@ def _alarm_shift_overdue(eng, now: datetime) -> None:
                     runwatch.OVERRUN_SLACK_MIN, extra=errwatch.group_pushed(title, errs, eng.notifier))
 
 
+def _handle_alarm_hold_side_effects(eng, now: datetime) -> bool:
+    """Record |alarm skip without overwriting user/debug skips, retry collect once per key, and send interim."""
+    key = eng._shutdown_key(now)
+    if modes.shutdown_skipped(eng.state.dir) != key:
+        modes.mark_shutdown_skipped(eng.state.dir, key, by_alarm=True)
+    if getattr(eng, "_alarm_retry_key", None) != key:
+        eng._alarm_retry_key = key
+        from ark_relay.features import collect_retry  # noqa: PLC0415
+        if collect_retry.maybe_run(eng, now):
+            log.info("补跑刚做完，这一轮关机判断从头再来")
+            return True
+    day = now.strftime("%Y-%m-%d")
+    if (eng.cfg.report_before_shutdown and not eng.state.report_sent(day)
+            and not eng.state.interim_sent(day) and eng.state.read_ledger(day)):
+        log.info("故障留机期间补发一份当前进度")
+        if eng.send_daily_now(mark=False):
+            eng.state.mark_interim_sent(day, len(eng.state.read_ledger(day)))
+    return False
+
+
+def _issue_poweroff(eng, now: datetime, live_clock: bool, gen0: int, why: dict) -> bool:
+    """Issue eng._power_off() with Condition + try/finally anti-deadlock & instant mid-issue abort."""
+    with _SHUTDOWN_COND:
+        if _ISSUE_STATE["gen"] != gen0:
+            log.info("🚨 关机准备期间出现新故障留机：取消本次关机")
+            return False
+        _ISSUE_STATE.update(
+            issuing=True, tid=threading.get_ident(), abort=False, mark_skipped=False, outcome=None,
+        )
+        _ISSUED[0] = eng
+    from ark_relay.features import errwatch  # noqa: PLC0415
+    try:
+        issue_t0 = datetime.now(tz=SERVER_TZ)
+        issued_at = issue_t0 if live_clock else now
+        _record_poweroff(eng, issued_at, why)
+        ok = eng._power_off()
+        issue_t1 = datetime.now(tz=SERVER_TZ)
+        if not ok:
+            with _SHUTDOWN_COND:
+                _ISSUE_STATE.update(outcome=("none", ""), issuing=False, tid=None)
+                _ISSUED[0] = None
+                _SHUTDOWN_COND.notify_all()
+            _record_poweroff(eng, None)
+            return False
+        with _SHUTDOWN_COND:
+            need_abort = _ISSUE_STATE["abort"] or (_ISSUE_STATE["gen"] != gen0)
+            want_skip = _ISSUE_STATE["mark_skipped"]
+            if not need_abort:
+                eng._shutdown_issued = True
+                eng._shutdown_issued_at = issued_at
+                eng._poweroff_window = (issue_t0, issue_t1)
+                _ISSUE_STATE.update(issuing=False, tid=None)
+                errwatch.mark_stopping()
+                _SHUTDOWN_COND.notify_all()
+                issued_done = True
+            else:
+                issued_done = False
+        if issued_done:
+            log.info("关机原因：%s", why["why"])
+            return True
+        rc = eng._abort_power_off()
+        if rc in (0, NO_SHUTDOWN_IN_PROGRESS):
+            with _SHUTDOWN_COND:
+                _record_self_abort((issue_t0, issue_t1))
+                _ISSUE_STATE.update(
+                    outcome=("aborted", "已取消正在倒计时的关机，这一次不关；下一趟早班/晚班跑完照常关机"),
+                    issuing=False, tid=None,
+                )
+                _ISSUED[0] = None
+                errwatch.clear_stopping()
+                _SHUTDOWN_COND.notify_all()
+            _record_poweroff(eng, None)
+            if want_skip:
+                modes.mark_shutdown_skipped(eng.state.dir, eng._shutdown_key(issued_at))
+            log.info("🚨 关机发出瞬间命中取消或故障留机，已撤回关机倒计时")
+            return False
+        with _SHUTDOWN_COND:
+            _ISSUE_STATE.update(
+                outcome=("failed", f"取消关机失败（退出码 {rc}），机器还会关"),
+                issuing=False, tid=None,
+            )
+            eng._shutdown_issued = True
+            eng._shutdown_issued_at = issued_at
+            eng._poweroff_window = (issue_t0, issue_t1)
+            errwatch.mark_stopping()
+            _SHUTDOWN_COND.notify_all()
+        _ABORT_ERR_TLS.busy = True
+        try:
+            log.error("关机发出瞬间命中取消或故障留机，但取消关机倒计时失败（退出码 %s），机器还会关", rc)
+        finally:
+            _ABORT_ERR_TLS.busy = False
+        return True
+    finally:
+        cleanup_needed = False
+        with _SHUTDOWN_COND:
+            if _ISSUE_STATE["issuing"]:
+                _ISSUE_STATE.update(issuing=False, tid=None, outcome=("none", ""))
+                _ISSUED[0] = None
+                _SHUTDOWN_COND.notify_all()
+                cleanup_needed = True
+        if cleanup_needed:
+            _record_poweroff(eng, None)
+
+
 def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     """Decision plus side effects. decide() judges; this does what follows a "go"."""
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    live_clock = now is None
+    now = (datetime.now(tz=SERVER_TZ) if live_clock else now).astimezone(SERVER_TZ)
     v = decide(eng, now)
     if v.code == "debug":
-        # Debug mode skips this one opportunity (see decide): record its key.
+        # Debug mode skips this one opportunity (see decide): record its key (upgrade |alarm -> |debug).
         key = eng._shutdown_key(now)
-        if modes.shutdown_skipped(eng.state.dir) != key:
+        raw_skip = modes.shutdown_skipped_raw(eng.state.dir)
+        if raw_skip not in (key, key + modes.DEBUG_SKIP_TAG):
             modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
             log.info("🔧 调试模式：这一次关机已跳过（%s）；"
                      "到期后不会补关，等下一趟队列跑完再判", key)
+    if v.code == "alarm-hold" and _handle_alarm_hold_side_effects(eng, now):
+        return False
     if not v.go:
         # "off": a shift that never records is a fault whether or not the relay powers off.
         if v.code in ("shift-running", "off"):
@@ -952,51 +1098,42 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             _give_up_poweroff(eng, now, v)
         return False
     eng._last_wait_note = ""
-    # The queue is idle and nothing else holds the machine: this is the one
-    # moment to re-run the gathering routes that failed today, before the
-    # power goes. It runs at most once a day and returns False when there is
-    # nothing to retry, so the normal path below is untouched on ordinary days.
     from ark_relay.features import collect_retry  # noqa: PLC0415
     if collect_retry.maybe_run(eng, now):
         log.info("补跑刚做完，这一轮关机判断从头再来")
         return False
     day = now.strftime("%Y-%m-%d")
-    # Never power off silently: if the day's real report has not gone out yet (the
-    # case after the morning shift), send an interim view first. A scheduled task
-    # cannot do this - it would have to land between "finished" and "power off", and
-    # that gap moves. Not for a day nothing has run on yet (the same reading as
-    # decide()'s report gate): an evening shift's skipped occasion ends at 00:00,
-    # where the new day's key powers off, and its interim would be an empty
-    # 「🔎 临时查看」 pushed at midnight.
     if (eng.cfg.report_before_shutdown and not eng.state.report_sent(day)
             and not eng.state.interim_sent(day) and eng.state.read_ledger(day)):
         log.info("关机前补发一份当前进度")
         if eng.send_daily_now(mark=False):
-            eng.state.mark_interim_sent(
-                day, len(eng.state.read_ledger(day)))
-    # One last pull of pending orders before powering off: someone may have just
-    # pressed 「下次跑完不关机」 on the phone. Pull once, at this moment only;
-    # a failed pull does not mean somebody called a halt.
+            eng.state.mark_interim_sent(day, len(eng.state.read_ledger(day)))
     if eng._before_shutdown is not None:
         try:
             eng._before_shutdown()
         except Exception:
-            log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
+            log.warning("关机前的待办检查失败", exc_info=True)
         if modes.debug_active(eng.state.dir):
             key = eng._shutdown_key(now)
-            if modes.shutdown_skipped(eng.state.dir) != key:
+            raw_skip = modes.shutdown_skipped_raw(eng.state.dir)
+            if raw_skip not in (key, key + modes.DEBUG_SKIP_TAG):
                 modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
             log.info("🔧 关机前刚收到调试模式：这一次关机跳过（%s）", key)
+            return False
+        if modes.alarm_hold_info(eng.state.dir, now):
+            key = eng._shutdown_key(now)
+            if modes.shutdown_skipped(eng.state.dir) != key:
+                modes.mark_shutdown_skipped(eng.state.dir, key, by_alarm=True)
+            log.info("🚨 关机前刚挂上故障留机锁：先不关机（%s）", key)
             return False
         if eng._scripts_running():
             log.info("关机前刚派了脚本：先不关机，等它跑完再判")
             return False
-    # The one-shot 「下次跑完不关机」 mark (phone order or desktop .bat) is spent
-    # here: this occasion is recorded as skipped, so the re-checks that follow stop
-    # at decide()'s "skipped" gate and never power off, and the machine stays on
-    # until the next queue run finishes, which shuts down as usual. It must sit
-    # after every gate and before the actual power off, or a round that was not
-    # ready to shut down anyway would burn it for nothing. See modes.skip_armed.
+    with _SHUTDOWN_COND:
+        gen0 = _ISSUE_STATE["gen"]
+    if modes.alarm_hold_info(eng.state.dir, now):
+        log.info("🚨 故障留机锁刚挂上：先不关机")
+        return False
     if modes.take_skip(eng.state.dir):
         key = eng._shutdown_key(now)
         modes.mark_shutdown_skipped(eng.state.dir, key)
@@ -1015,18 +1152,10 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     except Exception:  # the reason is for the user to read; the power-off goes on
         log.warning("关机原因没整理出来", exc_info=True)
         why = {"why": f"中继 {now:%H:%M} 判定本轮已处理完毕，发出关机"}
-    if not eng._power_off():
+    if modes.alarm_hold_info(eng.state.dir, now):
+        log.info("🚨 关机前发现故障留机锁：取消本次关机")
         return False
-    eng._shutdown_issued = True
-    eng._shutdown_issued_at = now      # decide: still up ISSUED_STUCK_MIN later is 「not-down」
-    _record_poweroff(eng, now, why)
-    log.info("关机原因：%s", why["why"])
-    _ISSUED[0] = eng                   # abort_countdown: a phone order can still cancel it
-    # From here the machine is going down: services and COM links drop as Windows
-    # tears them down, and the errors that follow are not faults (errwatch is told).
-    from ark_relay.features import errwatch  # noqa: PLC0415
-    errwatch.mark_stopping()
-    return True
+    return _issue_poweroff(eng, now, live_clock, gen0, why)
 
 
 def _give_up_poweroff(eng, now: datetime, v: "Verdict") -> None:
@@ -1037,13 +1166,15 @@ def _give_up_poweroff(eng, now: datetime, v: "Verdict") -> None:
         _note_forfeit(eng, now, v.reason)
     except Exception:  # the reset below matters more than the mark
         log.warning("「这一班不再关机」没记下来", exc_info=True)
-    eng._shutdown_issued = False
-    eng._shutdown_issued_at = None
-    eng._cancel_verdict = None
-    _ISSUED[0] = None
-    _record_poweroff(eng, None)
     from ark_relay.features import errwatch  # noqa: PLC0415
-    errwatch.clear_stopping()
+    with _SHUTDOWN_COND:
+        eng._shutdown_issued = False
+        eng._shutdown_issued_at = None
+        eng._poweroff_window = None
+        eng._cancel_verdict = None
+        _ISSUED[0] = None
+        errwatch.clear_stopping()
+    _record_poweroff(eng, None)
     log.info("关机没成：这一班不再关机，定时报警和下一班关机恢复正常")
 
 
@@ -1116,38 +1247,153 @@ def relay_poweroff_recorded(state_dir, now: datetime | None = None) -> bool:
 _ISSUED: list = [None]
 NO_SHUTDOWN_IN_PROGRESS = 1116     # shutdown /a: ERROR_NO_SHUTDOWN_IN_PROGRESS
 
+_SHUTDOWN_COND = threading.Condition(threading.Lock())
+_ISSUE_STATE: dict = {
+    "gen": 0,
+    "issuing": False,
+    "tid": None,
+    "abort": False,
+    "mark_skipped": False,
+    "outcome": None,
+}
+_RECENT_SELF_ABORTS: list[tuple[datetime, datetime, float]] = []
+_ABORT_ERR_TLS = threading.local()
+_GUARD_QUEUE: list = [None]
 
-def abort_countdown(now: datetime | None = None) -> tuple[str, str]:
+
+def register_guard_queue(q) -> None:
+    with _SHUTDOWN_COND:
+        _GUARD_QUEUE[0] = q
+
+
+def in_abort_error() -> bool:
+    return bool(getattr(_ABORT_ERR_TLS, "busy", False))
+
+
+def _record_self_abort(win: tuple[datetime, datetime] | None) -> None:
+    now_m = time.monotonic()
+    _RECENT_SELF_ABORTS[:] = [x for x in _RECENT_SELF_ABORTS if x[2] > now_m]
+    if win is not None:
+        _RECENT_SELF_ABORTS.append((win[0] - timedelta(seconds=2), win[1] + timedelta(seconds=2), now_m + 30.0))
+
+
+def poweroff_in_progress(event_at: datetime | None = None) -> bool:
+    """True when the relay is issuing/holding a power-off, or just self-aborted one covering `event_at`."""
+    now_m = time.monotonic()
+    with _SHUTDOWN_COND:
+        _RECENT_SELF_ABORTS[:] = [x for x in _RECENT_SELF_ABORTS if x[2] > now_m]
+        if _ISSUE_STATE["issuing"]:
+            return True
+        eng = _ISSUED[0]
+        if eng is not None and getattr(eng, "_shutdown_issued", False):
+            return True
+        if _RECENT_SELF_ABORTS:
+            if event_at is None:
+                return True
+            ev = event_at.astimezone(SERVER_TZ)
+            for lo, hi, _ in _RECENT_SELF_ABORTS:
+                if lo <= ev <= hi:
+                    return True
+    return False
+
+
+def on_alarm_hold() -> None:
+    """Bump alarm generation and cancel any relay or pending external shutdown countdown."""
+    with _SHUTDOWN_COND:
+        _ISSUE_STATE["gen"] += 1
+        if _ISSUE_STATE["issuing"]:
+            _ISSUE_STATE["abort"] = True
+            return
+        eng = _ISSUED[0]
+        issued = eng is not None and getattr(eng, "_shutdown_issued", False)
+        guard_q = _GUARD_QUEUE[0]
+    if issued and not in_abort_error():
+        abort_countdown(mark_skipped=False)
+        return
+    if guard_q is not None:
+        try:
+            guard_q.put(("alarm_hold", None))
+        except Exception:  # noqa: BLE001 - guard queue put must never raise
+            pass
+
+
+def abort_countdown(now: datetime | None = None, *, mark_skipped: bool = True) -> tuple[str, str]:
     """Cancel the relay's own power-off if its countdown is still running.
 
-    Returns (outcome, text): "aborted" - cancelled, this shutdown opportunity is
-    marked as skipped so the next 30-second round does not issue it again, and
-    the 「下次跑完不关机」 mark is not stored (this press has already done its job,
-    nothing carries to the next queue run); "none" - no countdown of ours is
-    running (never issued, or Windows answered 1116), the caller arms the mark as
-    usual;
-    "failed" - `shutdown /a` was refused, the machine is still going down.
+    Returns (outcome, text): "aborted" - cancelled; "none" - no countdown of ours is
+    running; "failed" - `shutdown /a` was refused, the machine is still going down.
     """
-    eng = _ISSUED[0]
-    if eng is None or not getattr(eng, "_shutdown_issued", False):
-        return "none", ""
+    with _SHUTDOWN_COND:
+        if _ISSUE_STATE["issuing"]:
+            _ISSUE_STATE["abort"] = True
+            _ISSUE_STATE["mark_skipped"] = _ISSUE_STATE["mark_skipped"] or bool(mark_skipped)
+            if threading.get_ident() == _ISSUE_STATE["tid"]:
+                return "aborted", ""
+            while _ISSUE_STATE["issuing"]:
+                _SHUTDOWN_COND.wait()
+            return _ISSUE_STATE["outcome"] or ("none", "")
+        eng = _ISSUED[0]
+        if eng is None or not getattr(eng, "_shutdown_issued", False):
+            return "none", ""
+        issued_at = getattr(eng, "_shutdown_issued_at", None)
+        win = getattr(eng, "_poweroff_window", None)
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     rc = eng._abort_power_off()
-    if rc == NO_SHUTDOWN_IN_PROGRESS:
-        log.info("收到「下次跑完不关机」：系统里已经没有关机倒计时（退出码 1116），照常记下这个标记")
-        return "none", ""
-    if rc != 0:
-        log.error("收到「下次跑完不关机」，取消关机倒计时失败（退出码 %s），机器还会关", rc)
+    # Error branch MUST precede any errwatch.system_shutting_down() check (test_texts MUTE-guard).
+    if rc not in (0, NO_SHUTDOWN_IN_PROGRESS):
+        _ABORT_ERR_TLS.busy = True
+        try:
+            if mark_skipped:
+                log.error("收到「下次跑完不关机」，取消关机倒计时失败（退出码 %s），机器还会关", rc)
+            else:
+                log.error("故障留机触发取消关机倒计时失败（退出码 %s），机器还会关", rc)
+        finally:
+            _ABORT_ERR_TLS.busy = False
         return "failed", f"取消关机失败（退出码 {rc}），机器还会关"
     from ark_relay.features import errwatch  # noqa: PLC0415
-    # The opportunity is the one the power-off was issued for, keyed at that
-    # moment - not "now", which may be past midnight or after another record.
-    key = eng._shutdown_key(getattr(eng, "_shutdown_issued_at", None) or now)
-    eng._shutdown_issued = False
-    eng._shutdown_issued_at = None
-    _record_poweroff(eng, None)
-    _ISSUED[0] = None
-    modes.mark_shutdown_skipped(eng.state.dir, key)
-    errwatch.clear_stopping()
-    log.info("⏸ 收到「下次跑完不关机」：已取消正在倒计时的关机，这一次不关；下一趟早班/晚班跑完照常关机")
-    return "aborted", "已取消正在倒计时的关机，这一次不关；下一趟早班/晚班跑完照常关机"
+    if rc == NO_SHUTDOWN_IN_PROGRESS:
+        if not (errwatch.os_shutdown() or errwatch.system_shutting_down()):
+            anchor = (win[0] if win else (issued_at or now)).astimezone(SERVER_TZ).replace(microsecond=0)
+            real_now = datetime.now(tz=SERVER_TZ)
+            window_s = max(120, min(3600, int((real_now - anchor).total_seconds()) + 120))
+            xmls = shutdown_event_xml(window_s, (1074, 1075, 566))
+            got = cancel_event(xmls) if xmls is not None else None
+            if got is not None and got[0] is not None and got[0].astimezone(SERVER_TZ) >= anchor:
+                cleared = False
+                with _SHUTDOWN_COND:
+                    if _ISSUED[0] is eng and getattr(eng, "_shutdown_issued_at", None) == issued_at:
+                        eng._shutdown_issued = False
+                        eng._shutdown_issued_at = None
+                        eng._poweroff_window = None
+                        eng._cancel_verdict = None
+                        _ISSUED[0] = None
+                        errwatch.clear_stopping()
+                        cleared = True
+                if cleared:
+                    _record_poweroff(eng, None)
+        if mark_skipped:
+            log.info("收到「下次跑完不关机」：系统里已经没有关机倒计时（退出码 1116），照常记下这个标记")
+        else:
+            log.info("故障留机取消关机：系统里已经没有关机倒计时（退出码 1116）")
+        return "none", ""
+    cleared = False
+    with _SHUTDOWN_COND:
+        if _ISSUED[0] is eng and getattr(eng, "_shutdown_issued_at", None) == issued_at:
+            _record_self_abort(win)
+            eng._shutdown_issued = False
+            eng._shutdown_issued_at = None
+            eng._poweroff_window = None
+            eng._cancel_verdict = None
+            _ISSUED[0] = None
+            errwatch.clear_stopping()
+            cleared = True
+    if cleared:
+        _record_poweroff(eng, None)
+        if mark_skipped:
+            key = eng._shutdown_key(issued_at or now)
+            modes.mark_shutdown_skipped(eng.state.dir, key)
+    if mark_skipped:
+        log.info("⏸ 收到「下次跑完不关机」：已取消正在倒计时的关机，这一次不关；下一趟早班/晚班跑完照常关机")
+        return "aborted", "已取消正在倒计时的关机，这一次不关；下一趟早班/晚班跑完照常关机"
+    log.info("🚨 故障留机触发：已取消正在倒计时的关机")
+    return "aborted", "已取消正在倒计时的关机"

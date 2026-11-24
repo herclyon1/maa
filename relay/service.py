@@ -132,6 +132,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # forever.
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:stop_event」
         self.stop_event = win32event.CreateEvent(None, 1, 0, None)
+        self.wake_event = win32event.CreateEvent(None, 0, 0, None)
+        self._shutdown_watch = None
         # What told the service to stop, for SvcStop's log line: SvcShutdown
         # sets the Windows shutdown; anything else (sc stop, a deploy) is a stop.
         self._stop_how = "停止服务"
@@ -221,6 +223,15 @@ SvcStop sets the stop event and only then pushes, on the SCM's thread; the
         logging.shutdown()
         os._exit(0)
 
+    def wake(self) -> None:
+        """Wake the main loop immediately (e.g. after clearing alarm_hold)."""
+        evt = getattr(self, "wake_event", None)
+        if evt is not None:
+            try:
+                win32event.SetEvent(evt)
+            except Exception:  # noqa: BLE001 - wake must never raise into phone thread
+                pass
+
     def _stop_in_boot(self, log) -> bool:
         """A stop has arrived while the boot sequence is still running: skip the rest."""
         asked = getattr(self, "_stop_asked", None)
@@ -245,6 +256,17 @@ SvcStop sets the stop event and only then pushes, on the SCM's thread; the
             return
         if self._stop_in_boot(log):         # a stop that came while it fetched
             return
+        boot_stages.audit_boot_alarm_hold(cfg, notifier, log)
+        from ark_relay.features import procwatch  # noqa: PLC0415
+        self._shutdown_watch = procwatch.start_shutdown_guard(cfg, engine, notifier, log)
+        try:
+            self._main_after_selfupdate(cfg, engine, notifier, log)
+        finally:
+            w = getattr(self, "_shutdown_watch", None)
+            if w is not None:
+                w.stop()
+
+    def _main_after_selfupdate(self, cfg, engine, notifier, log) -> None:
         boot_stages._stage_flush_copies(notifier, log)
         boot_stages._stage_patch_okww(cfg, notifier, log)
         if self._stop_in_boot(log):

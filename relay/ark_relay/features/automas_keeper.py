@@ -417,6 +417,8 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
 
         handles = [svc.stop_event, keeper.proc_evt]
         proc_idx = 1
+        if wake_evt := getattr(svc, "wake_event", None):
+            handles.append(wake_evt)
         watch_idx = automas_idx = -1
         if watch.handle:
             handles.append(watch.handle); watch_idx = len(handles) - 1

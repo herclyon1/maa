@@ -477,7 +477,18 @@ print("   确实要边刷边动，加 ARK_GUI_DURING_FARM=1。")
 case "$ACTION" in
   shot) CMD="shot" ;;
   # 动作后面的参数全收：没加引号的 `launch wuwa -- -krqlv=sd` 原来只剩 wuwa。
-  launch) shift; CMD="launch ${*:-wuwa}" ;;   # wuwa 或完整 exe 路径
+  launch)
+    shift
+    LAUNCH_ARG="${*:-wuwa}"
+    ARK_SG_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/shutdown-guard.sh"
+    if [ -f "$ARK_SG_LIB" ]; then
+      # shellcheck source=lib/shutdown-guard.sh
+      . "$ARK_SG_LIB"
+      _sg_rc=0
+      ark_sg_preflight launch "wingui launch" "" "" "" "$LAUNCH_ARG" || _sg_rc=$?
+      [ "$_sg_rc" = 5 ] && exit 5
+    fi
+    CMD="launch ${LAUNCH_ARG}" ;;   # wuwa 或完整 exe 路径
   key)  CMD="${ARG:?用法: wingui.sh key <esc|esc2|enter|space|shift|tab|f1-f12|单个字母或数字>}" ;;
   focus) CMD="focus" ;;
   scroll) CMD="scroll ${2:?用法: wingui.sh scroll <格数，负数向下> [x y]}${3:+ $3 ${4:?给了 x 就得给 y}}" ;;

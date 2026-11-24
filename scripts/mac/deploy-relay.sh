@@ -680,6 +680,10 @@ if ! grep -q '^SMOKE_OK$' <<<"$SMOKE"; then
 fi
 # <<< smoke gate
 printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
+if [ -n "${VER:-}" ] && [ -f "$HERE/../scripts/mac/lib/shutdown_guard.py" ]; then
+  "$RELAY_PY" -B -c "import sys; sys.path.insert(0, sys.argv[1]); import shutdown_guard as sg; sg.reconcile_pending_file(sg._ver_int(sys.argv[2]))" \
+    "$HERE/../scripts/mac/lib" "$VER" || echo "⚠️ 核销待实装记录失败，请核查" >&2
+fi
 
 # COS goes up **before** the notes are cleared. publish-cos.py zips the files as
 # they are on disk, and the machine drops the whole bundle when one file is off
@@ -738,6 +742,7 @@ echo "▶ 5.75/5 部署后核对（等开机那批核对判过、群推送 0）"
 # The routing table of docs/NOTIFICATIONS.md goes along: the titles it routes
 # `group (report)` (🖼️ 无音区产出, 🎴 明天开新卡池) are pushes the owner asked for, not
 # alarms, and machinecheck_wait reads them from that page (4th argument).
+E2_OK=0
 if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/machinecheck_wait.py" \
        "${USER_AT}:C:/Users/Administrator/ark-mcwait.py" 2>/dev/null \
    || ! scp -q "${SSH_OPTS[@]}" "$HERE/../docs/NOTIFICATIONS.md" \
@@ -751,6 +756,7 @@ else
   ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py C:\\Users\\Administrator\\ark-mcwait-notifications.md" >/dev/null 2>&1 || true
   case "$MCWAIT_RC" in
     0)
+      E2_OK=1
       printf '%s\n' "$MCWAIT" | sed 's/^/    /'
       echo "    ✅ E2：开机核对已判过、这段时间群推送 0"
       ;;
@@ -863,6 +869,11 @@ fi
 # and only when clean). On 10-11 it was 359 commits behind and its estop.sh did not know
 # the installed relay, because no step ever did this.
 "$HERE/../scripts/mac/lib/ff-toplevel.sh" "$HERE/.." || true
+
+VERIFY_PY="${ARK_VERIFY_PY:-$HOME/Money/styl-work/remote-ref/tools/verify.py}"
+if [ "$E2_OK" = 1 ] && [ -z "$WATCHDOG_FAIL_WHY" ] && [ -f "$VERIFY_PY" ]; then
+  "$RELAY_PY" "$VERIFY_PY" release-if-clear || echo "⚠️ 自动释放留机锁未完成，请核查" >&2
+fi
 
 if [ -n "$WATCHDOG_FAIL_WHY" ]; then
   echo "❌❌ 再说一遍：$WATCHDOG_FAIL_WHY" >&2

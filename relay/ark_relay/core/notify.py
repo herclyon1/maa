@@ -16,9 +16,25 @@ import urllib.parse
 import urllib.request
 import http.client
 from pathlib import Path
-from ark_relay.core.config import Config
+from ark_relay.core import texts
+from ark_relay.core.config import Config, SERVER_TZ
 
 log = logging.getLogger("ark.notify")
+
+_HOLD_EXEMPT_PREFIXES = (
+    texts.SHUTDOWN_CANCELLED,
+    "⚠️ 明日方舟理智不够",
+    texts.CONFIG_FAILED,
+    texts.ALARM_HOLD_EXPIRED,
+    texts.ALARM_SHUTDOWN_ABORTED,
+    texts.ALARM_EARLY_SHUTDOWN,
+    "🔁 鸣潮早班活跃没满",
+)
+_NOTE_TLS = threading.local()
+
+
+def is_hold_exempt(title: str) -> bool:
+    return title.startswith(_HOLD_EXEMPT_PREFIXES) or texts.is_cant_enter(title)
 
 _TIMEOUT = 20
 _RETRIES = 3
@@ -556,6 +572,54 @@ class Notifier:
                     break
         return delivered, failed
 
+    def note_alarm(self, title: str) -> None:
+        """Hold shutdown on any non-exempt group alarm; never raises, never re-enters."""
+        if getattr(_NOTE_TLS, "busy", False):
+            return
+        _NOTE_TLS.busy = True
+        try:
+            from datetime import datetime  # noqa: PLC0415
+            from ark_relay.core import statestore  # noqa: PLC0415
+            from ark_relay.features import errwatch, modes, shutdown  # noqa: PLC0415
+
+            if shutdown.in_abort_error():
+                return
+            if errwatch.os_shutdown() or errwatch.system_shutting_down():
+                return
+            if threading.current_thread().name.startswith(errwatch.PUSH_THREAD):
+                return
+            if is_hold_exempt(title):
+                return
+            evt_now = datetime.now(SERVER_TZ)
+            if modes.in_preboot_blackout(evt_now):
+                return
+            sd = self._state_dir
+            if statestore.in_store_write():
+                boot_dt = shutdown._boot_time(None, evt_now)
+                boot_iso = boot_dt.isoformat(timespec="seconds") if boot_dt else ""
+
+                def _deferred() -> None:
+                    if getattr(_NOTE_TLS, "busy", False):
+                        return
+                    _NOTE_TLS.busy = True
+                    try:
+                        if modes.set_alarm_hold(sd, title, now=evt_now, at=evt_now,
+                                                external=False, boot_at=boot_iso):
+                            shutdown.on_alarm_hold()
+                    except Exception:  # noqa: BLE001 - deferred alarm hold must never crash worker
+                        pass
+                    finally:
+                        _NOTE_TLS.busy = False
+
+                threading.Thread(target=_deferred, name="ark-alarm-hold", daemon=True).start()
+                return
+            if modes.set_alarm_hold(sd, title, at=evt_now, external=False):
+                shutdown.on_alarm_hold()
+        except Exception:  # noqa: BLE001 - note_alarm must never break alarm sending
+            pass
+        finally:
+            _NOTE_TLS.busy = False
+
     def send(self, title: str, body: str, *, alert: bool = False, daily: bool = False) -> list[str]:
         """Returns failures only when the message reached nobody.
 
@@ -571,6 +635,8 @@ class Notifier:
         if route == "log":
             log.info("不推送（日报或手机页已有）：%s ｜ %s", title, body.replace("\n", " ")[:200])
             return []
+        if alert is True and route == "group":
+            self.note_alarm(title)
         delivered, failed = self._fan_out(title, body, order=_ORDERS[route], stop_on_first=True)
         self._last.delivered = tuple(delivered)
         if not delivered:
@@ -627,6 +693,7 @@ class Notifier:
         ]
         self._announcing = True
         title = f"🔌 推送通道故障：{'、'.join(failed)}"
+        self.note_alarm(title)
         try:
             # The default order is _GROUP_ORDER, so this reaches the group too.
             sent, _ = self._fan_out(title, "\n".join(lines))

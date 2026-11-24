@@ -88,7 +88,8 @@ def shutdown_requested(xmls: "list[str]") -> "dict | None":
             except ValueError:
                 clock, when = "", None
         return {"clock": clock, "at": when, "process": data[0] if data else "",
-                "user": data[6] if len(data) > 6 else ""}
+                "user": data[6] if len(data) > 6 else "",
+                "comment": data[5] if len(data) > 5 else ""}
     return None
 
 
@@ -778,3 +779,163 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
         return False
     threading.Thread(target=run, name="proc-watch", daemon=True).start()
     return True
+
+
+_PENDING_EXT_TTL_S = 2 * 3600.0
+
+
+def _make_evt_callback(q):
+    """Build an EvtSubscribe callback capturing only the SimpleQueue (no reference cycle)."""
+    import win32evtlog  # noqa: PLC0415
+
+    def _cb(action, _ctx, event) -> None:
+        if action != win32evtlog.EvtSubscribeActionDeliver:
+            return
+        try:
+            xml = win32evtlog.EvtRender(event, win32evtlog.EvtRenderEventXml)
+        except Exception:  # noqa: BLE001 - pywintypes.error is not an OSError
+            return
+        if xml:
+            q.put(("xml", str(xml)))
+
+    return _cb
+
+
+class ShutdownGuardWatch:
+    """Live System-log subscriber (1074/1075) that aborts external shutdowns while alarm_hold is active."""
+
+    def __init__(self, state_dir, eng, notifier, log_obj=None) -> None:
+        import queue  # noqa: PLC0415
+        self._state_dir = state_dir
+        self._eng = eng
+        self._notifier = notifier
+        self._log = log_obj or logging.getLogger("ark.procwatch")
+        self._q: "queue.SimpleQueue" = queue.SimpleQueue()
+        self._sub = None
+        self._thread: threading.Thread | None = None
+        self._pending_ext_1074: "tuple[dict, float] | None" = None
+
+    def start(self, *, subscribe: bool = True) -> bool:
+        from ark_relay.features import shutdown  # noqa: PLC0415
+        if subscribe:
+            try:
+                import win32evtlog  # noqa: PLC0415
+                cb = _make_evt_callback(self._q)
+                self._sub = win32evtlog.EvtSubscribe(
+                    "System",
+                    win32evtlog.EvtSubscribeToFutureEvents,
+                    Query="*[System[(EventID=1074 or EventID=1075)]]",
+                    Callback=cb,
+                )
+            except Exception:  # noqa: BLE001 - pywintypes.error is not an OSError
+                self._log.warning("未能启动外部关机事件订阅", exc_info=True)
+                self._sub = None
+        shutdown.register_guard_queue(self._q)
+        self._thread = threading.Thread(target=self._run, name="shutdown-guard", daemon=True)
+        self._thread.start()
+        return self._sub is not None
+
+    def stop(self) -> None:
+        from ark_relay.features import shutdown  # noqa: PLC0415
+        shutdown.register_guard_queue(None)
+        sub, self._sub = self._sub, None
+        if sub is not None:
+            try:
+                if hasattr(sub, "Close"):
+                    sub.Close()
+            except Exception:  # noqa: BLE001 - closing Win32 handle on teardown
+                pass
+        self._q.put(None)
+        t = self._thread
+        if t is not None and t.is_alive() and t is not threading.current_thread():
+            t.join(timeout=2.0)
+
+    def _run(self) -> None:
+        while True:
+            item = self._q.get()
+            if item is None:
+                return
+            kind, payload = item
+            try:
+                if kind == "alarm_hold":
+                    self._handle_alarm_hold()
+                elif kind == "xml":
+                    self._handle_xml(payload)
+            except Exception:  # noqa: BLE001 - guard thread must survive bad events
+                self._log.warning("处理外部关机防护事件时异常", exc_info=True)
+
+    def _handle_xml(self, xml: str) -> None:
+        import xml.etree.ElementTree as ET  # noqa: PLC0415
+        try:
+            ev = ET.fromstring(xml)
+        except ET.ParseError:
+            return
+        eid = (ev.findtext(f"{_EVT_NS}System/{_EVT_NS}EventID") or "").strip()
+        if eid == "1075":
+            self._pending_ext_1074 = None
+            return
+        if eid == "1074":
+            self._handle_1074(xml)
+
+    def _handle_1074(self, xml: str) -> None:
+        from ark_relay.core import texts  # noqa: PLC0415
+        from ark_relay.features import errwatch, modes, shutdown  # noqa: PLC0415
+        if errwatch.relay_shutdown_issued():
+            return
+        asked = shutdown_requested([xml])
+        if not asked:
+            return
+        if shutdown.poweroff_in_progress(asked.get("at")) or farm_poweroff_planned(asked):
+            return
+        hold = modes.alarm_hold_info(self._state_dir)
+        if hold is None:
+            self._pending_ext_1074 = (asked, time.monotonic() + _PENDING_EXT_TTL_S)
+            return
+        rc = self._eng._abort_power_off()
+        body = texts.alarm_shutdown_aborted_body(
+            rc == 0, rc,
+            str(asked.get("user") or ""),
+            str(asked.get("process") or ""),
+            str(asked.get("comment") or ""),
+        )
+        self._log.info("故障留机期间收到外部 1074，尝试取消关机（rc=%s，%s）", rc, asked.get("process"))
+        self._notifier.send(texts.ALARM_SHUTDOWN_ABORTED, body, alert=True)
+
+    def _handle_alarm_hold(self) -> None:
+        from ark_relay.core import texts  # noqa: PLC0415
+        from ark_relay.features import errwatch, shutdown  # noqa: PLC0415
+        if errwatch.relay_shutdown_issued():
+            return
+        pending = self._pending_ext_1074
+        if pending is None:
+            return
+        asked, exp = pending
+        if time.monotonic() > exp:
+            self._pending_ext_1074 = None
+            return
+        rc = self._eng._abort_power_off()
+        if rc in (0, shutdown.NO_SHUTDOWN_IN_PROGRESS):
+            self._pending_ext_1074 = None
+        if rc == shutdown.NO_SHUTDOWN_IN_PROGRESS:
+            return
+        body = texts.alarm_shutdown_aborted_body(
+            rc == 0, rc,
+            str(asked.get("user") or ""),
+            str(asked.get("process") or ""),
+            str(asked.get("comment") or ""),
+        )
+        self._log.info("挂起故障留机锁后尝试取消先前外部 1074（rc=%s，%s）", rc, asked.get("process"))
+        self._notifier.send(texts.ALARM_SHUTDOWN_ABORTED, body, alert=True)
+
+
+def start_shutdown_guard(cfg, eng, notifier, log_obj=None) -> "ShutdownGuardWatch | None":
+    from ark_relay.core import config  # noqa: PLC0415
+    if (not config.IS_WINDOWS
+            or not getattr(cfg, "state_dir", None)
+            or eng is None
+            or not hasattr(eng, "_abort_power_off")
+            or notifier is None):
+        return None
+    w = ShutdownGuardWatch(cfg.state_dir, eng, notifier, log_obj)
+    w.start(subscribe=True)
+    return w

@@ -20,7 +20,12 @@ if [ -f "$ARK_ACTION_LIB" ]; then
   # shellcheck source=lib/mac-action-log.sh
   . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
 fi
-BODY="${1:?用法: order-now.sh '{\"action\":...}'}"
+NO_ABORT=0
+if [ "${1:-}" = "--no-abort" ]; then
+  NO_ABORT=1
+  shift
+fi
+BODY="${1:?用法: order-now.sh [--no-abort] '{\"action\":...}'}"
 python3 -c "import json,sys; json.loads(sys.argv[1])" "$BODY"
 # A changing order without "confirmed": true is refused by the relay (commands.py, gate 2),
 # and that refusal goes to the group as 「📱 配置没改成」: on 10-10 04:16:12 a set_master sent
@@ -40,17 +45,18 @@ TOPIC="$(sed -n 's/^ARK_PHONE_TOPIC=//p' "$ENV" 2>/dev/null | tail -1 | tr -d '\
 PIN="$(sed -n 's/^ARK_PHONE_PIN=//p' "$ENV" 2>/dev/null | tail -1 | tr -d '\r')"
 [[ -n "$TOPIC" && -n "$PIN" ]] || { echo "✗ $ENV 里没有 ARK_PHONE_TOPIC / ARK_PHONE_PIN——按 ~/.config/ark/密钥总表.md 补上" >&2; exit 1; }
 MSG="$(python3 -c 'import json,sys,time; print(json.dumps({"v":1,"kind":"cmd","pin":sys.argv[1],"ts":int(time.time()),"body":json.loads(sys.argv[2])}, ensure_ascii=False))' "$PIN" "$BODY")"
-code="$(curl -s -o /dev/null -w '%{http_code}' -X POST --data-binary "$MSG" "https://ntfy.sh/$TOPIC")"
+code="$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' -X POST --data-binary "$MSG" "https://ntfy.sh/$TOPIC")"
 [[ "$code" == "200" ]] || { echo "✗ ntfy 回了 $code" >&2; exit 1; }
 echo "▶ 已发到机器（ntfy ${code}）：$BODY —— 去 relay.log 看「📱 手机指令」"
 
-# 「下次跑完不关机」 must also stop a power-off that has already begun. 10-09 22:42:35 this
-# order reached the relay about 20 s into its `shutdown /s /t 60` countdown; the relay only
-# stored it for the *next* shutdown and the machine went off at 22:43. So for skip_shutdown
-# (not the cancel form) abort any countdown in progress. The relay has the flag by now, so
-# its next pass eats it instead of powering off again. Exit 1116 = no shutdown was pending.
-if python3 -c 'import json,sys; b=json.loads(sys.argv[1]); sys.exit(0 if b.get("action")=="skip_shutdown" and not b.get("off") and b.get("on") is not False else 1)' "$BODY"; then
-  sleep 8
+if [ "$NO_ABORT" = 1 ]; then
+  exit 0
+fi
+
+# 「下次跑完不关机」 / 「故障留机锁开启」 must also stop a power-off that has already begun.
+abort_wait="$(python3 -c 'import json,sys; b=json.loads(sys.argv[1]); a=b.get("action"); print("8" if a=="skip_shutdown" and not b.get("off") and b.get("on") is not False else ("5" if a=="alarm_hold" and b.get("on") and not b.get("off") else ""))' "$BODY")"
+if [ -n "$abort_wait" ]; then
+  sleep "$abort_wait"
   out="$("$(dirname "$0")/winps.sh" 'shutdown /a 2>$null; "exit=$LASTEXITCODE"' 2>&1 | tr -d '\r' | grep -o 'exit=[0-9]*' | tail -1)"
   case "$out" in
     exit=0)    echo "▶ 机器正在关机倒数，已当场叫停（shutdown /a）" ;;

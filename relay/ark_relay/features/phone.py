@@ -2221,6 +2221,10 @@ def boot_backlog(cmds: list[dict], log, started: float | None = None) -> list[di
         if action in LIVE_ONLY_ACTIONS and _before(body, started):
             log.warning("信箱里有一条关机期间按的「%s」，开机不执行（当时和现在都没有在跑的东西）", action)
             continue
+        if action == "alarm_hold" and _before(body, started):
+            if not (bool(body.get("off")) and bool(str(body.get("expected_at") or "").strip())):
+                log.info("信箱里有一条重启前的「alarm_hold」，开机不执行")
+                continue
         out.append(body)
     return out
 
@@ -2280,7 +2284,7 @@ def _push_farm_trouble(notifier, log) -> None:
 
 def _phone_execute(apply_command, notifier, log, push_state, receipt,
                    body: dict, action: str, sent, notify: bool, meta: dict | None = None,
-                   *, state_dir=None, via: str = "live", queued_at=None) -> None:
+                   *, state_dir=None, via: str = "live", queued_at=None, wake=None) -> None:
     """Apply one order, write its receipt, push the state - live or drained alike.
 
     `notify` False (an order drained after the run) keeps a success off the
@@ -2292,6 +2296,14 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
     if action == "monthcard" and body.get("at") is None:
         _monthcard_stamp_at(body, sent, meta)
     ok, msg = apply_command(body)
+    if ok and action == "alarm_hold" and body.get("off") and wake is not None:
+        wake()
+    if action == "alarm_hold" and body.get("internal"):
+        if not ok:
+            log.info("内部留机锁指令未生效：%s", msg)
+        else:
+            log.info("内部留机锁指令已执行：%s", msg)
+        return
     log.info("📱 手机指令 %s：%s", action, msg)
     _push_farm_trouble(notifier, log)
     # Whatever the order changed or started, the next 「is anything running」
@@ -2328,7 +2340,7 @@ def _phone_enqueue(queue, log, queued_receipt, raw: dict, action: str, mid: str,
         queued_receipt(action, sent, receipt_target(raw))
 
 
-def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
+def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None, wake=None):
     """Build the callback for what happens after a button is pressed on the phone.
 
     A separate step because it has two entry points: at boot the commands that
@@ -2360,7 +2372,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         push_state("指令排队")
 
     _execute = functools.partial(_phone_execute, apply_command, notifier, log, push_state, _receipt,
-                                 state_dir=state_dir)
+                                 state_dir=state_dir, wake=wake)
 
     def _refuse_dispatch(action: str, sent) -> None:
         """An order that starts a run, pressed while one is running: answered on the
@@ -2467,7 +2479,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                            notifier, log)
             push_state("红按钮")
             return
-        if action not in ("skip_shutdown", "debug_mode", "echo_farm_stop", "echo_farm_until",
+        if action not in ("skip_shutdown", "debug_mode", "alarm_hold", "echo_farm_stop", "echo_farm_until",
                           "monthcard", "tacet_shots"):
             # Config changed while a script is running gets clobbered by
             # AUTO-MAS's in-memory copy, so the order waits for the end of the
@@ -2580,7 +2592,8 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     pass
     hb = Heartbeat(box.topic, cfg.state_dir, cos=box.cos)   # its beat on COS too
     beat.append(hb)
-    run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir)
+    run_phone_cmd = _make_phone_cmd(engine, notifier, log, hb, push_state, cfg.state_dir,
+                                    wake=getattr(svc, "wake", None))
     # Orders queued while a script ran are applied at the top of the first tick
     # that finds nothing running - before that tick's shutdown decision.
     engine._phone_drain = run_phone_cmd.drain

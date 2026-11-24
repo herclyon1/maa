@@ -555,6 +555,7 @@ class ErrorKindAlert(logging.Handler):
         # every new record notifies the condition and would cut a retry backoff short.
         # close() sets it so a stop does not wait out a RETRY_S backoff.
         self._wake = threading.Event()
+        self._tls = threading.local()
         self._days: dict[str, dict] = {}   # before _read_queue: a lost queue is counted
         self._saved_at = 0.0
         self._queue: list[dict] = self._read_queue()
@@ -594,8 +595,12 @@ class ErrorKindAlert(logging.Handler):
             # The alarms the robot refused before the restart are lost. Logging it would not
             # reach the group (this handler's own records never come back in), so the
             # lost queue becomes the first item of the new one: it goes to the group.
-            return [self._lost_queue_item(f"{QUEUE_FILE} 读不出来（{type(exc).__name__}），"
-                                          "重启前没送出去的群报警丢了")]
+            item = self._lost_queue_item(f"{QUEUE_FILE} 读不出来（{type(exc).__name__}），"
+                                         "重启前没送出去的群报警丢了")
+            note = getattr(self._notifier, "note_alarm", None)
+            if callable(note):
+                note(item["title"])
+            return [item]
         return [x for x in data if isinstance(x, dict) and x.get("title")] if isinstance(data, list) else []
 
     def _lost_queue_item(self, line: str) -> dict:
@@ -637,6 +642,17 @@ class ErrorKindAlert(logging.Handler):
             return ""
 
     # -- taking records in --
+    def handle(self, record: logging.LogRecord) -> bool:
+        self._tls.pending_title = None
+        rv = super().handle(record)
+        title = getattr(self._tls, "pending_title", None)
+        self._tls.pending_title = None
+        if title:
+            note = getattr(self._notifier, "note_alarm", None)
+            if callable(note):
+                note(title)
+        return rv
+
     def emit(self, record: logging.LogRecord) -> None:
         if record.name == log.name or getattr(record, PUSHED, False):
             return
@@ -683,6 +699,7 @@ class ErrorKindAlert(logging.Handler):
         stamp = when.strftime("%Y-%m-%d %H:%M:%S")
         sig = record_signature(record)
         item = self._item(record, sig, stamp)
+        self._tls.pending_title = item["title"]
         with self._cv:
             same = None
             if self._backlog():

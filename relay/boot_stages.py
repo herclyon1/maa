@@ -322,8 +322,12 @@ def _stage_bootstrap():
     from ark_relay.features import selfcheck as tape  # noqa: PLC0415
     tape.install(cfg.state_dir, cfg.automas_dir)
     notifier = Notifier(cfg)
-    from ark_relay.features import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch, modes  # noqa: PLC0415
     from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+    try:
+        modes._BOOT_HOLD_SNAP = modes.alarm_hold_raw(cfg.state_dir) if getattr(cfg, "state_dir", None) else None
+    except (OSError, ValueError, KeyError, TypeError):
+        modes._BOOT_HOLD_SNAP = None
     built: list = []          # the engine, once there is one: the power-off probe reads it
     errwatch.install(notifier, lambda: bool(built) and _relay_poweroff_live(built[0]),
                      version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
@@ -353,6 +357,163 @@ def _stage_bootstrap():
     # (machinechecks/system.py CODE_MARK - keep the words).
     log.info("中继代码版本 v%s", StateStore(cfg.state_dir).get("versions", "code") or "?")
     return log, cfg, notifier, engine
+
+
+def _xml_event_info(xml: str) -> tuple[str, "datetime | None"]:
+    """Return (EventID, TimeCreated in SERVER_TZ or None) from one Windows event XML."""
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+    from datetime import datetime, timezone  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    ns = "{http://schemas.microsoft.com/win/2004/08/events/event}"
+    try:
+        ev = ET.fromstring(xml)
+    except ET.ParseError:
+        return "", None
+    eid = (ev.findtext(f"{ns}System/{ns}EventID") or "").strip()
+    stamp = ev.find(f"{ns}System/{ns}TimeCreated")
+    when = None
+    if stamp is not None and stamp.get("SystemTime"):
+        raw = stamp.get("SystemTime").rstrip("Z").split(".")[0]
+        try:
+            when = datetime.fromisoformat(raw).replace(tzinfo=timezone.utc).astimezone(SERVER_TZ)
+        except ValueError:
+            when = None
+    return eid, when
+
+
+def _parse_6008_cut_time(xmls: "list[str] | None", t_boot) -> "datetime | None":
+    """Parse unexpected power-loss timestamp from current boot's Event 6008 EventData[0..1]."""
+    if not xmls:
+        return None
+    import re  # noqa: PLC0415
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+    from datetime import datetime  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    ns = "{http://schemas.microsoft.com/win/2004/08/events/event}"
+    for xml in xmls:
+        eid, created = _xml_event_info(xml)
+        if eid != "6008" or created is None:
+            continue
+        if abs((created - t_boot).total_seconds()) > 600:
+            continue
+        try:
+            ev = ET.fromstring(xml)
+        except ET.ParseError:
+            continue
+        data = [(d.text or "").replace("\u200e", "").replace("\u200f", "").strip()
+                for d in ev.iter(f"{ns}Data")]
+        if len(data) < 2:
+            continue
+        tm, dt_s = data[0], data[1]
+        m_d = re.fullmatch(r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})", dt_s)
+        m_t = re.fullmatch(r"(\d{1,2}):(\d{1,2}):(\d{1,2})", tm)
+        if not (m_d and m_t):
+            continue
+        try:
+            return datetime(
+                int(m_d.group(1)), int(m_d.group(2)), int(m_d.group(3)),
+                int(m_t.group(1)), int(m_t.group(2)), int(m_t.group(3)),
+                tzinfo=SERVER_TZ,
+            )
+        except ValueError:
+            continue
+    return None
+
+
+def audit_boot_alarm_hold(cfg, notifier, log) -> None:
+    """Audit whether the previous boot shut down early while an alarm_hold was active."""
+    from datetime import datetime, timedelta  # noqa: PLC0415
+    from ark_relay.core import texts  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.features import errwatch, modes, procwatch, shutdown  # noqa: PLC0415
+
+    snap = modes._BOOT_HOLD_SNAP
+    modes._BOOT_HOLD_SNAP = None
+    if snap is None or not getattr(cfg, "state_dir", None) or notifier is None:
+        return
+    parsed = modes._valid_alarm_hold(snap)
+    if parsed is None:
+        modes.clear_alarm_hold(cfg.state_dir)
+        log.warning("开机核查发现故障留机锁内容损坏，已清理")
+        errs = notifier.send(texts.ALARM_EARLY_SHUTDOWN, texts.ALARM_HOLD_CORRUPT, alert=True)
+        if errs:
+            log.warning("故障留机锁损坏告警没推出去",
+                        extra=errwatch.alarm(texts.ALARM_EARLY_SHUTDOWN, texts.ALARM_HOLD_CORRUPT))
+        return
+
+    end_dt, _boot_dt, created_dt, _at_dt = parsed
+    now = datetime.now(tz=SERVER_TZ)
+    boot_tick = shutdown._boot_time(None, now)
+    xmls = shutdown.shutdown_event_xml(7 * 86400, (1074, 1075, 6005))
+
+    t_boot = None
+    asked = None
+    if xmls is not None:
+        boots = []
+        for idx, x in enumerate(xmls):
+            eid, when = _xml_event_info(x)
+            if eid == "6005" and when is not None:
+                boots.append((idx, when))
+        if boots and (boot_tick is None or abs((boots[0][1] - boot_tick).total_seconds()) <= 600):
+            idx0, t_boot = boots[0]
+            idx1 = boots[1][0] if len(boots) > 1 else len(xmls)
+            asked = procwatch.shutdown_requested(xmls[idx0 + 1:idx1])
+        else:
+            t_boot = boot_tick
+            if t_boot is not None:
+                older = [x for x in xmls if (_xml_event_info(x)[1] or t_boot) < t_boot]
+                asked = procwatch.shutdown_requested(older)
+                if asked and asked.get("at") is not None and snap.get("boot_at"):
+                    try:
+                        prev_boot = modes._parse_bj(snap["boot_at"])
+                        if asked["at"].astimezone(SERVER_TZ) < prev_boot - timedelta(seconds=60):
+                            asked = None
+                    except ValueError:
+                        pass
+    else:
+        t_boot = boot_tick
+
+    if t_boot is None or not (created_dt < t_boot):
+        return
+
+    modes.clear_alarm_hold(
+        cfg.state_dir,
+        expected_created_at=str(snap["created_at"]),
+        expected_at=str(snap["at"]),
+        now=now,
+    )
+
+    if xmls is None:
+        detail = texts.ALARM_EARLY_NO_LOG
+    elif asked is None:
+        xmls_6008 = shutdown.shutdown_event_xml(7 * 86400, (6008,))
+        t_cut = _parse_6008_cut_time(xmls_6008, t_boot)
+        if t_cut is not None and t_cut >= end_dt:
+            log.info("上次异常断电发生在留机锁到期后（断电 %s，到期 %s）",
+                     t_cut.strftime("%Y-%m-%d %H:%M:%S"), snap["until"])
+            return
+        detail = texts.ALARM_EARLY_NO_1074
+    elif asked.get("at") is None:
+        detail = "系统日志里有上次关机记录，但读不出具体时刻，无法确认发起时刻。"
+    else:
+        asked_at = asked["at"].astimezone(SERVER_TZ)
+        if not (asked_at < t_boot and asked_at < end_dt):
+            return
+        if procwatch.farm_poweroff_planned(asked):
+            return
+        parts = [p for p in (
+            f"关机时刻：{asked.get('clock')}" if asked.get("clock") else "",
+            f"发起账号：{asked.get('user')}" if asked.get("user") else "",
+            f"发起程序：{asked.get('process')}" if asked.get("process") else "",
+            f"说明：{asked.get('comment')}" if asked.get("comment") else "",
+        ) if p]
+        detail = "；".join(parts) if parts else "系统日志里有上次关机记录，但没写发起方。"
+
+    body = texts.alarm_early_shutdown_body(str(snap.get("reason") or ""), str(snap.get("until") or ""), detail)
+    errs = notifier.send(texts.ALARM_EARLY_SHUTDOWN, body, alert=True)
+    if errs:
+        log.warning("上次提前关机告警没推出去",
+                    extra=errwatch.alarm(texts.ALARM_EARLY_SHUTDOWN, body))
 
 
 def _stage_flush_copies(notifier, log) -> None:

@@ -145,12 +145,16 @@ def _host_class():
         SvcShutdown = service.ArkRelayService.SvcShutdown
         _wait_stop_push = service.ArkRelayService._wait_stop_push
         main = service.ArkRelayService.main
+        _main_after_selfupdate = service.ArkRelayService._main_after_selfupdate
         _stop_in_boot = service.ArkRelayService._stop_in_boot
+        wake = service.ArkRelayService.wake
 
         def __init__(self) -> None:
             import win32event  # noqa: PLC0415
             # Manual reset, as in the service: three threads wait on it.
             self.stop_event = win32event.CreateEvent(None, 1, 0, None)
+            self.wake_event = win32event.CreateEvent(None, 0, 0, None)
+            self._shutdown_watch = None
             self._stop_how = "停止中继"
             self._stop_asked = threading.Event()
             self._stop_pushed = threading.Event()
@@ -396,6 +400,7 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     from ark_relay.core.config import Config  # noqa: PLC0415
     from ark_relay.features import errwatch  # noqa: PLC0415
     cfg = Config()
+    errwatch.mark_os_shutdown()
     _stop_push_errwatch(cfg)
     try:
         return _stop_push_send(state, cfg, wait_s)

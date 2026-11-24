@@ -18,6 +18,7 @@ PrefixNotEquals, so nothing published here ever expires; latest.json still carri
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import io
 import json
@@ -116,6 +117,43 @@ def stale_files(manifest: dict) -> list[str]:
 
 
 DEFAULT_GAME_HOST = "100.65.39.119"
+_LAST_PROBE = [""]
+
+
+def _pending_deploy_path() -> Path:
+    return Path(os.environ.get("ARK_PENDING_DEPLOY") or (Path.home() / ".cache/ark-relay/pending_deploy.json"))
+
+
+def _record_pending_deploy(ver: int) -> None:
+    p = _pending_deploy_path()
+    lock_p = p.with_name(p.name + ".lock")
+    lock_p.parent.mkdir(parents=True, exist_ok=True)
+    sha = ""
+    try:
+        r = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"],
+                           capture_output=True, text=True, timeout=5)
+        if r.returncode == 0:
+            sha = (r.stdout or "").strip()
+    except OSError:
+        pass
+    entry = {
+        "version": str(ver),
+        "commit": sha,
+        "published_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    with open(lock_p, "a+", encoding="utf-8") as lf:
+        fcntl.flock(lf, fcntl.LOCK_EX)
+        try:
+            items = json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+            if not isinstance(items, list):
+                items = []
+        except (OSError, ValueError):
+            items = []
+        items = [x for x in items if str(x.get("version") or "") != str(ver)]
+        items.append(entry)
+        tmp = p.with_name(f".{p.name}.{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, p)
 
 
 def _online_check(manifest_ver: int) -> "str | None":
@@ -130,6 +168,7 @@ def _online_check(manifest_ver: int) -> "str | None":
         with socket.create_connection((host, 22), timeout=2):
             pass
     except OSError:
+        _LAST_PROBE[0] = "offline"
         print(f"已核实游戏机 {host} 离线，仅发 COS 供下次开机自更新")
         return None
     try:
@@ -139,12 +178,15 @@ def _online_check(manifest_ver: int) -> "str | None":
             capture_output=True, text=True, timeout=10,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
+        _LAST_PROBE[0] = "online_error"
         return (f"游戏机 {host} 当前在线，但核验运行版本失败（{type(exc).__name__}），"
                 "严禁跳过上机直接发 COS；重启中继不影响在跑队列，请直接跑 scripts/mac/deploy-relay.sh")
     cur = (r.stdout or "").strip()
     if r.returncode == 0 and cur and cur.split("-", 1)[0] == str(manifest_ver):
+        _LAST_PROBE[0] = "online_same"
         print(f"已核实游戏机 {host} 已在运行 v{manifest_ver}（{cur}），允许补发 COS")
         return None
+    _LAST_PROBE[0] = "online_behind"
     shown = cur or f"未知（SSH 退出码 {r.returncode}）"
     return (f"游戏机 {host} 当前在线且尚未装上 v{manifest_ver}（机上 {shown}），"
             "严禁跳过上机直接发 COS；重启中继不影响在跑队列，请直接跑 scripts/mac/deploy-relay.sh")
@@ -155,6 +197,7 @@ USAGE = """usage: scripts/mac/publish-cos.py            publish relay/ as it is 
 
 
 def main(argv: list[str]) -> int:
+    _LAST_PROBE[0] = ""
     # Only no argument publishes; any other argument must be --check (--help once published a branch).
     args = list(argv)
     if args and args != ["--check"]:
@@ -211,6 +254,8 @@ def main(argv: list[str]) -> int:
     ok = back is not None and json.loads(back).get("version") == ver
     print(f"{'✓' if ok else '✗'} COS：v{ver}，{len(manifest['files'])} 个文件，bundle {len(bundle) / 1024:.0f} KB，"
           f"{time.time() - t0:.1f} 秒{'，回读一致' if ok else '，回读不一致！'}")
+    if ok and os.environ.get("ARK_FROM_DEPLOY_RELAY") != "1" and _LAST_PROBE[0] == "offline":
+        _record_pending_deploy(ver)
     return 0 if ok else 1
 
 

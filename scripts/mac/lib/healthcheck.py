@@ -201,6 +201,9 @@ try:
           "留着！下一趟早班/晚班跑完不会关机，机器开到再下一趟跑完——不想要就趁还没用上用手机页或 order.sh 撤回")
     check("调试模式没留着", not _modes.get("debug_until"),
           f"留着，到 {_modes.get('debug_until')}——跑完就不关机")
+    _ah = _modes.get("alarm_hold")
+    check("故障留机锁没留着", not _ah,
+          f"留着，到 {_ah.get('until') if isinstance(_ah, dict) else _ah}——未修完故障期间不关机")
 except Exception as _exc:  # noqa: BLE001
     check("读得到 state.json 的 modes", False, f"{type(_exc).__name__}: {_exc}")
 # A test window left open turns the user's own manual runs into 「test, not

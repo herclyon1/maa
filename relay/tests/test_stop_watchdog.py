@@ -673,6 +673,34 @@ def _part_publish_cos_args():
 
             pc.subprocess.run = _ssh_timeout
             check("_online_check：在线但 SSH 超时 fail-closed 拒发", bool(pc._online_check(20261124015958)), True)
+
+            # Offline publish records pending_deploy.json after ok readback; ARK_FROM_DEPLOY_RELAY does not.
+            import json as _json
+            pend_file = d / "pending_deploy.json"
+            orig_pend = os.environ.get("ARK_PENDING_DEPLOY")
+            orig_put, orig_get = pc._put, pc._get
+            try:
+                os.environ["ARK_PENDING_DEPLOY"] = str(pend_file)
+                os.environ.pop("ARK_FROM_DEPLOY_RELAY", None)
+                pc._online_check = orig_online
+                pc._client = lambda: _types.SimpleNamespace(probe=lambda: None)
+                pc.socket.create_connection = _offline
+                pc._put = lambda *a, **kw: None
+                pc._get = lambda *a, **kw: _json.dumps({"version": 20261124015958}).encode("utf-8")
+                pc.subprocess.run = lambda *a, **kw: _types.SimpleNamespace(returncode=0, stdout="deadbeef\n")
+                check("离线单发 COS 成功返回 0", pc.main([]), 0)
+                items = _json.loads(pend_file.read_text(encoding="utf-8"))
+                check("离线单发 COS 写 pending_deploy.json", [x["version"] for x in items], ["20261124015958"])
+                pend_file.unlink()
+                os.environ["ARK_FROM_DEPLOY_RELAY"] = "1"
+                check("deploy-relay.sh 内调用返回 0", pc.main([]), 0)
+                check("deploy-relay.sh 内调用不写 pending_deploy.json", pend_file.exists(), False)
+            finally:
+                pc._put, pc._get = orig_put, orig_get
+                if orig_pend is None:
+                    os.environ.pop("ARK_PENDING_DEPLOY", None)
+                else:
+                    os.environ["ARK_PENDING_DEPLOY"] = orig_pend
         finally:
             pc.socket.create_connection = orig_conn
             pc.subprocess.run = orig_run

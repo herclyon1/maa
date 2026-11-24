@@ -90,7 +90,7 @@ log = logging.getLogger("ark.commands")
 # Actions that only change what happens next, and undo themselves.
 # `monthcard` only writes the relay's own record of the user's monthly-card purchases
 # (monthcard.py), no script config, so it needs no confirmation either.
-REVERSIBLE = {"skip_today", "unskip_today", "debug_mode", "skip_shutdown", "weekly_boss",
+REVERSIBLE = {"skip_today", "unskip_today", "debug_mode", "alarm_hold", "skip_shutdown", "weekly_boss",
               "echo_farm_stop", "echo_farm_until", "tacet_shots", "monthcard"}
 
 # Actions that change configuration (AUTO-MAS through its API while the backend
@@ -852,6 +852,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # Off from a person (phone / order-now.sh) also releases a skip the spent
             # skip-next-shutdown mark recorded (modes.set_debug release_skip).
             return set_debug(state_dir, n, bool(cmd.get("off")), release_skip=bool(cmd.get("off")))
+        if action == "alarm_hold":
+            return _alarm_hold_cmd(cmd)
         if action == "set_config":
             return _set_config(cmd)
         if action == "set_master":
@@ -918,5 +920,33 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         log.exception("执行指令失败: %s", action)
         return False, f"执行出错: {exc}"
     return False, f"未处理的动作: {action}"
+
+def _alarm_hold_cmd(cmd: dict) -> tuple[bool, str]:
+    from ark_relay.features import modes, shutdown  # noqa: PLC0415
+    state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+    on_flag = bool(cmd.get("on"))
+    off_flag = bool(cmd.get("off"))
+    if on_flag == off_flag:
+        return False, "故障留机锁指令必须明确只传 on:true 或 off:true"
+    if on_flag:
+        alert_ts = str(cmd.get("alert_ts") or "").strip()
+        if alert_ts:
+            try:
+                modes._parse_bj(alert_ts)
+            except ValueError:
+                return False, f"故障时间格式不对：{alert_ts!r}"
+        reason = str(cmd.get("reason") or "").strip() or "外部指令要求留机"
+        ext = bool(cmd.get("internal") or alert_ts)
+        changed = modes.set_alarm_hold(state_dir, reason, at=alert_ts or None, external=ext)
+        if changed:
+            shutdown.on_alarm_hold()
+            return True, f"故障留机锁已开启：{reason}"
+        return True, "当前未开启故障留机锁（处于定时开机前缓冲窗，或已有更新的解锁记录）"
+    return modes.clear_alarm_hold(
+        state_dir,
+        expected_at=str(cmd.get("expected_at") or "").strip(),
+        expected_created_at=str(cmd.get("expected_created_at") or "").strip(),
+    )
+
 
 __all__ = ['ALLOWED', 'DISPATCH_MODE', 'ESTOP_LAST', 'ESTOP_WINDOWS_FILE', 'MUTATING', 'REVERSIBLE', 'START_SHAPE_REFUSED', 'apply_command', 'dispatch_body', 'estop', 'estop_label', 'estop_windows', 'mas_post', 'mas_up', 'restore_script_in_queue', 'run_script', 'SkipError', 'skip_script_all_items', 'skip_script_in_queue']

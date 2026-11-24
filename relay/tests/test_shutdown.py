@@ -3616,5 +3616,239 @@ def _part_statestore_threads():
           sorted(["state.json", fresh_tmp.name, other_tmp.name]))
 
 
+def _part_alarm_hold_root_cure():
+    """Layer 1: alarm_hold, preboot blackout, CAS, zombie re-lock, cross-boot rebuild, boot-imminent,
+    skipped-over-alarm-hold, ShutdownGuardWatch, audit_boot_alarm_hold (incl. 6008 \u200e), commands & phone wake."""
+    import logging
+    import time as _time
+    import types
+    from datetime import datetime
+    from ark_relay.core import notify, texts
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.statestore import StateStore
+    from ark_relay.features import modes, phone, procwatch, shutdown
+    import boot_stages
+
+    sd = tmpdir()
+
+    def t(h, m, s=0, d=24):
+        return datetime(2026, 11, d, h, m, s, tzinfo=SERVER_TZ)
+
+    print("[modes.in_preboot_blackout & set_alarm_hold / CAS / zombie / cross-boot]")
+    check("08:29:59 not blackout", modes.in_preboot_blackout(t(8, 29, 59)), False)
+    check("08:30:00 blackout", modes.in_preboot_blackout(t(8, 30, 0)), True)
+    check("08:39:59 blackout", modes.in_preboot_blackout(t(8, 39, 59)), True)
+    check("08:40:00 not blackout", modes.in_preboot_blackout(t(8, 40, 0)), False)
+    check("21:10:00 blackout", modes.in_preboot_blackout(t(21, 10, 0)), True)
+    check("21:20:00 not blackout", modes.in_preboot_blackout(t(21, 20, 0)), False)
+    check("set_alarm_hold skipped in blackout", modes.set_alarm_hold(sd, "x", now=t(8, 35)), False)
+    check("set_alarm_hold sets outside blackout", modes.set_alarm_hold(sd, "首次报警", now=t(10, 0), boot_at=t(8, 40).isoformat()), True)
+    info = modes.alarm_hold_info(sd, now=t(10, 5))
+    check("alarm_hold until=21:10", info and info["until"], "2026-11-24 21:10")
+    check("same-boot second alarm preserves created_at",
+          (modes.set_alarm_hold(sd, "二次报警", now=t(10, 10), boot_at=t(8, 40).isoformat()),
+           modes.alarm_hold_info(sd, now=t(10, 15))["created_at"]),
+          (True, t(10, 0).isoformat()))
+    check("cross-boot alarm rebuilds created_at & boot_at",
+          (modes.set_alarm_hold(sd, "新开机报警", now=t(10, 36), boot_at=t(10, 35).isoformat()),
+           modes.alarm_hold_info(sd, now=t(10, 37))["created_at"],
+           modes.alarm_hold_info(sd, now=t(10, 37))["boot_at"]),
+          (True, t(10, 36).isoformat(), t(10, 35).isoformat()))
+    # CAS & zombie re-lock guard
+    check("CAS rejects stale expected_at", modes.clear_alarm_hold(sd, expected_at=t(10, 30).isoformat(), now=t(10, 40))[0], False)
+    check("CAS clears with matching expected_at", modes.clear_alarm_hold(sd, expected_at=t(10, 38).isoformat(), now=t(10, 40))[0], True)
+    check("late external alert_ts <= cleared_at rejected",
+          modes.set_alarm_hold(sd, "迟到外部", now=t(10, 41), at=t(10, 36), external=True), False)
+    check("new local alarm external=False still sets",
+          modes.set_alarm_hold(sd, "新本地", now=t(10, 42), external=False), True)
+    # set_debug off preserves |alarm
+    modes.mark_shutdown_skipped(sd, "2026-11-24:1", by_alarm=True)
+    modes.set_debug(sd, off=True, release_skip=True)
+    check("set_debug off preserves |alarm", modes.shutdown_skipped_raw(sd), "2026-11-24:1|alarm")
+    # expire_alarm_hold_if_due inside safe window pops |alarm
+    old, in_win = modes.expire_alarm_hold_if_due(sd, now=t(21, 11))
+    check("expired inside window pops |alarm", (bool(old), in_win, modes.shutdown_skipped_raw(sd)), (True, True, ""))
+    # corrupt lock detection & cleanup
+    StateStore(sd).set("modes", "alarm_hold", {"bad": 1})
+    check("corrupt detected", (modes.alarm_hold_info(sd, now=t(11, 0)) or {}).get("corrupt"), True)
+    check("clear cleans corrupt", modes.clear_alarm_hold(sd, now=t(11, 0))[0], True)
+    check("corrupt gone", modes.alarm_hold_raw(sd), None)
+
+    print("\n[boot-imminent seamless coverage & skipped vs alarm-hold precedence]")
+    from ark_relay.core import plan as _plan
+    saved_rdq = _plan.recent_due_queues
+    try:
+        _plan.recent_due_queues = lambda _d, _n, window_minutes=120: [
+            {"name": "早班", "due": t(9, 0), "kinds": ["MAA"]},
+            {"name": "晚班", "due": t(21, 30), "kinds": ["MAA"]},
+        ]
+        eng_stub = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None))
+        for label, tm, want in (
+            ("08:37:59 not imminent", t(8, 37, 59), False),
+            ("08:38:00 imminent", t(8, 38, 0), True),
+            ("08:40:00 imminent (no gap!)", t(8, 40, 0), True),
+            ("08:41:00 imminent", t(8, 41, 0), True),
+            ("08:59:59 imminent", t(8, 59, 59), True),
+            ("09:00:00 due reached", t(9, 0, 0), False),
+            ("21:18:00 imminent", t(21, 18, 0), True),
+            ("21:20:00 imminent (no gap!)", t(21, 20, 0), True),
+            ("21:29:59 imminent", t(21, 29, 59), True),
+        ):
+            check(label, bool(shutdown._boot_imminent(eng_stub, tm)), want)
+    finally:
+        _plan.recent_due_queues = saved_rdq
+
+    print("\n[procwatch.ShutdownGuardWatch: 1074 live abort & pending + alarm_hold signal]")
+    sd2 = tmpdir()
+    sent_alerts: list = []
+    aborts: list = []
+
+    class _FakeNotifier:
+        def send(self, title, body, *, alert=False, daily=False):
+            sent_alerts.append((title, body, alert))
+            return []
+
+    class _FakeEng:
+        def _abort_power_off(self):
+            aborts.append(1)
+            return 0
+
+    xml_1074 = (
+        '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+        '<System><EventID>1074</EventID><TimeCreated SystemTime="2026-11-24T02:30:00.000Z"/></System>'
+        '<EventData><Data>C:\\Windows\\System32\\shutdown.exe</Data><Data>PC</Data><Data>r</Data>'
+        '<Data>0x0</Data><Data>power off</Data><Data>手动测试</Data><Data>PC\\Admin</Data></EventData></Event>'
+    )
+    xml_1075 = (
+        '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+        '<System><EventID>1075</EventID><TimeCreated SystemTime="2026-11-24T02:30:05.000Z"/></System></Event>'
+    )
+    parsed_1074 = procwatch.shutdown_requested([xml_1074])
+    check("shutdown_requested parses param6 comment", parsed_1074 and parsed_1074.get("comment"), "手动测试")
+    w = procwatch.ShutdownGuardWatch(sd2, _FakeEng(), _FakeNotifier())
+    w.start(subscribe=False)
+    try:
+        # 1074 before alarm_hold -> recorded as pending; then alarm_hold signal -> aborts & pushes
+        w._q.put(("xml", xml_1074))
+        _time.sleep(0.05)
+        check("1074 without hold does not abort yet", len(aborts), 0)
+        shutdown.on_alarm_hold()
+        _time.sleep(0.08)
+        check("alarm_hold signal aborts pending 1074", len(aborts), 1)
+        check("pushes ALARM_SHUTDOWN_ABORTED", sent_alerts and sent_alerts[0][0], texts.ALARM_SHUTDOWN_ABORTED)
+        # 1074 followed by 1075 clears pending
+        w._q.put(("xml", xml_1074))
+        w._q.put(("xml", xml_1075))
+        _time.sleep(0.05)
+        shutdown.on_alarm_hold()
+        _time.sleep(0.05)
+        check("1075 cleared pending 1074", len(aborts), 1)
+        # 1074 while alarm_hold active -> immediate abort
+        modes.set_alarm_hold(sd2, "故障在身", now=t(11, 0))
+        # Ensure alarm_hold_info uses real wall clock -> set until far future for deterministic test
+        StateStore(sd2).set("modes", "alarm_hold", {
+            "until": "2099-12-31 21:10", "boot": "2099-12-31 21:20", "reason": "故障在身",
+            "created_at": "2026-11-24T11:00:00+08:00", "at": "2026-11-24T11:00:00+08:00", "boot_at": "",
+        })
+        w._q.put(("xml", xml_1074))
+        _time.sleep(0.08)
+        check("1074 during active hold aborts immediately", len(aborts), 2)
+    finally:
+        w.stop()
+
+    print("\n[boot_stages.audit_boot_alarm_hold: 1074 early shutdown & 6008 LRM after/before until]")
+    sd3 = tmpdir()
+    sent3: list = []
+
+    class _N3:
+        def send(self, title, body, *, alert=False, daily=False):
+            sent3.append((title, body, alert))
+            return []
+
+    cfg3 = types.SimpleNamespace(state_dir=sd3)
+    saved_ev = shutdown.shutdown_event_xml
+    saved_bt = shutdown._boot_time
+    try:
+        # Case 1: prior boot shut down at 10:30 before until=21:10, booted at 21:20
+        snap1 = {
+            "until": "2026-11-24 21:10", "boot": "2026-11-24 21:20", "reason": "鸣潮故障",
+            "created_at": "2026-11-24T10:00:00+08:00", "at": "2026-11-24T10:00:00+08:00",
+            "boot_at": "2026-11-24T08:40:00+08:00",
+        }
+        StateStore(sd3).set("modes", "alarm_hold", snap1)
+        modes._BOOT_HOLD_SNAP = dict(snap1)
+        xml_6005 = (
+            '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+            '<System><EventID>6005</EventID><TimeCreated SystemTime="2026-11-24T13:20:00.000Z"/></System></Event>'
+        )
+        shutdown._boot_time = lambda _e, _n=None: t(21, 20)
+        shutdown.shutdown_event_xml = lambda w, ids: [xml_6005, xml_1074] if 1074 in ids else []
+        boot_stages.audit_boot_alarm_hold(cfg3, _N3(), logging.getLogger("ark.test_shutdown"))
+        check("early 1074 triggers ALARM_EARLY_SHUTDOWN", [x[0] for x in sent3], [texts.ALARM_EARLY_SHUTDOWN])
+        check("prior hold cleared", modes.alarm_hold_raw(sd3), None)
+
+        # Case 2: Event 6008 with Chinese LRM \u200e cut time AFTER until=21:10 -> no false alarm
+        sent3.clear()
+        StateStore(sd3).set("modes", "alarm_hold", snap1)
+        modes._BOOT_HOLD_SNAP = dict(snap1)
+        xml_6008_after = (
+            '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+            '<System><EventID>6008</EventID><TimeCreated SystemTime="2026-11-24T13:20:10.000Z"/></System>'
+            '<EventData><Data>\u200e21:15:03</Data><Data>\u200e2026/\u200e11/\u200e24</Data></EventData></Event>'
+        )
+        shutdown.shutdown_event_xml = lambda w, ids: ([xml_6005] if 1074 in ids else [xml_6008_after])
+        boot_stages.audit_boot_alarm_hold(cfg3, _N3(), logging.getLogger("ark.test_shutdown"))
+        check("6008 after until with LRM does not false alarm", sent3, [])
+        check("6008 after until still clears stale hold", modes.alarm_hold_raw(sd3), None)
+
+        # Case 3: Event 6008 cut time BEFORE until=21:10 -> reports early power loss
+        sent3.clear()
+        StateStore(sd3).set("modes", "alarm_hold", snap1)
+        modes._BOOT_HOLD_SNAP = dict(snap1)
+        xml_6008_before = (
+            '<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">'
+            '<System><EventID>6008</EventID><TimeCreated SystemTime="2026-11-24T13:20:10.000Z"/></System>'
+            '<EventData><Data>\u200e10:30:00</Data><Data>\u200e2026/\u200e11/\u200e24</Data></EventData></Event>'
+        )
+        shutdown.shutdown_event_xml = lambda w, ids: ([xml_6005] if 1074 in ids else [xml_6008_before])
+        boot_stages.audit_boot_alarm_hold(cfg3, _N3(), logging.getLogger("ark.test_shutdown"))
+        check("6008 before until reports ALARM_EARLY_SHUTDOWN", [x[0] for x in sent3], [texts.ALARM_EARLY_SHUTDOWN])
+    finally:
+        shutdown.shutdown_event_xml = saved_ev
+        shutdown._boot_time = saved_bt
+        modes._BOOT_HOLD_SNAP = None
+
+    print("\n[phone._phone_execute wake() before internal early return & boot_backlog]")
+    woke = []
+    receipts = []
+    pushed = []
+    notified = []
+    phone._phone_execute(
+        lambda b: (True, "故障留机锁已关闭"),
+        types.SimpleNamespace(send=lambda *a, **k: notified.append(a)),
+        logging.getLogger("ark.test_shutdown"),
+        lambda why: pushed.append(why),
+        lambda *a, **k: receipts.append(a),
+        {"action": "alarm_hold", "off": True, "internal": True},
+        "alarm_hold",
+        None,
+        True,
+        wake=lambda: woke.append(1),
+    )
+    check("internal off calls wake()", woke, [1])
+    check("internal off skips receipt, notify, push_state", (receipts, notified, pushed), ([], [], []))
+    kept = phone.boot_backlog([
+        {"action": "alarm_hold", "on": True, "_meta": {"ntfy_time": 100}},
+        {"action": "alarm_hold", "off": True, "_meta": {"ntfy_time": 100}},
+        {"action": "alarm_hold", "off": True, "expected_at": "2026-11-24T10:00:00+08:00", "_meta": {"ntfy_time": 100}},
+    ], logging.getLogger("ark.test_shutdown"), started=200.0)
+    check("boot_backlog keeps only pre-boot off with expected_at", len(kept), 1)
+    check("notify.is_hold_exempt covers emoji prefixes & cant_enter",
+          (notify.is_hold_exempt(texts.ALARM_HOLD_EXPIRED),
+           notify.is_hold_exempt(texts.cant_enter("MaaEnd")),
+           notify.is_hold_exempt(texts.ROUND_INCOMPLETE)),
+          (True, True, False))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_shutdown_main, _part_shutdown_after_restart, _part_shutdown_unfixed_shift, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording, _part_skip_failed_pushed, _part_skip_flag_collision, _part_skip_receipt_lost, _part_skip_receipts, _part_skip_sat_out, _part_skip_shutdown_bat_error, _part_farm_poweroff, _part_place_desktop_bat, _part_statestore_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads]))
+    sys.exit(run_parts([_part_shutdown_main, _part_shutdown_after_restart, _part_shutdown_unfixed_shift, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording, _part_skip_failed_pushed, _part_skip_flag_collision, _part_skip_receipt_lost, _part_skip_receipts, _part_skip_sat_out, _part_skip_shutdown_bat_error, _part_farm_poweroff, _part_place_desktop_bat, _part_statestore_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads, _part_alarm_hold_root_cure]))

@@ -55,7 +55,19 @@ fi
 # The relay shuts the machine down itself once the shift is done (debug mode only skips that one shutdown).
 # shutdown /a (abort) is never stopped. ARK_SHUTDOWN_OVERRIDE='<his own words>' lets a shutdown through anyway.
 BUSY_NAMES='MAA,MaaEnd,Endfield,ok-ww,Client-Win64-Shipping,dnplayer'
-if grep -qiE '(^|[^a-z])shutdown(\.exe)?[^;|]*[/-][sr]([^a-z]|$)|Stop-Computer|Restart-Computer' <<<"$SCRIPT"; then
+ARK_SG_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/shutdown-guard.sh"
+if [ -f "$ARK_SG_LIB" ]; then
+  # shellcheck source=lib/shutdown-guard.sh
+  . "$ARK_SG_LIB"
+  _sg_rc=0
+  ark_sg_preflight ps "winps" "$USER_AT" "$BUSY_NAMES" "" "$SCRIPT" || _sg_rc=$?
+  if [ "$_sg_rc" = 5 ]; then
+    exit 5
+  elif [ "$_sg_rc" = 10 ]; then
+    SCRIPT="${ARK_SG_SNIPPET}
+${SCRIPT}"
+  fi
+elif grep -qiE '(^|[^a-z])shutdown(\.exe)?[^;|]*[/-][sr]([^a-z]|$)|Stop-Computer|Restart-Computer' <<<"$SCRIPT"; then
   if [ -n "${ARK_SHUTDOWN_OVERRIDE:-}" ]; then
     echo "winps: shutdown guard overridden: ${ARK_SHUTDOWN_OVERRIDE}" >&2
   else
@@ -101,7 +113,7 @@ printf '%s' "$OUTB64" | base64 -d > "$TMP" 2>/dev/null || {
 
 if grep -q 'WINPS_REFUSED: ' "$TMP"; then
   busy=$(sed -n 's/.*WINPS_REFUSED: //p' "$TMP" | tr -d '\r' | head -1)
-  echo "winps: 拒绝关机——机器上还有任务在跑：${busy}。早晚班没跑完不许手动关机：关掉调试模式，中继跑完会自己关。" >&2
+  echo "winps: 拒绝关机——${busy}。请先处理完当前任务或故障，或等中继收工后自动关机。" >&2
   exit 5
 fi
 

@@ -144,43 +144,248 @@ def take_skip(state_dir: Path) -> bool:
     return True
 
 
+def shutdown_skipped_raw(state_dir: Path) -> str:
+    """Raw stored `modes.shutdown_skipped` string (including any `|debug` / `|alarm` suffix)."""
+    return str(_store(state_dir).get("modes", "shutdown_skipped") or "")
+
+
 def shutdown_skipped(state_dir: Path) -> str:
-    """Key of the shutdown occasion that has been skipped; '' means none.
-
-The key is shutdown._shutdown_key: the day plus its ledger entry count, so
-    it changes the moment another queue run finishes. Three things write it:
-
-* debug mode, at the first attempt that passes every other gate (a scheduled
-      shift has just finished) while it is active (shutdown._maybe_shutdown,
-      verdict "debug"); while no such opportunity comes up it records nothing;
-    * spending the 「下次跑完不关机」 mark (take_skip, in shutdown._maybe_shutdown);
-    * pressing 「下次跑完不关机」 inside the relay's own 60-second power-off
-      countdown (shutdown.abort_countdown).
-
-While the current key equals this value, decide() answers "skipped" whenever
-    every other gate passes, and the machine stays on - no catch-up shutdown when debug mode
-    expires, none on the periodic re-checks after the mark was spent. The next
-    queue run gives a new key and normal shutdown resumes.
-
-One thing clears it: turning debug mode off by hand (set_debug off=True),
-    which means "maintenance is over, back to normal" - a skip debug mode wrote itself
-    (stored with DEBUG_SKIP_TAG) always, any skip when the order says so (release_skip:
-    the phone's / order-now.sh's debug_mode off). Through dispatch_guard's test-off
-    an occasion skipped by the 「下次跑完不关机」 mark or by a press inside the
-    countdown stays skipped: test-off turns debug mode off right after a test (10-13:
-    the test after a spent mark would otherwise end in a power-off). A natural debug
-    expiry clears nothing.
-    """
-    return str(_store(state_dir).get("modes", "shutdown_skipped") or "").split(DEBUG_SKIP_TAG)[0]
+    """Key of the shutdown occasion that has been skipped; '' means none."""
+    raw = shutdown_skipped_raw(state_dir)
+    for tag in (DEBUG_SKIP_TAG, ALARM_SKIP_TAG):
+        if raw.endswith(tag):
+            return raw[:-len(tag)]
+    return raw
 
 
-# Appended to the stored key when debug mode wrote the skip (set_debug off clears only those).
-# A value without it - the mark, a press inside the countdown, or any older build - is kept.
+# Appended to the stored key when debug mode or alarm hold wrote the skip.
+# A value without a tag - the human mark, a press inside the countdown, or any older build - is kept.
 DEBUG_SKIP_TAG = "|debug"
+ALARM_SKIP_TAG = "|alarm"
+
+# Snapshot of modes.alarm_hold taken at _stage_bootstrap() before errwatch is installed,
+# consumed once by boot_stages.audit_boot_alarm_hold().
+_BOOT_HOLD_SNAP = None
 
 
-def mark_shutdown_skipped(state_dir: Path, key: str, by_debug: bool = False) -> None:
-    _store(state_dir).set("modes", "shutdown_skipped", key + (DEBUG_SKIP_TAG if by_debug else ""))
+def mark_shutdown_skipped(state_dir: Path, key: str, by_debug: bool = False,
+                          by_alarm: bool = False) -> None:
+    tag = DEBUG_SKIP_TAG if by_debug else (ALARM_SKIP_TAG if by_alarm else "")
+    _store(state_dir).set("modes", "shutdown_skipped", key + tag)
+
+
+def _parse_bj(value: str | datetime) -> datetime:
+    if isinstance(value, datetime):
+        dt = value
+    elif isinstance(value, str) and value.strip():
+        dt = datetime.fromisoformat(value.strip())
+    else:
+        raise ValueError(f"无法解析时间: {value!r}")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=SERVER_TZ)
+    return dt.astimezone(SERVER_TZ)
+
+
+def in_preboot_blackout(now: datetime) -> bool:
+    """Whether `now` is inside the pre-boot release blackout [boot-10m, boot)."""
+    cur = now.astimezone(SERVER_TZ)
+    hi = cur + timedelta(minutes=DEBUG_LEAD_MIN)
+    for day in (0, 1):
+        for hhmm in BOOT_TIMES:
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            boot = (cur + timedelta(days=day)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if cur < boot <= hi:
+                return True
+    return False
+
+
+def _valid_alarm_hold(raw) -> tuple[datetime, datetime, datetime, datetime] | None:
+    if not isinstance(raw, dict):
+        return None
+    try:
+        end_dt = _parse_bj(raw.get("until"))
+        boot_dt = _parse_bj(raw.get("boot"))
+        created_dt = _parse_bj(raw.get("created_at"))
+        at_dt = _parse_bj(raw.get("at"))
+    except ValueError:
+        return None
+    return end_dt, boot_dt, created_dt, at_dt
+
+
+def alarm_hold_raw(state_dir: Path):
+    return _store(state_dir).get("modes", "alarm_hold")
+
+
+def alarm_hold_info(state_dir: Path, now: datetime | None = None) -> dict | None:
+    """Active alarm_hold dict, `{"corrupt": True, ...}` if malformed, or None if absent/expired."""
+    raw = alarm_hold_raw(state_dir)
+    if raw is None:
+        return None
+    parsed = _valid_alarm_hold(raw)
+    if parsed is None:
+        return {"corrupt": True, "reason": "留机锁状态损坏"}
+    end_dt = parsed[0]
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    if cur < end_dt:
+        return dict(raw)
+    return None
+
+
+def set_alarm_hold(state_dir: Path, reason: str, now: datetime | None = None,
+                   at: str | datetime | None = None, *, external: bool = False,
+                   boot_at: str = "") -> bool:
+    """Acquire or refresh the fault alarm_hold lock. Returns True when written to disk."""
+    live_clock = now is None
+    cur = (datetime.now(tz=SERVER_TZ) if live_clock else now).astimezone(SERVER_TZ)
+    if in_preboot_blackout(cur):
+        return False
+    evt_at = min(_parse_bj(at), cur) if at else cur
+    cur_boot: datetime | None = None
+    if boot_at:
+        cur_boot = _parse_bj(boot_at)
+    elif live_clock:
+        try:
+            from ark_relay.features import shutdown as _sd  # noqa: PLC0415
+            cur_boot = _sd._boot_time(None, cur)
+        except (ImportError, OSError, AttributeError, ValueError):
+            cur_boot = None
+    clean_reason = str(reason or "").strip()[:200]
+    store = _store(state_dir)
+
+    def _mutate(sec: dict) -> bool:
+        if external:
+            cleared_raw = sec.get("alarm_hold_cleared_at")
+            if cleared_raw:
+                try:
+                    if evt_at <= _parse_bj(cleared_raw):
+                        return False
+                except ValueError:
+                    pass
+        existing = sec.get("alarm_hold")
+        parsed = _valid_alarm_hold(existing)
+        same_boot = False
+        if parsed is not None:
+            end_dt, _boot_dt, created_dt, old_at = parsed
+            same_boot = (cur < end_dt and (cur_boot is None or created_dt >= cur_boot - timedelta(seconds=60)))
+        if same_boot:
+            new_at = max(old_at, evt_at)
+            updated = dict(existing)
+            updated["at"] = new_at.isoformat(timespec="seconds")
+            if evt_at > old_at or not updated.get("reason"):
+                updated["reason"] = clean_reason or str(updated.get("reason") or "")
+            sec["alarm_hold"] = updated
+            return True
+        boot_dt = next_boot(cur, DEBUG_LEAD_MIN)
+        end_dt = boot_dt - timedelta(minutes=DEBUG_LEAD_MIN)
+        sec["alarm_hold"] = {
+            "until": end_dt.strftime("%Y-%m-%d %H:%M"),
+            "boot": boot_dt.strftime("%Y-%m-%d %H:%M"),
+            "reason": clean_reason,
+            "created_at": evt_at.isoformat(timespec="seconds"),
+            "at": evt_at.isoformat(timespec="seconds"),
+            "boot_at": cur_boot.isoformat(timespec="seconds") if cur_boot else "",
+        }
+        return True
+
+    return bool(store.atomic("modes", _mutate))
+
+
+def clear_alarm_hold(state_dir: Path, expected_at: str = "", expected_created_at: str = "",
+                     now: datetime | None = None) -> tuple[bool, str]:
+    """Atomically clear alarm_hold (with strict CAS when expected_* given) and its `|alarm` skip."""
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    exp_at_dt: datetime | None = None
+    exp_created_dt: datetime | None = None
+    if expected_at:
+        try:
+            exp_at_dt = _parse_bj(expected_at)
+        except ValueError:
+            return False, "解锁时间格式不对，未解锁"
+    if expected_created_at:
+        try:
+            exp_created_dt = _parse_bj(expected_created_at)
+        except ValueError:
+            return False, "建锁时间格式不对，未解锁"
+
+    store = _store(state_dir)
+    outcome = {"log": ""}
+
+    def _mutate(sec: dict) -> tuple[bool, str]:
+        if "alarm_hold" not in sec or sec["alarm_hold"] is None:
+            return True, "本来就没有故障留机锁"
+        parsed = _valid_alarm_hold(sec["alarm_hold"])
+        if parsed is None:
+            sec.pop("alarm_hold", None)
+            if str(sec.get("shutdown_skipped") or "").endswith(ALARM_SKIP_TAG):
+                sec.pop("shutdown_skipped", None)
+            outcome["log"] = "corrupt"
+            return True, "已清理损坏的故障留机锁"
+        _end_dt, _boot_dt, created_dt, at_dt = parsed
+        if exp_created_dt is not None and created_dt != exp_created_dt:
+            return False, "已有新一轮故障留机锁，未解锁"
+        if exp_at_dt is not None and at_dt > exp_at_dt:
+            return False, "有更新的故障报警尚未处理，未解锁"
+        sec.pop("alarm_hold", None)
+        if str(sec.get("shutdown_skipped") or "").endswith(ALARM_SKIP_TAG):
+            sec.pop("shutdown_skipped", None)
+        hw = max(at_dt, exp_at_dt or cur)
+        prev_cleared = sec.get("alarm_hold_cleared_at")
+        if prev_cleared:
+            try:
+                hw = max(hw, _parse_bj(prev_cleared))
+            except ValueError:
+                pass
+        sec["alarm_hold_cleared_at"] = hw.isoformat(timespec="seconds")
+        outcome["log"] = "closed"
+        return True, "故障留机锁已关闭"
+
+    ok, msg = store.atomic("modes", _mutate)
+    if outcome["log"] == "corrupt":
+        log.info("已清理损坏的故障留机锁")
+    elif outcome["log"] == "closed":
+        log.info("故障留机锁已关闭")
+    return ok, msg
+
+
+def expire_alarm_hold_if_due(state_dir: Path, now: datetime | None = None) -> tuple[dict | None, bool]:
+    """Expire an alarm_hold whose `until` has passed; returns `(old_record, in_safe_shutdown_window)`."""
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    raw = alarm_hold_raw(state_dir)
+    if not isinstance(raw, dict):
+        return None, False
+    try:
+        end_dt = _parse_bj(raw.get("until"))
+    except ValueError:
+        return None, False
+    if cur < end_dt:
+        return None, False
+    store = _store(state_dir)
+
+    def _mutate(sec: dict) -> tuple[dict | None, bool]:
+        raw2 = sec.get("alarm_hold")
+        if not isinstance(raw2, dict):
+            return None, False
+        try:
+            end2 = _parse_bj(raw2.get("until"))
+        except ValueError:
+            return None, False
+        if cur < end2:
+            return None, False
+        try:
+            boot2 = _parse_bj(raw2.get("boot"))
+        except ValueError:
+            boot2 = end2 + timedelta(minutes=DEBUG_LEAD_MIN)
+        in_window = cur < boot2 - timedelta(minutes=2)
+        old = dict(raw2)
+        sec.pop("alarm_hold", None)
+        if in_window and str(sec.get("shutdown_skipped") or "").endswith(ALARM_SKIP_TAG):
+            sec.pop("shutdown_skipped", None)
+        return old, in_window
+
+    return store.atomic("modes", _mutate)
 
 
 def debug_until(state_dir: Path) -> str:
@@ -226,7 +431,7 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     if off:
         store.pop("modes", "debug_until")
         skipped = str(store.get("modes", "shutdown_skipped") or "")
-        if skipped and (release_skip or skipped.endswith(DEBUG_SKIP_TAG)):
+        if skipped and not skipped.endswith(ALARM_SKIP_TAG) and (release_skip or skipped.endswith(DEBUG_SKIP_TAG)):
             store.pop("modes", "shutdown_skipped")
         return True, "调试模式已关闭"
     try:

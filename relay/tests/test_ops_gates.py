@@ -909,7 +909,8 @@ def _part_unmerged_fixes():
 
 
 def _part_winps_shutdown_guard():
-    """winps.sh refuses to power the machine off while a game or automation process is up."""
+    """winps.sh / winrun.sh / wingui.sh launch refuse shutdowns on busy procs, open blockers, dirty code, or pending deploys."""
+    import json as _json
     import os
     import re
     import stat
@@ -917,24 +918,58 @@ def _part_winps_shutdown_guard():
 
     root = Path(__file__).resolve().parents[2]
     winps = root / "scripts" / "mac" / "winps.sh"
+    wingui = root / "scripts" / "mac" / "wingui.sh"
+    winrun = root / "scripts" / "mac" / "winrun.sh"
     tmp = tmpdir()
     sent = tmp / "sent.ps1"
+    # Clean temporary git repo with tag relay-20261124000000 so host dirty tree / HEAD never interferes.
+    fake_repo = tmp / "repo"
+    (fake_repo / "relay" / "ark_relay").mkdir(parents=True)
+    (fake_repo / "relay" / "ark_relay" / "dummy.py").write_text("x = 1\n", encoding="utf-8")
+    git_env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+    subprocess.run(["git", "-C", str(fake_repo), "init", "-q"], check=True, env=git_env)
+    subprocess.run(["git", "-C", str(fake_repo), "add", "."], check=True, env=git_env)
+    subprocess.run(["git", "-C", str(fake_repo), "commit", "-q", "-m", "init"], check=True, env=git_env)
+    subprocess.run(["git", "-C", str(fake_repo), "tag", "relay-20261124000000"], check=True, env=git_env)
+
+    empty_ledger = tmp / "ledger.jsonl"
+    empty_ledger.write_text("", encoding="utf-8")
+    empty_pending = tmp / "pending.json"
+    empty_pending.write_text("[]\n", encoding="utf-8")
+
     fake = tmp / "ssh"
     fake.write_text("""#!/usr/bin/env python3
 import base64, os, re, sys
 here = os.path.dirname(os.path.abspath(__file__))
 cmd = sys.argv[-1]
-ps = base64.b64decode(re.search(r"-EncodedCommand (\\S+)", cmd).group(1)).decode("utf-16-le")
+if "current.txt" in cmd:
+    print(open(os.path.join(here, "cur.txt"), encoding="utf-8").read().strip())
+    sys.exit(0)
+m = re.search(r"-EncodedCommand (\\S+)", cmd)
+if not m:
+    sys.exit(0)
+ps = base64.b64decode(m.group(1)).decode("utf-16-le")
 open(os.path.join(here, "sent.ps1"), "w", encoding="utf-8").write(ps)
 busy = open(os.path.join(here, "busy.txt"), encoding="utf-8").read().strip()
 out = ("WINPS_REFUSED: " + busy) if busy and "WINPS_REFUSED" in ps else "ran"
 print("WINPS_B64=" + base64.b64encode(out.encode()).decode())
 """, encoding="utf-8")
     fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    (tmp / "cur.txt").write_text("20261124000000\n", encoding="utf-8")
 
-    def run(script, busy="", override=""):
+    def run(script, busy="", override="", ledger=None, pending=None, repo=None):
+        sent.unlink(missing_ok=True)
         (tmp / "busy.txt").write_text(busy, encoding="utf-8")
-        env = dict(os.environ, PATH=f"{tmp}:{os.environ['PATH']}", ARK_HOST="127.0.0.1")
+        env = dict(
+            os.environ,
+            PATH=f"{tmp}:{os.environ['PATH']}",
+            ARK_HOST="127.0.0.1",
+            ARK_LEDGER=str(ledger or empty_ledger),
+            ARK_PENDING_DEPLOY=str(pending or empty_pending),
+            ARK_SHUTDOWN_GUARD_REPO=str(repo or fake_repo),
+            ARK_ACTION_LOG="/dev/null",
+        )
         env.pop("ARK_SHUTDOWN_OVERRIDE", None)
         if override:
             env["ARK_SHUTDOWN_OVERRIDE"] = override
@@ -945,10 +980,52 @@ print("WINPS_B64=" + base64.b64encode(out.encode()).decode())
     code, ps = run("shutdown /s /t 60", busy="Client-Win64-Shipping")
     check("exit 5", code, 5)
     check("the check went first", ps.index("WINPS_REFUSED") < ps.index("shutdown /s /t 60"), True)
-    for script in ("Stop-Computer -Force", "Restart-Computer", "shutdown.exe -r -t 0"):
-        check(f"{script}: checked too", "WINPS_REFUSED" in run(script, busy="MAA")[1], True)
-    print("\n[nothing running: the shutdown goes through]")
+    check("PS7 layered DateTime check present", "$__u -is [DateTime]" in ps and "Test-Path -LiteralPath" in ps, True)
+    check("Stop-Computer -Force: checked end-to-end", "WINPS_REFUSED" in run("Stop-Computer -Force", busy="MAA")[1], True)
+    # Cover additional bypass syntaxes in-process (same detector winps/winrun call) to stay fast.
+    sys.path.insert(0, str(root / "scripts" / "mac" / "lib"))
+    import shutdown_guard as _sg
+    for sample in ("Restart-Computer", "shutdown.exe -r -t 0", "shut`down /s /t 0",
+                   "Start-Process\nshutdown /s", "s^hutdown /s", "logoff", "rundll32 powrprof,SetSuspendState"):
+        check(f"detect {sample!r}", _sg.is_shutdown_cmd(sample), True)
+    check("in-process AST ExitWindowsEx detected", _sg.is_shutdown_py_source("ctypes.windll.user32.ExitWindowsEx(1, 0)"), True)
+    print("\n[nothing running & clean repo: the shutdown goes through]")
     check("exit 0", run("shutdown /s /t 60")[0], 0)
+    print("\n[local ledger blocker / pending_deploy / dirty runtime / ahead commit -> exit 5 before SSH #2]")
+    blk_ledger = tmp / "blk.jsonl"
+    blk_ledger.write_text(_json.dumps({"id": 1, "status": "open", "kind": "pending_deploy", "what": "未上机"}) + "\n",
+                          encoding="utf-8")
+    code, ps = run("shutdown /s /t 60", ledger=blk_ledger)
+    check("blocking ledger -> exit 5", (code, ps == ""), (5, True))
+    pend_newer = tmp / "pend_newer.json"
+    pend_newer.write_text(_json.dumps([{"version": "20261124999999"}]) + "\n", encoding="utf-8")
+    code, ps = run("shutdown /s /t 60", pending=pend_newer)
+    check("pending_deploy newer -> exit 5", (code, ps == ""), (5, True))
+    (fake_repo / "relay" / "ark_relay" / "dummy.py").write_text("x = 2\n", encoding="utf-8")
+    code, ps = run("shutdown /s /t 60")
+    check("dirty runtime file -> exit 5", (code, ps == ""), (5, True))
+    subprocess.run(["git", "-C", str(fake_repo), "add", "."], check=True, env=git_env)
+    subprocess.run(["git", "-C", str(fake_repo), "commit", "-q", "-m", "ahead"], check=True, env=git_env)
+    code, ps = run("shutdown /s /t 60")
+    check("ahead runtime commit -> exit 5", (code, ps == ""), (5, True))
+    subprocess.run(["git", "-C", str(fake_repo), "reset", "--hard", "-q", "relay-20261124000000"],
+                   check=True, env=git_env)
+    print("\n[wingui launch blocked executable & winrun --py AST detector]")
+    wg_env = dict(os.environ, ARK_HOST="127.0.0.1", ARK_ACTION_LOG="/dev/null")
+    wg_env.pop("ARK_SHUTDOWN_OVERRIDE", None)
+    r_wg = subprocess.run(["bash", str(wingui), "launch", r"C:\Windows\System32\shutdown.exe -- /s /t 0"],
+                          capture_output=True, text=True, env=wg_env, timeout=20)
+    check("wingui launch shutdown.exe -> exit 5", r_wg.returncode, 5)
+    py_bad = tmp / "bad_shut.py"
+    py_bad.write_text('import subprocess\ncmd = ["shut" + "down", "/s", "/t", "0"]\nsubprocess.run(cmd)\n',
+                      encoding="utf-8")
+    wr_env = dict(os.environ, ARK_HOST="127.0.0.1", ARK_LEDGER=str(blk_ledger),
+                  ARK_PENDING_DEPLOY=str(empty_pending), ARK_SHUTDOWN_GUARD_REPO=str(fake_repo),
+                  ARK_ACTION_LOG="/dev/null", WINRUN_DRY_RUN="1")
+    wr_env.pop("ARK_SHUTDOWN_OVERRIDE", None)
+    r_wr = subprocess.run(["bash", str(winrun), "--py", str(py_bad)], capture_output=True, text=True,
+                          env=wr_env, timeout=20)
+    check("winrun --py AST shutdown + blocker -> exit 5", r_wr.returncode, 5)
     print("\n[never in the way]")
     code, ps = run("shutdown /a")
     check("abort not checked", (code, "WINPS_REFUSED" in ps), (0, False))

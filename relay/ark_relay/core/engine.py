@@ -579,6 +579,7 @@ class Engine:
             # spends the 「下次跑完不关机」 mark the check reads).
             ("收工体检", self._shift_check),
             ("日报", self._maybe_daily_report),
+            ("留机锁到期", self._check_alarm_hold_expiry),
             ("关机", self._maybe_shutdown),
         ):
             try:
@@ -918,7 +919,32 @@ class Engine:
             if cutoff > now:
                 cands.append((cutoff, "日报截止"))
 
+        cands.extend(self._alarm_hold_deadline(now))
+
         return min(cands) if cands else None
+
+    def _alarm_hold_deadline(self, now: datetime) -> list[tuple[datetime, str]]:
+        try:
+            hold = modes.alarm_hold_raw(self.cfg.state_dir)
+            if isinstance(hold, dict) and hold.get("until"):
+                until_dt = modes._parse_bj(hold["until"])
+                if until_dt > now:
+                    return [(until_dt, "故障留机锁到期释放")]
+        except (OSError, ValueError, TypeError):
+            return []
+        return []
+
+    def _check_alarm_hold_expiry(self, now: datetime | None = None) -> None:
+        """Expire an alarm_hold whose `until` has arrived and notify the group honestly."""
+        cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        old, in_window = modes.expire_alarm_hold_if_due(self.cfg.state_dir, cur)
+        if not old:
+            return
+        reason = str(old.get("reason") or "")
+        boot = str(old.get("boot") or old.get("until") or "")
+        body = texts.alarm_hold_expired_body(reason, boot, in_window)
+        log.info("⏰ 故障留机锁到期释放（预定开机 %s，窗内=%s，原原因：%s）", boot, in_window, reason)
+        self.notifier.send(texts.ALARM_HOLD_EXPIRED, body, alert=True)
 
     # ---------- bookkeeping and alerts (handle.py) ----------
     def _code_version(self) -> str:

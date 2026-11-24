@@ -127,6 +127,7 @@ JSON patch.
 | `skip_today` | yes | no - disables that queue for the day and restores it afterwards. Takes `"day":"YYYY-MM-DD"`; the inbox is only read at boot, so a stale one is refused rather than skipping the wrong day |
 | `unskip_today` | yes | no - cancels today's `skip_today` for that queue: drops the flag, or re-enables the queue at once if the skip already engaged (the phone's queue switch turned back on, 2026-09-15) |
 | `debug_mode` | yes, self-expiring | no - `days:N` or `off:true`; while active: no shutdown, no missed-run alarms |
+| `alarm_hold` | yes, self-expiring | no - `on:true` (`reason`, optional `alert_ts`, `internal:true`) or `off:true` (optional `expected_at`, `expected_created_at`); holds shutdown until 10 minutes before the next scheduled power-on while an unfixed fault alarm is open |
 | `set_stage` | no, writes config | **yes** |
 | `set_medicine` | no, writes config | **yes** |
 | `set_wait_time` | no, writes config | **yes** - 60-600 only, see [CONFIG.md](../docs/CONFIG.md) |
