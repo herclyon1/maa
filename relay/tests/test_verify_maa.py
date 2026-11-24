@@ -359,12 +359,20 @@ def _part_claim_no_claim_gate():
     t.ocr = lambda *a, **kw: []
     t.box_of_screen = lambda *a: None
     t.sleep = lambda s: None
+    t.screenshot = lambda name: t.events.append(f"shot:{name}")
     t.log_error = lambda msg, notify=False: t.events.append(f"err:{msg}")
-    t.incr_drop(True)
+    stopped_not_opened = False
+    try:
+        t.incr_drop(True)
+    except ns["_ArkStop"]:
+        stopped_not_opened = True
     check("摘掉标记：同一圈会去结晶按 F（闸真的是那个文件）", [e for e in t.events if not e.startswith("log:")][1:3],
           ["walk_to_treasure", "pick_f"])
-    check("按 F 后没领到（这里假的 pick_f 什么都没弹）：不停、不报错、不重进",
-          [e for e in t.events if e.startswith("err:") or e == "teleport_to_configured_boss_and_prepare"], [])
+    check("按 F 后两次都没弹出领奖框：留图报群停机、不再静默放走也不重进",
+          (stopped_not_opened, "shot:weekly_claim_not_opened" in t.events,
+           any(e.startswith("err:周本领奖：") for e in t.events),
+           "teleport_to_configured_boss_and_prepare" in t.events),
+          (True, True, True, False))
 
     print("[中继写的路径和改动文件读的路径是同一个]")
     name = Path(echofarm.NO_CLAIM.replace("\\", "/")).name
@@ -2215,6 +2223,42 @@ def _part_weekly_three_claims():
           ["周本（已完成，领了 1 次，本周还剩 2 次）"])
     check("只剩 1 次领完：本周已领满", steps(HEAD + OCR.format(k=1) + claim(1)),
           ["周本（已完成，领了 1 次，本周已领满）"])
+
+    print("\n[2026-11-23 模式：3 圈去领奖只确认 2 次、剩 1 次未领且非波片不足（后续刷无音区），核对判失败、日报禁写已完成]")
+    from ark_relay.core import texts as _texts
+    from ark_relay.features import outcome
+    check("WEEKLY_GO_CLAIM 常量和覆盖层日志一致", outcome.WEEKLY_GO_CLAIM in okww_overlay.source_text(), True)
+    GO = f"2026-11-23 10:05:00,000 INFO TaskExecutor FarmEchoTask:{outcome.WEEKLY_GO_CLAIM}\n"
+    TACET = "2026-11-23 10:12:00,000 INFO TaskExecutor TacetTask:enter combat None\n"
+    dropped_lap = HEAD + OCR.format(k=3) + GO + claim(3) + OCR.format(k=2) + GO + claim(2) + OCR.format(k=1) + GO + TACET
+    w_chk = [c for c in outcome.okww_checks(dropped_lap, expect_nest=False, expect_daily=False, expect_stamina=False) if c.label == "周本领到了奖励"]
+    check("3 圈去领奖只领 2 次：核对判失败", [(c.ok, "3 圈" in c.detail and "2 次" in c.detail) for c in w_chk], [(False, True)])
+    check("3 圈去领奖只领 2 次：日报不写已完成", steps(dropped_lap),
+          ["无音区（未进本）", "周本（未领满：只领了 2 次，本周还剩 1 次）"])
+    check("漏领核对文案过 plain()", _texts.plain(w_chk[0].detail), [])
+    stamina_after = HEAD + OCR.format(k=3) + claim(3) + OCR.format(k=2) + claim(2) + TACET
+    w_chk2 = [c for c in outcome.okww_checks(stamina_after, expect_nest=False, expect_daily=False, expect_stamina=False) if c.label == "周本领到了奖励"]
+    check("剩 1 次非波片不足却后续刷体力：核对判失败", [(c.ok, "后续又刷了体力" in c.detail) for c in w_chk2], [(False, True)])
+    check("剩 1 次后续刷体力：文案过 plain()", _texts.plain(w_chk2[0].detail), [])
+    check("剩 1 次后续刷体力：日报不写已完成", steps(stamina_after),
+          ["无音区（未进本）", "周本（未领满：只领了 2 次，本周还剩 1 次）"])
+    err_mid = HEAD + OCR.format(k=3) + claim(3) + "2026-11-23 10:08:00,000 ERROR TaskExecutor FarmEchoTask:farm 4c error\n"
+    w_chk3 = [c for c in outcome.okww_checks(err_mid, expect_nest=False, expect_daily=False, expect_stamina=False) if c.label == "周本领到了奖励"]
+    check("领 1 次后 farm 4c error：核对判失败且文案过 plain()",
+          [(c.ok, _texts.plain(c.detail)) for c in w_chk3], [(False, [])])
+    check("领 1 次后 farm 4c error：日报不写已完成", steps(err_mid), ["周本（领了 1 次，之后出错，原因见失败于）"])
+    extra_click_full = three + CLAIM
+    w_chk4 = [c for c in outcome.okww_checks(extra_click_full, expect_nest=False, expect_daily=False, expect_stamina=False) if c.label == "周本领到了奖励"]
+    check("领满 3 次另有未核实点击：核对判失败且日报写领奖有异常",
+          ([(c.ok, _texts.plain(c.detail)) for c in w_chk4], steps(extra_click_full)),
+          ([(False, [])], ["周本（领奖有异常：领了 3 次，本周已领满；另有点了确认 1 次、领完没再读次数，没核实领到）"]))
+    check("新 _stop 文案全部过 plain()",
+          (_texts.plain("周本领奖：走到结晶交互两次都没弹出领奖框，不让它静默退本漏领，停下"),
+           _texts.plain("周本领奖：交互后没弹出领奖框，再次环顾也没看到结晶，停下")), ([], []))
+    short_legit = (HEAD + OCR.format(k=3) + GO + claim(3) + OCR.format(k=2) + GO
+                   + "2026-11-23 10:08:00,000 INFO TaskExecutor FarmEchoTask:结晶波片不足，取消并跳过本次周本\n")
+    w_short = [c for c in outcome.okww_checks(short_legit, expect_nest=False, expect_daily=False, expect_stamina=False) if "周本" in c.label]
+    check("合法波片不足：仍走波片不足分支（不被漏领误盖）", [c.detail for c in w_short], [outcome.WEEKLY_SHORT_SAY])
 
     print("\n[只点了确认、没回读：不算领到，开关不记账]")
     clicks = HEAD + OCR.format(k=3) + CLAIM + OCR.format(k=2) + CLAIM + OCR.format(k=1) + CLAIM

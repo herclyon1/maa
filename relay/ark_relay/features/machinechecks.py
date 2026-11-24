@@ -1256,7 +1256,6 @@ def _after(text: str, marker: str) -> str:
 
 WEEKLY = "Teleport to Boss Weekly Challenge"
 _WEEKLY_ANY = re.compile(r"周本|FarmEchoTask")
-_WEEKLY_SHORT = ("结晶波片不足", "波片不足挡住开启挑战")
 _WEEKLY_CAPPED = re.compile(r"本周周本次数已领满|收取物资次数已达到上限|本周剩余可收取次数[：:]\s*0\s*/")
 
 
@@ -1264,18 +1263,26 @@ _WEEKLY_CAPPED = re.compile(r"本周周本次数已领满|收取物资次数已�
 def _c4(ctx):
     if not _script(ctx, "OK-WW") or not _unattended(ctx):
         return None
-    text = ctx.get("log_text") or ""
-    if WEEKLY not in text:
+    t = outcome._task_lines(ctx.get("log_text") or "")
+    if WEEKLY not in t:
         return None
-    c = outcome.weekly_claims(text)
+    c = outcome.weekly_claims(t)
+    short = bool(outcome.WEEKLY_SHORT.search(t))
+    stopped = outcome._WEEKLY_FAILED.search(t)
+    incomplete = outcome.weekly_incomplete_reason(t, c)
     if c["verified"]:
-        return _r(PASS, _first(text, outcome.WEEKLY_CLAIM_OK))
-    if not c["attempted"] and (_WEEKLY_CAPPED.search(text) or any(k in text for k in _WEEKLY_SHORT)):
+        if stopped and not short:
+            why = outcome.without_screen_dump(outcome._TRACEBACK_TAIL.sub("", stopped.group(1)))
+            return _r(FAIL, f"这一趟按失败结束：{why}（领到了 {c['verified']} 次）")
+        if incomplete:
+            return _r(FAIL, incomplete)
+        return _r(PASS, _first(t, outcome.WEEKLY_CLAIM_OK))
+    if not c["attempted"] and (_WEEKLY_CAPPED.search(t) or short):
         # Already capped this week, or the game refused for want of waveplates: no
         # claim to make, so nothing here says whether claiming works (the run's
         # own result check says the waveplate case).
         return None
-    return _r(FAIL, f"{_weekly_why(text, c)}；日志最后一行周本：{_last(text, _WEEKLY_ANY) or '（没有）'}")
+    return _r(FAIL, f"{_weekly_why(t, c)}；日志最后一行周本：{_last(t, _WEEKLY_ANY) or '（没有）'}")
 
 
 def _weekly_why(text: str, c: dict) -> str:

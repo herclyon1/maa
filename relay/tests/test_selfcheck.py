@@ -1394,15 +1394,30 @@ def _part_mc_runs():
     e = build()
     e._verify_outcome = lambda rr: None
     okww_log = TMP / "history" / "OK-WW-05-19-17.log"
-    okww_log.write_text(ww(WEEKLY_IN + ["FarmEchoTask:周本领奖：回读确认领到，本周剩余 3/3→2/3",
+    okww_log.write_text(ww(WEEKLY_IN + ["FarmEchoTask:周本领奖：回读确认领到，本周剩余 1/3→0/3",
                                         "DailyTask:Daily Task Completed", "TacetTask:enter combat"]), encoding="utf-8")
     r = rec("OK-WW", "2026-10-06/wuwa/OK-WW-05-19-17", datetime(2026, 10, 6, 9, 19, 17, tzinfo=SERVER_TZ))
     r.log_path = okww_log
     handle._handle(e, r)
     saved = mc.read(e.cfg.state_dir)
     check("#4 judged and kept in state/machinecheck.json", (saved.get("#4") or {}).get("status"), "PASS")
-    check("with the run's own read-back line", "3/3→2/3" in (saved.get("#4") or {}).get("evidence", ""))
+    check("with the run's own read-back line", "1/3→0/3" in (saved.get("#4") or {}).get("evidence", ""))
     check("nothing pushed for a PASS", [t for t, _, a in e.notifier.sent if a], [])
+
+    # 2026-11-23 pattern: claimed 2 laps (1/3 left), no WEEKLY_SHORT, then Tacet burned waveplates -> #4 MUST FAIL
+    okww_drop = TMP / "history" / "OK-WW-05-19-18.log"
+    okww_drop.write_text(ww(WEEKLY_IN + ["FarmEchoTask:周本领奖：回读确认领到，本周剩余 3/3→2/3",
+                                         "FarmEchoTask:周本领奖：打完了，去结晶按 F",
+                                         "FarmEchoTask:周本领奖：回读确认领到，本周剩余 2/3→1/3",
+                                         "FarmEchoTask:周本领奖：打完了，去结晶按 F",
+                                         "DailyTask:Daily Task Completed", "TacetTask:enter combat"]), encoding="utf-8")
+    e2 = build()
+    e2._verify_outcome = lambda rr: None
+    r2 = rec("OK-WW", "2026-11-23/wuwa/OK-WW-05-19-18", datetime(2026, 11, 23, 9, 19, 18, tzinfo=SERVER_TZ))
+    r2.log_path = okww_drop
+    handle._handle(e2, r2)
+    saved2 = mc.read(e2.cfg.state_dir)
+    check("#4 fails on 2026-11-23 dropped lap + Tacet stamina burn", (saved2.get("#4") or {}).get("status"), "FAIL")
 
     print("\n[handle._handle: an undone OK-WW round's alarm is checked against the alarm copies]")
     okww_log.write_text(ww(["NightmareNestTask:opened gray_book_boss", "DailyTask:Daily Task Completed",

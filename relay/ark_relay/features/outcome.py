@@ -698,6 +698,37 @@ def weekly_unverified(c: dict) -> str:
     return "；".join(parts)
 
 
+WEEKLY_GO_CLAIM = "周本领奖：打完了，去结晶按 F"
+
+
+def weekly_incomplete_reason(text: str, c: "dict | None" = None) -> str:
+    """Why a weekly-boss run that confirmed >=1 claim still silently dropped a reward; '' when ok.
+
+    Only applies when verified > 0 and neither WEEKLY_SHORT nor _WEEKLY_FAILED fired, so
+    verified==0 diagnostics and explicit _stop reasons keep full specificity. Catches the
+    2026-11-23 pattern where lap 3 pressed F on an echo, exited silently with 1/3 left,
+    and Tacet then burned 120 waveplates while the run still reported 「已完成」.
+    """
+    t = _task_lines(text)
+    if c is None:
+        c = weekly_claims(t)
+    if not c["verified"] or WEEKLY_SHORT.search(t) or _WEEKLY_FAILED.search(t):
+        return ""
+    if c["attempted"] > c["verified"]:
+        return weekly_unverified(c)
+    remain = weekly_left(t)
+    go_claim = t.count(WEEKLY_GO_CLAIM)
+    if remain != 0 and go_claim > c["verified"]:
+        tail = f"（本周还剩 {remain} 次未领）" if remain is not None else ""
+        return f"周本打了 {go_claim} 圈去领奖，只领到了 {c['verified']} 次{tail}"
+    if remain is not None and remain > 0 and _STAMINA_SPENT.search(t):
+        return f"周本只领到了 {c['verified']} 次（本周还剩 {remain} 次），不是波片不足，后续又刷了体力，存在漏领"
+    if remain != 0 and "farm 4c error" in t:
+        tail = f"（本周还剩 {remain} 次）" if remain is not None else ""
+        return f"周本只领到了 {c['verified']} 次{tail}，之后报错退出，存在漏领"
+    return ""
+
+
 def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
     """(path, text) of the newest OK-WW run log AUTO-MAS kept, looking back a week. None when there is none."""
     hist = Path(history_dir)
@@ -1077,7 +1108,8 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
         stopped = _WEEKLY_FAILED.search(text)
         short = bool(WEEKLY_SHORT.search(text))
-        ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
+        incomplete = weekly_incomplete_reason(text, c)
+        ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short or incomplete)
         # 「info_set Teleport to Boss Weekly Challenge 0」 is logged before the book
         # is opened (the 0 is the boss's index). Getting in is 「teleport_to_boss
         # prepared as …」 (FarmEchoTask.py:240); fighting is _WEEKLY_FOUGHT.
@@ -1092,6 +1124,8 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         elif stopped:
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
             out.append(Check("周本领到了奖励", False, without_screen_dump(stopped.group(1)) + got))
+        elif incomplete:
+            out.append(Check("周本领到了奖励", False, incomplete))
         elif c["attempted"]:
             out.append(Check("周本领到了奖励", False,
                              weekly_unverified(c)))
@@ -2142,33 +2176,36 @@ def _okww_steps(text: str, entries: int) -> list[str]:
     if "NightmareNestTask:" in text:
         steps.append(_nest_step(text))
     # The weekly boss; handle.py books the week from this step.
-    if "Teleport to Boss Weekly Challenge" in text:
+    t = _task_lines(text)
+    if "Teleport to Boss Weekly Challenge" in t:
         # Only a claim the overlay re-read the counter for counts (outcome.weekly_claims);
         # 「已点确认」 alone is a click, not a claim. handle.py books the week on
-        # 「周本…已完成」, so no unverified wording below may contain 已完成.
-        c = weekly_claims(text)
+        # 「周本…已完成」, so no unverified / dropped-lap wording below may contain 已完成.
+        c = weekly_claims(t)
         claims, tried = c["verified"], c["attempted"]
         unverified = weekly_unverified(c)
-        left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
+        left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", t)]
         # The same shortage reading as the run's result check (outcome.WEEKLY_SHORT).
-        short = bool(WEEKLY_SHORT.search(text))
-        if "本周周本次数已领满" in text and not tried:
+        short = bool(WEEKLY_SHORT.search(t))
+        stopped = _WEEKLY_FAILED.search(t)
+        incomplete = weekly_incomplete_reason(t, c)
+        if "本周周本次数已领满" in t and not tried:
             # Read 0/3 before entering and skipped: full, but not by this run.
             steps.append("周本（已完成：进本前读到本周 0/3，早已领满，这一趟没领）")
-        elif "Teleport to boss failed" in text and not tried:
+        elif "Teleport to boss failed" in t and not tried:
             steps.append("周本（没进本，一次没打，原因见失败于）")
         elif short and not tried:
             # The overrides' own skip lines (old and current wording).
             steps.append("周本（奖励没领：结晶波片不足，这一趟没打）")
-        elif "farm 4c error" in text:
+        elif "farm 4c error" in t:
             steps.append(f"周本（领了 {claims} 次，之后出错，原因见失败于）" if claims
                          else f"周本（{unverified}，之后出错，原因见失败于）" if tried
                          else "周本（没做完，原因见失败于）")
-        elif not claims and ("收取物资次数已达到上限" in text or (left and left[-1] == 0 and not tried)):
+        elif not claims and ("收取物资次数已达到上限" in t or (left and left[-1] == 0 and not tried)):
             steps.append("周本（已完成，本周已领满）")
         elif claims:
             # The newest reading of the game's counter, pre-entry or read-back.
-            remain = weeklyboss.left_after_claims(text)
+            remain = weeklyboss.left_after_claims(t)
             if remain is None:
                 where = "本周剩余次数没读到"
             elif remain == 0:
@@ -2178,12 +2215,16 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             extra = f"；另有{unverified}" if unverified else ""
             if short:
                 extra += "；剩下的奖励没领：结晶波片不足"
-            steps.append(f"周本（已完成，领了 {claims} 次，{where}{extra}）")
+            if (stopped and not short) or incomplete:
+                prefix = "未领满：只领了" if (remain is not None and remain > 0) else "领奖有异常：领了"
+                steps.append(f"周本（{prefix} {claims} 次，{where}{extra}）")
+            else:
+                steps.append(f"周本（已完成，领了 {claims} 次，{where}{extra}）")
         elif tried:
             steps.append(f"周本（{unverified}）")
-        elif _WEEKLY_FOUGHT.search(text):
+        elif _WEEKLY_FOUGHT.search(t):
             steps.append("周本（打了，没领到奖励）")
-        elif "teleport_to_boss prepared as" in text:
+        elif "teleport_to_boss prepared as" in t:
             # Landed in the realm, no fight line.
             steps.append("周本（进了本，没打起来，没领到奖励）")
         else:

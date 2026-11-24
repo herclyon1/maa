@@ -735,17 +735,27 @@ def _install_claim():
                   f"周本领奖：这一圈打完没看到结晶，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
         self.log_info("周本领奖：打完了，去结晶按 F")
         self._ark_claimed = False
-        try:
-            self.walk_to_treasure()
-        except TaskDisabledException:
-            raise
-        except Exception as exc:  # noqa: BLE001 - reported and stopped on
-            _stop(self, "weekly_walk_failed",
-                  f"周本领奖：没走到结晶 {exc!r}，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
-        self.pick_f()
-        if getattr(self, "_ark_claimed", False):
-            self._ark_claimed = False
-            _after_claim(self)
+        for attempt in range(2):
+            if attempt > 0:
+                self.log_info("周本领奖：交互后没弹出领奖框，重新找结晶再试一次")
+                if not _find_weekly_crystal(self):
+                    _stop(self, "weekly_no_crystal",
+                          f"周本领奖：交互后没弹出领奖框，再次环顾也没看到结晶，停下。整屏读到 {_screen_text(self)[:400]}")
+            try:
+                self.walk_to_treasure()
+            except TaskDisabledException:
+                raise
+            except Exception as exc:  # noqa: BLE001 - reported and stopped on
+                _stop(self, "weekly_walk_failed",
+                      f"周本领奖：没走到结晶 {exc!r}，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
+            self.pick_f()
+            if getattr(self, "_ark_claimed", False):
+                break
+        if not getattr(self, "_ark_claimed", False):
+            _stop(self, "weekly_claim_not_opened",
+                  f"周本领奖：走到结晶交互两次都没弹出领奖框，不让它静默退本漏领，停下。整屏读到 {_screen_text(self)[:400]}")
+        self._ark_claimed = False
+        _after_claim(self)
 
 
 class _EarlyOpen(Exception):

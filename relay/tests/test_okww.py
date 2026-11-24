@@ -1996,6 +1996,45 @@ def _part_okww_claim_readback():  # noqa: C901
     check("没走也没按 F", [e for e in t.events if e in ("walk", "key:f")], [])
     check("留图并报手机", (t.shots, len(t.errors) == 1 and "没看到结晶" in t.errors[0][0]), (["weekly_no_crystal"], True))
 
+    print("\n[2026-11-23 10:10:56: 第 1 次按 F 没弹出领奖框（点到了声骸），重试第 2 次找到并领到，且「去结晶按 F」只打 1 次]")
+    t = task(left=1, pages=[PAGE[0]], screens=[FULL, SETTLEMENT], crystal=True)
+    picks = {"n": 0}
+    orig_pick = t.pick_f
+    def pick_miss_once():
+        picks["n"] += 1
+        if picks["n"] == 1:
+            t.events.append("key:f-miss")
+            return None
+        return orig_pick()
+    t.pick_f = pick_miss_once
+    check("第 2 次领到 1/3→0/3 后有序停下", lap(t), "stop")
+    check("走了两次、第二次按 F 确认", [e for e in t.events if e in ("walk", "key:f-miss", "key:f", "confirm")],
+          ["walk", "key:f-miss", "walk", "key:f", "confirm"])
+    check("「打完了，去结晶按 F」只记 1 次（防漏领计数虚增）", t.logs.count("周本领奖：打完了，去结晶按 F"), 1)
+    check("回读确认 1/3→0/3 且无报错", ("周本领奖：回读确认领到，本周剩余 1/3→0/3" in t.logs, t.errors), (True, []))
+
+    print("\n[第 1 次按 F 没弹窗、第 2 次重找结晶也找不到：立刻停机留图报群]")
+    t = task(left=1, crystal=True)
+    t.center_camera = lambda: t.events.append("center")
+    def pick_then_vanish():
+        t.events.append("key:f-miss")
+        t.crystal = False
+        return None
+    t.pick_f = pick_then_vanish
+    check("停下", lap(t), "stop")
+    check("没跑第二次 walk_to_treasure", t.events.count("walk"), 1)
+    check("留图 weekly_no_crystal 并报群", (t.shots, len(t.errors) == 1 and t.errors[0][1]), (["weekly_no_crystal"], True))
+
+    print("\n[两次按 F 都没弹出领奖框：不再静默退出丢奖励，留图报群停机]")
+    t = task(left=1, crystal=True)
+    t.pick_f = lambda: t.events.append("key:f-miss")
+    check("停下", lap(t), "stop")
+    check("试了两次 walk + pick_f", [e for e in t.events if e in ("walk", "key:f-miss")],
+          ["walk", "key:f-miss", "walk", "key:f-miss"])
+    check("留图 weekly_claim_not_opened 并以「周本领奖：」开头报群",
+          (t.shots, len(t.errors) == 1 and t.errors[0][0].startswith("周本领奖：") and t.errors[0][1]),
+          (["weekly_claim_not_opened"], True))
+
     print("\n[领奖钩子遇到的不是领奖弹窗（退出副本的确认框也是这个取消按钮）：照上游按 ESC，不点确认]")
     t = task(screens=[["是否退出副本？", "取消", "确认"]])
     check("返回 True（上游的语义）", t.handle_claim_button(), True)
@@ -2173,6 +2212,7 @@ def _part_okww_claim_readback():  # noqa: C901
     check("a deliberate stop goes up untouched", stopped, True)
     ns["NO_CLAIM"] = str(Path(__file__).resolve().parent / "no-such-no-claim-flag")
     tt = toast_task([["生命"]])
+    tt.in_world = lambda: True
     tt.incr_drop(True)
     check("not farming (the daily weekly claim): no toast read", (tt.frames, [m for m in tt.logs if m.startswith("刷声骸掉落：")]), (0, []))
 
@@ -5047,8 +5087,15 @@ def _part_okww_weekly_boss_step():
           ["周本（领完再读次数没变 1 次，没领到）"])
     check("回读没读到：不算领到", steps(HEAD + OCR.format(k=2) + CLAIM + UNREAD),
           ["周本（领完再读没读到剩余次数 1 次，没核实领到）"])
-    check("一次确认、一次没变：领了 1 次另说那次", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + CLAIM + SAME.format(k=2)),
-          ["周本（已完成，领了 1 次，本周还剩 2 次；另有领完再读次数没变 1 次，没领到）"])
+    check("一次确认、一次没变：不写已完成，写未领满并另说那次", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + CLAIM + SAME.format(k=2)),
+          ["周本（未领满：只领了 1 次，本周还剩 2 次；另有领完再读次数没变 1 次，没领到）"])
+    STOP3 = "2026-09-07 10:02:00,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本领奖：走到结晶交互两次都没弹出领奖框，不让它静默退本漏领，停下\n"
+    check("领 2 次后第 3 圈 _stop：不写已完成，写未领满",
+          steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + CLAIM + BACK.format(k=2, n=1) + STOP3),
+          ["周本（未领满：只领了 2 次，本周还剩 1 次）"])
+    check("已领满 0/3 但另有异常停机：写「领奖有异常」不出现「未领满…本周已领满」矛盾",
+          steps(HEAD + OCR.format(k=1) + CLAIM + BACK.format(k=1, n=0) + STOP3),
+          ["周本（领奖有异常：领了 1 次，本周已领满）"])
 
     print("\n[剩余次数没读到不等于领满]")
     # A verified claim with no counter reading anywhere: unknown, never 「本周已领满」.
@@ -5060,6 +5107,9 @@ def _part_okww_weekly_boss_step():
     try:
         check("领到了但读不到剩余：说没读到，不说领满", steps(HEAD + CLAIM + BACK.format(k=3, n=2)),
               ["周本（已完成，领了 1 次，本周剩余次数没读到）"])
+        check("领到了且读不到剩余但后续异常停机：写「领奖有异常」不写「未领满」",
+              steps(HEAD + CLAIM + BACK.format(k=3, n=2) + STOP3),
+              ["周本（领奖有异常：领了 1 次，本周剩余次数没读到）"])
     finally:
         outcome.weekly_left = orig
 
