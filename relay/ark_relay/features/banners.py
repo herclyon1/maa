@@ -351,21 +351,37 @@ def _transient(exc: BaseException) -> bool:
 
 def _read(req, url: str, data: "bytes | None", timeout: int) -> bytes:
     """The whole answer to `req`, recorded on the day's tape (selfcheck/tape.py).
-    A read the network cut short is tried once more after _RETRY_PAUSE; the second
-    failure is raised to the caller, which says what it could not read."""
-    try:
-        return _read_once(req, url, data, timeout)
-    except Exception as exc:
-        if not _transient(exc):
-            raise
-        log.info("%s 第一次没读完（%s: %s），%.0f 秒后再读一次", url, type(exc).__name__, exc, _RETRY_PAUSE)
-    _pause(_RETRY_PAUSE)
-    return _read_once(req, url, data, timeout)
+    A read the network cut short is tried again after _RETRY_PAUSE (rotating to
+    another resolved CDN edge IP when available); the last failure is raised."""
+    tried_ips: set[str] = set()
+    pin_ip = ""
+    attempt = 0
+    while True:
+        peer_box = [""]
+        try:
+            return _read_once(req, url, data, timeout, pin_ip=pin_ip, peer_box=peer_box)
+        except Exception as exc:
+            if not _transient(exc):
+                raise
+            alt = netretry.next_cdn_ip(url, tried_ips, peer_box[0], pin_ip,
+                                       opener=urllib.request.urlopen)
+            cap = 3 if alt else 2
+            if attempt + 1 >= cap:
+                raise
+            pin_ip = alt
+            note = f"（换地址 {alt}）" if alt else ""
+            log.info("%s 第一次没读完（%s: %s），%.0f 秒后再读一次%s",
+                     url, type(exc).__name__, exc, _RETRY_PAUSE, note)
+        _pause(_RETRY_PAUSE)
+        attempt += 1
 
 
-def _read_once(req, url: str, data: "bytes | None", timeout: int) -> bytes:
+def _read_once(req, url: str, data: "bytes | None", timeout: int, *,
+               pin_ip: str = "", peer_box: "list[str] | None" = None) -> bytes:
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with netretry.open_pinned(req, timeout, pin_ip, opener=urllib.request.urlopen) as r:
+            if peer_box is not None:
+                peer_box[0] = netretry.response_peer_ip(r)
             raw = r.read()
     except Exception as exc:
         tape.answer("web", url, req=data, error=exc)

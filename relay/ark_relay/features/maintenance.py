@@ -112,10 +112,13 @@ def _limit(timeout: float) -> float:
     return min(timeout, left)
 
 
-def _read_whole(req, end: float, limit: float) -> str:
+def _read_whole(req, end: float, limit: float, *,
+                pin_ip: str = "", peer_box: "list[str] | None" = None) -> str:
     """One request, read to the end unless time.monotonic() passes `end` first."""
-    with urllib.request.urlopen(req, timeout=limit) as r:
+    with netretry.open_pinned(req, limit, pin_ip, opener=urllib.request.urlopen) as r:
         req.status = getattr(r, "status", None)     # for the day's tape (_get)
+        if peer_box is not None:
+            peer_box[0] = netretry.response_peer_ip(r)
         read1 = getattr(r, "read1", None)
         if read1 is None:                      # a plain file-like answer
             return r.read().decode("utf-8", "replace")
@@ -131,11 +134,15 @@ def _read_whole(req, end: float, limit: float) -> str:
                 sock.settimeout(left)
             chunk = read1(65536)
             if not chunk:
-                return b"".join(parts).decode("utf-8", "replace")
+                body = b"".join(parts)
+                rem = getattr(r, "length", None)
+                if rem and not getattr(r, "chunked", False):
+                    raise netretry.http.client.IncompleteRead(body, rem)
+                return body.decode("utf-8", "replace")
             parts.append(chunk)
 
 
-def _try(req, limit: float) -> str:
+def _try(req, limit: float, *, pin_ip: str = "", peer_box: "list[str] | None" = None) -> str:
     """_read_whole within `limit` seconds. In a thread of its own: a stalled DNS
     lookup or a server that dribbles its headers is out of the body loop's reach; it
     is left to end at its socket time-out."""
@@ -144,7 +151,7 @@ def _try(req, limit: float) -> str:
 
     def run():
         try:
-            box["page"] = _read_whole(req, end, limit)
+            box["page"] = _read_whole(req, end, limit, pin_ip=pin_ip, peer_box=peer_box)
         except BaseException as exc:  # noqa: BLE001 - handed to the caller as is
             box["exc"] = exc
 
@@ -158,34 +165,55 @@ def _try(req, limit: float) -> str:
     return box["page"]
 
 
+def _retry_edge(url: str, transient: bool, i: int, tried_ips: set[str],
+                peer_ip: str, pin_ip: str) -> tuple[bool, str]:
+    if not transient:
+        return False, ""
+    alt = netretry.next_cdn_ip(url, tried_ips, peer_ip, pin_ip, opener=urllib.request.urlopen)
+    cap = max(GET_ATTEMPTS, 3) if (GET_ATTEMPTS >= 2 and alt) else GET_ATTEMPTS
+    until = _UNTIL.get()
+    if i + 1 >= cap or (until is not None and until - time.monotonic() <= GET_PAUSE):
+        return False, ""
+    return True, alt
+
+
 def _get(url: str, timeout: "float | None" = None) -> str:
     timeout = timeout or GET_TIMEOUT
     req = urllib.request.Request(url, headers={"User-Agent": _UA})
     first = ""
-    for i in range(GET_ATTEMPTS):
+    tried_ips: set[str] = set()
+    pin_ip = ""
+    i = 0
+    while True:
+        peer_box = [""]
         try:
-            page = _try(req, _limit(timeout))
+            page = _try(req, _limit(timeout), pin_ip=pin_ip, peer_box=peer_box)
         except urllib.error.HTTPError as exc:
             # The site's answer is not tried again; a gateway's 502 / 503 / 504 is the
             # network in front of it and is (netretry.transient; dispatch
             # relay-opt-round3-1108 O-03).
-            until = _UNTIL.get()
-            if (not netretry.transient(exc) or i + 1 >= GET_ATTEMPTS
-                    or (until is not None and until - time.monotonic() <= GET_PAUSE)):
+            ok, alt = _retry_edge(url, netretry.transient(exc), i, tried_ips, peer_box[0], pin_ip)
+            if not ok:
                 tape.answer("web", url, error=exc)        # the day's tape (selfcheck/tape.py)
                 raise
             first = first or f"回了 {exc.code}"
-            log.info("维护公告：%s 回了 %d，%.0f 秒后再试一次", url, exc.code, GET_PAUSE)
+            pin_ip = alt
+            note = f"（换地址 {alt}）" if alt else ""
+            log.info("维护公告：%s 回了 %d，%.0f 秒后再试一次%s", url, exc.code, GET_PAUSE, note)
             _sleep(GET_PAUSE)
+            i += 1
             continue
         except Exception as exc:  # timeout, reset, DNS (the last try re-raises)
-            until = _UNTIL.get()
-            if i + 1 >= GET_ATTEMPTS or (until is not None and until - time.monotonic() <= GET_PAUSE):
+            ok, alt = _retry_edge(url, True, i, tried_ips, peer_box[0], pin_ip)
+            if not ok:
                 tape.answer("web", url, error=exc)
                 raise
             first = first or f"{type(exc).__name__}: {exc}"
-            log.info("维护公告：%s 没响应（%s），%.0f 秒后再试一次", url, exc, GET_PAUSE)
+            pin_ip = alt
+            note = f"（换地址 {alt}）" if alt else ""
+            log.info("维护公告：%s 没响应（%s），%.0f 秒后再试一次%s", url, exc, GET_PAUSE, note)
             _sleep(GET_PAUSE)
+            i += 1
             continue
         if i:
             from ark_relay.features import errwatch  # noqa: PLC0415
@@ -195,7 +223,6 @@ def _get(url: str, timeout: "float | None" = None) -> str:
                         GET_PAUSE * i, url, first, extra=errwatch.recovered())
         tape.answer("web", url, body=page, resp=req)
         return page
-    raise RuntimeError("unreachable")
 
 
 def _text(page: str) -> str:

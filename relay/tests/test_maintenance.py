@@ -680,5 +680,153 @@ the ledger and in the persisted hold, and its re-run is registered.
     print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
 
 
+def _part_cdn_ip_rotation():
+    """#196: pinned broken CDN edge IP resetting mid-body rotates to another resolved IP on retry."""
+    import http.server
+    import logging
+    import socket
+    import struct
+    import threading
+    import urllib.request
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import notify as N
+    from ark_relay.features import banners as B
+    from ark_relay.features import errwatch
+    from ark_relay.features import maintenance as M
+
+    seen_hosts: list[str] = []
+
+    class GoodHandler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            seen_hosts.append(self.headers.get("Host", ""))
+            body = b'{"ok":true,"msg":"healthy"}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    class ResetHandler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            # Reproduces 36.189.209.129: sends headers + partial body, then TCP RST (SO_LINGER 1,0).
+            self.send_response(200)
+            self.send_header("Content-Length", "156354")
+            self.end_headers()
+            self.wfile.write(b"partial")
+            self.wfile.flush()
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            self.connection.close()
+
+    good_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), GoodHandler)
+    bad_srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), ResetHandler)
+    good_srv.daemon_threads = bad_srv.daemon_threads = True
+    threading.Thread(target=good_srv.serve_forever, daemon=True).start()
+    threading.Thread(target=bad_srv.serve_forever, daemon=True).start()
+    good_port = good_srv.server_address[1]
+    bad_port = bad_srv.server_address[1]
+
+    real_create = socket.create_connection
+    real_resolve = N.resolve_ips
+    real_sleep_m = M._sleep
+    real_pause_b = B._pause
+    real_attempts = M.GET_ATTEMPTS
+    real_timeout = M.GET_TIMEOUT
+    targets: list[str] = []
+    dns_map: dict[str, list[str]] = {}
+
+    def fake_create(addr, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+        host, port = addr
+        targets.append(host)
+        if host in ("fake-cdn.invalid", "203.0.113.1", "203.0.113.2"):
+            return real_create(("127.0.0.1", bad_port), timeout, source_address)
+        if host == "203.0.113.9":
+            return real_create(("127.0.0.1", good_port), timeout, source_address)
+        return real_create(addr, timeout, source_address)
+
+    class Logs(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.recs: list[tuple[int, str, bool]] = []
+
+        def emit(self, record):
+            self.recs.append((record.levelno, record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+
+    logs = Logs()
+    M.log.addHandler(logs)
+    M.log.setLevel(logging.INFO)
+    try:
+        print("[1. open_pinned keeps Host header while connecting TCP to pinned IP]")
+        req = urllib.request.Request(f"http://fake-cdn.invalid:{good_port}/notice", headers={"User-Agent": "t"})
+        with N.open_pinned(req, 5, pin_ip="127.0.0.1") as r:
+            body = r.read().decode("utf-8")
+        check("open_pinned returned body", '"healthy"' in body, True)
+        check("Host header kept original domain", seen_hosts[-1], f"fake-cdn.invalid:{good_port}")
+
+        print("[2. maintenance._get rotates away from resetting edge IP (2-IP pool)]")
+        socket.create_connection = fake_create
+        N.resolve_ips = lambda u: list(dns_map.get(u, []))
+        M._sleep = lambda s: None
+        B._pause = lambda s: None
+        M.GET_ATTEMPTS = 2
+        M.GET_TIMEOUT = 5
+        url = f"http://fake-cdn.invalid:{good_port}/zh-Hans.json"
+        dns_map[url] = ["203.0.113.1", "203.0.113.9"]
+        targets.clear()
+        logs.recs.clear()
+        got = M._get(url)
+        check("recovered via healthy 2nd IP", '"healthy"' in got, True)
+        check("rotated from hostname to 2nd IP", targets, ["fake-cdn.invalid", "203.0.113.9"])
+        warns = [(m, rec) for lv, m, rec in logs.recs if lv >= logging.WARNING]
+        check("single recovered WARNING matching #50",
+              (len(warns), warns[0][0].startswith("停服维护公告的官网第一次没响应"), warns[0][1]),
+              (1, True, True))
+
+        print("[3. maintenance._get rotates across 3 IPs when 2 nodes are broken simultaneously]")
+        dns_map[url] = ["203.0.113.1", "203.0.113.2", "203.0.113.9"]
+        targets.clear()
+        got3 = M._get(url)
+        check("3-IP rotation succeeded on 3rd IP", '"healthy"' in got3, True)
+        check("tried bad1 -> bad2 -> good", targets, ["fake-cdn.invalid", "203.0.113.2", "203.0.113.9"])
+
+        print("[4. GET_ATTEMPTS=1 still stops after 1 try even on multi-IP host]")
+        M.GET_ATTEMPTS = 1
+        targets.clear()
+        try:
+            M._get(url)
+            stopped = False
+        except Exception:  # noqa: BLE001
+            stopped = True
+        check("GET_ATTEMPTS=1 raised after 1 try", (stopped, len(targets)), (True, 1))
+
+        print("[5. banners._read rotates away from resetting edge IP]")
+        M.GET_ATTEMPTS = 2
+        targets.clear()
+        req2 = urllib.request.Request(url, headers={"User-Agent": "t"})
+        raw_b = B._read(req2, url, None, 5)
+        check("banners._read recovered via 3rd IP", b'"healthy"' in raw_b, True)
+        check("banners._read tried bad1 -> bad2 -> good", targets, ["fake-cdn.invalid", "203.0.113.2", "203.0.113.9"])
+    finally:
+        socket.create_connection = real_create
+        N.resolve_ips = real_resolve
+        M._sleep = real_sleep_m
+        B._pause = real_pause_b
+        M.GET_ATTEMPTS = real_attempts
+        M.GET_TIMEOUT = real_timeout
+        M.log.removeHandler(logs)
+        good_srv.shutdown()
+        bad_srv.shutdown()
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_maintenance_deadline, _part_maintenance_main, _part_maintenance_cache, _part_maintenance_mark_every_script]))
+    sys.exit(run_parts([_part_maintenance_deadline, _part_maintenance_main, _part_maintenance_cache,
+                        _part_maintenance_mark_every_script, _part_cdn_ip_rotation]))

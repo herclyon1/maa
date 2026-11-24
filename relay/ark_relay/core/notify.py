@@ -5,10 +5,12 @@ Plain HTTP with urllib; no push library.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import re
 import logging
 import random
+import socket
 import threading
 import time
 import urllib.error
@@ -773,3 +775,123 @@ def call(fn, what: str, limit: float, *, detail: str = "", clock=None, sleep=Non
                         extra=errwatch.recovered())
         return got
     raise RuntimeError("unreachable")
+
+
+_REAL_URLOPEN = urllib.request.urlopen
+
+
+def _pinned_create(pin_host: str, pin_ip: str):
+    def create(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+        host, port = address
+        target = pin_ip if (host or "").lower() == pin_host else host
+        return socket.create_connection((target, port), timeout, source_address)
+    return create
+
+
+class _PinnedHTTPHandler(urllib.request.HTTPHandler):
+    def __init__(self, pin_host: str, pin_ip: str):
+        super().__init__()
+        self._pin_host = pin_host
+        self._pin_ip = pin_ip
+
+    def http_open(self, req):
+        return urllib.request.AbstractHTTPHandler.do_open(self, self._conn, req)
+
+    def _conn(self, host, **kw):
+        conn = http.client.HTTPConnection(host, **kw)
+        conn._create_connection = _pinned_create(self._pin_host, self._pin_ip)
+        return conn
+
+
+class _PinnedHTTPSHandler(urllib.request.HTTPSHandler):
+    def __init__(self, pin_host: str, pin_ip: str):
+        super().__init__()
+        self._pin_host = pin_host
+        self._pin_ip = pin_ip
+
+    def https_open(self, req):
+        return urllib.request.AbstractHTTPHandler.do_open(
+            self, self._conn, req, context=getattr(self, "_context", None))
+
+    def _conn(self, host, **kw):
+        conn = http.client.HTTPSConnection(host, **kw)
+        conn._create_connection = _pinned_create(self._pin_host, self._pin_ip)
+        return conn
+
+
+def response_peer_ip(resp) -> str:
+    """Peer IP of an open urllib response, or '' if unavailable (e.g. test mock)."""
+    sock = getattr(getattr(getattr(resp, "fp", None), "raw", None), "_sock", None)
+    if sock is None:
+        return ""
+    try:
+        peer = sock.getpeername()
+        return str(peer[0]) if peer else ""
+    except OSError:
+        return ""
+
+
+def resolve_ips(url: str) -> list[str]:
+    """Distinct TCP IPs for `url`'s host (empty for IP literals or proxied schemes)."""
+    parts = urllib.parse.urlsplit(url)
+    scheme = (parts.scheme or "").lower()
+    host = (parts.hostname or "").lower()
+    if scheme not in ("http", "https") or not host:
+        return []
+    try:
+        ipaddress.ip_address(host.split("%", 1)[0])
+        return []
+    except ValueError:
+        pass
+    proxies = urllib.request.getproxies()
+    if (proxies.get(scheme) or proxies.get("all")) and not urllib.request.proxy_bypass(host):
+        return []
+    port = parts.port or (443 if scheme == "https" else 80)
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return []
+    seen: set[str] = set()
+    out: list[str] = []
+    for _, _, _, _, sa in infos:
+        ip = str(sa[0])
+        if ip and ip not in seen:
+            seen.add(ip)
+            out.append(ip)
+    return out
+
+
+def next_cdn_ip(url: str, tried_ips: set[str], peer_ip: str, pin_ip: str, *,
+                opener=None, resolve=None) -> str:
+    """Record a failed edge IP in `tried_ips` and return another resolved IP, else ''."""
+    if opener is not None and opener is not _REAL_URLOPEN:
+        return ""
+    ips = (resolve or resolve_ips)(url)
+    if len(ips) < 2:
+        return ""
+    if pin_ip:
+        tried_ips.add(pin_ip)
+    if peer_ip:
+        tried_ips.add(peer_ip)
+    if not pin_ip and (not peer_ip or peer_ip not in ips):
+        tried_ips.add(ips[0])
+    for ip in ips:
+        if ip not in tried_ips:
+            return ip
+    return ""
+
+
+def open_pinned(req: urllib.request.Request, timeout: float,
+                pin_ip: str = "", *, opener=None):
+    """Open `req`, optionally pinning TCP to `pin_ip` while keeping Host and TLS SNI."""
+    base = opener or urllib.request.urlopen
+    if not pin_ip or base is not _REAL_URLOPEN:
+        return base(req, timeout=timeout)
+    host = (urllib.parse.urlsplit(req.full_url).hostname or "").lower()
+    if not host:
+        return base(req, timeout=timeout)
+    built = urllib.request.build_opener(
+        _PinnedHTTPHandler(host, pin_ip),
+        _PinnedHTTPSHandler(host, pin_ip),
+    )
+    return built.open(req, timeout=timeout)
