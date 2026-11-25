@@ -4090,6 +4090,52 @@ def _part_need_table():
     require("summary 提到下一位没建成", "下一位没建成" in bnt.summary(t15b), bnt.summary(t15b))
     require("summary 两个都说到", all(w in bnt.summary(t15) for w in ("祀", "玉中身", "下一位 明河", "智识提升/寒冷伤害提升/效益")), bnt.summary(t15))
 
+    print("\n[#197：上线当天开服前百科仍标 preview、且三源均无数据时，保留上一位已实装六星不炸整张表]")
+    # 1) Release day before 12:00: onlineDate == today AND dotType == label_type_preview -> stays next
+    ranked_197 = [
+        {"name": "小刻", "onlineDate": "2026-11-25", "dotType": "label_type_preview"},
+        {"name": "明河", "onlineDate": "2026-11-05", "dotType": "label_type_up"},
+    ]
+    check("上线日未开服（label_type_preview）：明河仍是 current，小刻留在 next",
+          [(w, r) for w, r, _l, _c in bnt.pick_standards(ranked_197, "2026-11-25", "6")],
+          [("明河", "current"), ("小刻", "next")])
+    ranked_197_live = [
+        {"name": "小刻", "onlineDate": "2026-11-25", "dotType": "label_type_up"},
+        {"name": "明河", "onlineDate": "2026-11-05", "dotType": ""},
+    ]
+    check("开服后摘掉 preview（label_type_up）：小刻立刻升为 current",
+          [(w, r) for w, r, _l, _c in bnt.pick_standards(ranked_197_live, "2026-11-25", "6")],
+          [("小刻", "current")])
+
+    # 2) Even if preview label is gone (e.g. 2026-11-05 on FIX15 with foresight missing 明河),
+    # build() falls back from unpublished newest (明河) to previous released (祀) and logs nextError!
+    class EmptyForesight(bnt.RulesSource):
+        def get_url(self, name, url, trim=None, loads=json.loads):
+            if name == "client-foresight":
+                return {}
+            return super().get_url(name, url, trim, loads)
+
+    t197_preview = bnt.build(EmptyForesight(FIX15, None), "fixture", "2026-11-05")
+    g197p = t197_preview["games"][0]
+    check("上线日仍标 preview 且三源未收录：表用祀，明河写进 nextError",
+          ([x["name"] for x in g197p["standards"]], g197p["coverage"]["operator"],
+           g197p["coverage"]["nextError"].startswith("明河：RuntimeError:")),
+          (["祀"], "祀", True))
+
+    t197_lag = bnt.build(EmptyForesight(FIX15, None), "fixture", "2026-11-06")
+    g197l = t197_lag["games"][0]
+    check("过零点/摘标签后三源仍滞后：自动退回上一位祀，明河写进 nextError",
+          ([x["name"] for x in g197l["standards"]], g197l["coverage"]["operator"],
+           g197l["coverage"]["nextError"].startswith("明河：RuntimeError:")),
+          (["祀"], "祀", True))
+
+    try:
+        bnt.build(EmptyForesight(FIX15, None), "fixture", "2026-11-06", char_name="明河")
+        explicit_raised = False
+    except RuntimeError:
+        explicit_raised = True
+    check("显式 --char 指定未收录干员时仍照常报错、不静默退回", explicit_raised, True)
+
     print("\n[MaaEnd 的文件：游戏机上装着的那份优先（不联网），带注释也读得懂]")
     import tempfile
     with tempfile.TemporaryDirectory() as tmp:

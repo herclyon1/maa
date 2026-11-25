@@ -796,9 +796,12 @@ def foresight_entry(fs: dict, rarity: str, calc_ids: set[str], wtype: str, who: 
                                                for w in e.get("weaponIds") or []}]
     if len(cands) != 1:
         codes = "、".join(str(e.get("charId")) for e in cands) or "无"
-        raise RuntimeError(f"{who}: not in the calculator, no material cards in the wiki entry, and the preview "
+        exc = RuntimeError(f"{who}: not in the calculator, no material cards in the wiki entry, and the preview "
                            f"table has {len(cands)} unlisted {rarity}-star entries of weapon type {wtype or '?'} "
                            f"({codes}) - cannot pick hers")
+        if not cands:
+            exc.unpublished = True
+        raise exc
     return cands[0]
 
 
@@ -848,14 +851,26 @@ def by_name_to_ids(counts: Counter, mat: dict[str, dict]) -> Counter:
     return out
 
 
+def _is_released(entry: dict, today: str) -> bool:
+    """True once release day is here and the official wiki no longer marks her as preview.
+
+    Endfield banners open at 12:00 UTC+8 on release day; before noon the wiki already has
+    `onlineDate == today` while still keeping `dotType == "label_type_preview"` and holding
+    back calculator / material-card data (#197, 2026-11-25 小刻)."""
+    d = entry.get("onlineDate") or ""
+    if not d or d > today:
+        return False
+    return not (d == today and entry.get("dotType") == "label_type_preview")
+
+
 def pick_standards(ranked: list[dict], today: str, rarity: str, char_name: str = "") -> list[tuple[str, str, str, str]]:
     """(who, role, label, chosenBy) of each standard, in order (the docstring's Standards
     section): the newest released entry, then the announced one with the nearest date."""
     star = STAR[rarity]
     if char_name:
         return [(char_name, "named", "指定干员", "--char")]
-    released = [e for e in ranked if e["onlineDate"] <= today]
-    upcoming = [e for e in ranked if e["onlineDate"] > today]
+    released = [e for e in ranked if _is_released(e, today)]
+    upcoming = [e for e in ranked if not _is_released(e, today)]
     picks = []
     if released:
         picks.append((released[0]["name"], "current", f"最新{star}星", f"百科上线时间最新、已上线的{star}星"))
@@ -879,6 +894,7 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
     # 1. who - from the official wiki: the current standard and the announced next one
     ops = wiki_entries(src, "干员", rarity)
     _top, ranked = newest(ops)
+    released = [e for e in ranked if _is_released(e, today)]
     picks = pick_standards(ranked, today, rarity, char_name)
     if not picks:
         raise RuntimeError("no entry to build a standard for")
@@ -886,10 +902,16 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
     for i, (who, role, label, chosen_by) in enumerate(picks):
         try:
             standards.append(build_standard(src, ctx, ops, who, role, label, chosen_by, weapon_name if i == 0 else ""))
-        except Exception as exc:  # the next one is optional; the current one is not (re-raised)
+        except Exception as exc:  # the next one is optional; current falls back only when unpublished
             if i == 0:
+                if not char_name and getattr(exc, "unpublished", False) and len(released) >= 2:
+                    fb = released[1]["name"]
+                    standards.append(build_standard(src, ctx, ops, fb, role, label, chosen_by, weapon_name))
+                    next_error = f"{who}：{type(exc).__name__}: {exc}"
+                    continue
                 raise
-            next_error = f"{who}：{type(exc).__name__}: {exc}"
+            if not next_error:
+                next_error = f"{who}：{type(exc).__name__}: {exc}"
     first = standards[0]
     nxt = next((s for s in standards[1:] if s["role"] == "next"), None)
     return {
@@ -904,7 +926,7 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
                 "operator": first["name"], "releasedAt": first["releasedAt"], "status": first["status"],
                 "weapon": first["weapon"]["name"], "weaponStatus": first["weapon"]["status"], "asOf": today,
                 "sources": first["sources"],
-                "candidates": [f"{r['name']} {r['onlineDate']}{'（未实装）' if r['onlineDate'] > today else ''}" for r in ranked],
+                "candidates": [f"{r['name']} {r['onlineDate']}{'（未实装）' if not _is_released(r, today) else ''}" for r in ranked],
                 "next": ({"name": nxt["name"], "releasedAt": nxt["releasedAt"], "status": nxt["status"],
                           "weapon": nxt["weapon"]["name"]} if nxt else None),
                 "nextError": next_error,
@@ -920,7 +942,7 @@ def build_standard(src: RulesSource, ctx: dict, ops: list[dict], who: str, role:
     weapons_listed, wid_of, wnames = ctx["weapons_listed"], ctx["wid_of"], ctx["wnames"]
     today, rarity = ctx["today"], ctx["rarity"]
     op = next((e for e in ops if e["name"] == who), None) or {"name": who, "wikiItemId": "", "onlineDate": "", "obtain": "", "dotType": ""}
-    status = "已实装" if op["onlineDate"] and op["onlineDate"] <= today else "未实装"
+    status = "已实装" if _is_released(op, today) else "未实装"
     # The calculator's weaponType once she is listed, else her wiki entry's weapon tag.
     wtype = weapon_types.get(who, "") or op.get("weaponType", "")
     weapon: dict | None
