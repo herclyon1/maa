@@ -108,9 +108,19 @@ def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
     return game, (launcher if launcher and launcher.exists() else None)
 
 
-# Words on the Hypergryph launcher while it downloads or installs. Seen on the
-# first look, it is resuming an earlier download: wait, do not click, do not kill.
-_EF_BUSY = ("正在下载", "安装中")
+# Words on the Hypergryph launcher while it downloads, verifies or installs. Seen on
+# the first look, it is resuming an earlier download: wait, do not click, do not kill.
+_EF_BUSY = ("正在下载", "安装中", "校验中")
+# Extra clicks of 「开始游戏」 when Endfield's window still has not appeared and the
+# launcher is still sitting on 「开始游戏」 (e.g. an earlier click missed the button).
+_EF_START_RETRIES = 2
+
+
+def _read_quiet(desk, focus: str):
+    """Read `focus` without firing a per-poll WARNING when the window is not up yet."""
+    if isinstance(desk, Desktop):
+        return desk.read(focus=focus, warn_missing=False)
+    return desk.read(focus=focus)
 
 _EF_SPACE_WORDS = ("系统提示", "所需空间", "剩余空间")
 # Neither OCR pass reads 「确认」 (white button, dark text; nor 「取消」), so the button is
@@ -136,6 +146,69 @@ def _confirm_space(desk, scr) -> str:
         if line is not None and desk.click(line.x + dx, line.y + dy, focus="Games"):
             return f"按「{word}」的位置"
     return ""
+
+
+def _wait_endfield_title(desk, launcher: Path, *, poll_s: float,
+                         problems: list[str] | None, sleep) -> bool:
+    """Wait up to 15 minutes for Endfield to reach the title screen; retry 「开始游戏」
+    if the launcher is still sitting on it, and restart once on 「请重启游戏」."""
+    deadline = time.monotonic() + 900
+    restarted = False
+    seen_game = False
+    missing_runs = 0
+    start_retries = 0
+    scr = None
+    while time.monotonic() < deadline:
+        scr = _read_quiet(desk, "Endfield")
+        if not _unread(scr) and scr.has(*READY_WORDS["终末地"]):
+            log.info("游戏更新：终末地已到标题画面（读到「点击任意位置继续」），客户端可用")
+            return True
+        if _focus_missing(scr):
+            missing_runs += 1
+            if missing_runs >= 2 and start_retries < _EF_START_RETRIES:
+                lscr = _read_quiet(desk, "Games")
+                if not _unread(lscr) and lscr.has("开始游戏"):
+                    start_retries += 1
+                    missing_runs = 0
+                    log.info("游戏更新：还没找到终末地窗口，启动器还停在「开始游戏」，补点一次（第 %d 次）",
+                             start_retries)
+                    desk.click_text("开始游戏", focus="Games")
+                    sleep(60)
+                    continue
+            if not seen_game and start_retries >= _EF_START_RETRIES and missing_runs >= 2:
+                _note(problems, f"终末地：点了 {1 + start_retries} 次「开始游戏」仍没等到游戏窗口（最后一屏截图 {scr.shot}）")
+                kill("Endfield.exe", "Games.exe")
+                return False
+            sleep(poll_s)
+            continue
+        if not _unread(scr):
+            seen_game = True
+            missing_runs = 0
+        if scr.has("请重启游戏") and not restarted:
+            if not desk.click_text("确认", focus="Endfield"):
+                # The kill below closes the game either way; only say it.
+                log.warning("游戏更新：终末地「请重启游戏」的「确认」没点上，直接关掉重开")
+            sleep(8)
+            kill("Endfield.exe")
+            sleep(3)
+            if not desk.click_text("开始游戏", focus="Games"):
+                _spawn(launcher)
+                sleep(25)
+                if not desk.click_text("开始游戏", focus="Games"):
+                    log.warning("游戏更新：终末地「请重启游戏」后启动器的「开始游戏」没点上，等它自己到标题画面")
+            restarted = True
+            sleep(60)
+            continue
+        if scr.has("客户端版本已过时"):
+            _note(problems, "终末地：更新后游戏仍说客户端已过时")
+            kill("Endfield.exe", "Games.exe")
+            # A problem plus 「已更新」 contradicts itself in the daily report.
+            return False
+        sleep(poll_s)
+    shot = scr.shot if scr is not None else None
+    _note(problems, f"终末地：更新后 15 分钟没走到标题画面，中继不再等（最后一屏截图 {shot}）")
+    kill("Endfield.exe", "Games.exe")
+    return False
 
 
 def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
@@ -216,37 +289,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         kill("Games.exe")
         return "终末地 客户端已通过启动器更新，但「开始游戏」没点上，没预热，早班第一轮会卡在资源初始化"
     sleep(90)
-    deadline = time.monotonic() + 900
-    restarted = False
-    while time.monotonic() < deadline:
-        scr = desk.read(focus="Endfield")
-        if not _unread(scr) and scr.has(*READY_WORDS["终末地"]):
-            log.info("游戏更新：终末地已到标题画面（读到「点击任意位置继续」），客户端可用")
-            break
-        if scr.has("请重启游戏") and not restarted:
-            if not desk.click_text("确认", focus="Endfield"):
-                # The kill below closes the game either way; only say it.
-                log.warning("游戏更新：终末地「请重启游戏」的「确认」没点上，直接关掉重开")
-            sleep(8)
-            kill("Endfield.exe")
-            sleep(3)
-            if not desk.click_text("开始游戏", focus="Games"):
-                _spawn(launcher)
-                sleep(25)
-                if not desk.click_text("开始游戏", focus="Games"):
-                    log.warning("游戏更新：终末地「请重启游戏」后启动器的「开始游戏」没点上，等它自己到标题画面")
-            restarted = True
-            sleep(60)
-            continue
-        if scr.has("客户端版本已过时"):
-            _note(problems, "终末地：更新后游戏仍说客户端已过时")
-            kill("Endfield.exe", "Games.exe")
-            # A problem plus 「已更新」 contradicts itself in the daily report.
-            return ""
-        sleep(poll_s)
-    else:
-        _note(problems, f"终末地：更新后 15 分钟没走到标题画面，中继不再等（最后一屏截图 {scr.shot}）")
-        kill("Endfield.exe", "Games.exe")
+    if not _wait_endfield_title(desk, launcher, poll_s=poll_s, problems=problems, sleep=sleep):
         return ""
     kill("Endfield.exe", "Games.exe")
     return "终末地 客户端已通过启动器更新"

@@ -168,6 +168,30 @@ write the result JSON the way agent.ps1 does.
     check("focus 没找到时跳过点击", ps.count('[void]$log.Add("skip click: focus missing")'), 2)
     check("click_text 两字以下要整行相等", "if ($want.Length -le 2) { $t -eq $want }" in ps, True)
     check("旧的纯子串匹配没了", "Where-Object { ($_.text -replace '\\s', '') -like \"*$want*\" }" in ps, False)
+    check("OCR 坐标按 TextAngle 旋回原图", "$result.TextAngle" in ps and "[Math]::Cos($rad)" in ps, True)
+
+    print("\n[等待窗口时 warn_missing=False：照样返回 focus_missing 和 trace，但不刷 WARNING]")
+    import logging
+    warns = []
+    class _W(logging.Handler):
+        def emit(self, rec):
+            if rec.levelno >= logging.WARNING:
+                warns.append(rec.getMessage())
+    wh = _W()
+    dk.log.addHandler(wh)
+    try:
+        sp = agent({"ok": True, "focus_missing": True, "clicked": [], "ocr": OTHER_WINDOW,
+                    "log": ["focus: 没有 Endfield 的窗口"]})
+        d_q = Desktop(tmpdir() / "state", spawn=sp, timeout=5)
+        scr_q = d_q.read(focus="Endfield", warn_missing=False)
+        check("warn_missing=False 仍返回 focus_missing", scr_q.focus_missing, True)
+        check("warn_missing=False 仍空行", scr_q.lines, [])
+        check("warn_missing=False trace 仍记 focus_missing", d_q.trace[-1].get("focus_missing"), True)
+        check("warn_missing=False 不发 WARNING", warns, [])
+        d_q.read(focus="Endfield")
+        check("默认 warn_missing=True 照常发 1 条 WARNING", len(warns), 1)
+    finally:
+        dk.log.removeHandler(wh)
 
 
 def _part_desktop_kill():
@@ -223,6 +247,22 @@ def _part_desktop_kill():
         codes.update({"Games.exe": "missing"})
         check("返回失败", desktop.kill("Games.exe"), False)
         check("一条警告", len(g.lines), 1)
+
+        print("\n[2026-11-25 10:05:19：进程刚退出时 taskkill 返回 1 且原因为「没有此任务的实例在运行」→ 算好不警告]")
+        g.lines.clear()
+        def fake_race(cmd, **kw):
+            name = cmd[-1]
+            if name == "Endfield.exe":
+                msg = '错误: 无法终止进程 "Endfield.exe"，其 PID 为 5224。\r\n\r\n原因: 没有此任务的实例在运行。\r\n'
+                return types.SimpleNamespace(returncode=1, stdout=b"", stderr=msg.encode("gbk"))
+            msg = ('错误: 无法终止进程 "x.exe"，其 PID 为 100。\r\n原因: 没有此任务的实例在运行。\r\n'
+                   '错误: 无法终止进程 "x.exe"，其 PID 为 200。\r\n原因: 拒绝访问。\r\n')
+            return types.SimpleNamespace(returncode=1, stdout=b"", stderr=msg.encode("gbk"))
+        desktop.subprocess.run = fake_race
+        check("竞态已退出返回成功", desktop.kill("Endfield.exe"), True)
+        check("竞态已退出没有警告", g.lines, [])
+        check("混有拒绝访问仍算失败", desktop.kill("x.exe"), False)
+        check("混有拒绝访问仍发一条警告", len(g.lines), 1)
     finally:
         desktop.subprocess.run = real_run
         desktop.log.removeHandler(g)

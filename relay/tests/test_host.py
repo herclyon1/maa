@@ -976,6 +976,79 @@ def _part_launcher_states():
     check("没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
 
 
+def _part_endfield_start_retry():
+    """2026-11-25 Endfield v1.7: 「校验中」 is busy; missed 「开始游戏」 click retries quietly."""
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.desktop import Line, Screen
+    from ark_relay.features import gameupdate_games as gug
+
+    slept, clock = [], {"t": 0.0}
+
+    def fake_sleep(s):
+        slept.append(s)
+        clock["t"] += s
+
+    gug.time = types.SimpleNamespace(sleep=fake_sleep, monotonic=lambda: clock["t"])
+    gug._spawn = lambda exe, cwd=None: True
+    gug.kill = lambda *names: True
+
+    class FakeDesk:
+        def __init__(self, screens):
+            self.screens = list(screens)
+            self.clicks = []
+
+        def read(self, focus=None, settle_ms=0):
+            spec = self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
+            if isinstance(spec, tuple) and spec[0] == "missing":
+                return Screen([], Path("shot-x.png"), focus_missing=True)
+            return Screen([Line(t, 100, 100 + 30 * i, 80, 20) for i, t in enumerate(spec)], Path("shot-x.png"))
+
+        def click_text(self, text, focus=None):
+            self.clicks.append(text)
+            return True
+
+    EF = (Path("Endfield.exe"), Path("Launcher.exe"))
+
+    print("[11-25 终末地：启动器「校验中」算正常忙碌，不当没认出]")
+    slept.clear(); clock["t"] = 0.0; probs = []
+    d = FakeDesk([["鹰角启动器", "校验中"], ["开始游戏"], ["点击任意位置继续"]])
+    out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+    check("报了更新", out, "终末地 客户端已通过启动器更新")
+    check("没有问题", probs, [])
+
+    print("\n[11-25 终末地：第一次「开始游戏」点偏没起来 → 查到启动器还在就补点，不用干等 15 分钟]")
+    slept.clear(); clock["t"] = 0.0; probs = []
+    d = FakeDesk([
+        ["更新游戏"], ["开始游戏"],
+        ("missing", ["开始游戏"]),
+        ("missing", ["开始游戏"]),
+        ["开始游戏"],
+        ["点击任意位置继续"],
+    ])
+    out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+    check("补点后成功", out, "终末地 客户端已通过启动器更新")
+    check("一共点了 2 次「开始游戏」", d.clicks.count("开始游戏"), 2)
+    check("没有问题", probs, [])
+
+    print("\n[11-25 终末地：补点两次后仍一直没游戏窗口 → 提前收口报一条问题，不干等 15 分钟]")
+    slept.clear(); clock["t"] = 0.0; probs = []
+
+    class StuckStartDesk(FakeDesk):
+        def read(self, focus=None, settle_ms=0):
+            if focus == "Endfield":
+                return Screen([], Path("shot-x.png"), focus_missing=True)
+            return super().read(focus=focus, settle_ms=settle_ms)
+
+    d = StuckStartDesk([["更新游戏"], ["开始游戏"]])
+    out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+    check("返回空", out, "")
+    check("点了 3 次「开始游戏」后收口", d.clicks.count("开始游戏"), 3)
+    check("问题说清点了 3 次仍没窗口", any("点了 3 次" in p and "没等到游戏窗口" in p for p in probs), True)
+    check("没干等满 15 分钟", sum(slept) < 900, True)
+
+
 def _part_procs_wmi():
     """procs.python_processes on the machine as it was after 2026-10-10 16:05."""
     import gc
@@ -3522,4 +3595,4 @@ ask Tailscale says so (audit 11-08 A-25; dispatch relay-opt-round5-1108 R5-02).
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_apphost_covers_service, _part_estop_verifies, _part_farm_launcher, _part_hidden_launch_quoting, _part_launcher_states, _part_procs_wmi, _part_relaunch, _part_rollback_stop_failed, _part_unknown_process_list, _part_wait_network, _part_watch_handle_close, _part_procwatch_cancel, _part_procwatch_drop, _part_wmi_listener, _part_procnames, _part_watchdog_copy, _part_watchdog_crashloop, _part_watchdog_guard, _part_watchdog_guard_missing, _part_watchdog_push_delivery, _part_gh_watchdog]))
+    sys.exit(run_parts([_part_apphost_covers_service, _part_estop_verifies, _part_farm_launcher, _part_hidden_launch_quoting, _part_launcher_states, _part_endfield_start_retry, _part_procs_wmi, _part_relaunch, _part_rollback_stop_failed, _part_unknown_process_list, _part_wait_network, _part_watch_handle_close, _part_procwatch_cancel, _part_procwatch_drop, _part_wmi_listener, _part_procnames, _part_watchdog_copy, _part_watchdog_crashloop, _part_watchdog_guard, _part_watchdog_guard_missing, _part_watchdog_push_delivery, _part_gh_watchdog]))

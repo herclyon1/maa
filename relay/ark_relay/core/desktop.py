@@ -265,6 +265,17 @@ public class ArkD {
     $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
     if ($null -eq $engine) { throw 'OCR 引擎建不起来（zh-Hans-CN）' }
     $result = Await ($engine.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+    # Windows.Media.Ocr returns Word BoundingRects in a frame deskewed by TextAngle
+    # around the image center; on artwork-heavy launchers (2026-11-25 Endfield v1.7,
+    # TextAngle=-5.6 deg) ignoring it shifts 「开始游戏」 ~40 px down onto 「DirectX 11 启动」.
+    # Rotate the four corners back into original image pixels whenever TextAngle is non-zero.
+    $ang = if ($null -ne $result.TextAngle) { [double]$result.TextAngle } else { 0.0 }
+    $rot = [Math]::Abs($ang) -gt 0.01
+    if ($rot) {
+      $rad = $ang * [Math]::PI / 180.0
+      $cos = [Math]::Cos($rad); $sin = [Math]::Sin($rad)
+      $cx = $bmp.PixelWidth / 2.0; $cy = $bmp.PixelHeight / 2.0
+    }
     $lines = New-Object System.Collections.ArrayList
     foreach ($line in $result.Lines) {
       $x1 = 1e9; $y1 = 1e9; $x2 = 0; $y2 = 0; $txt = ''
@@ -274,6 +285,17 @@ public class ArkD {
         if ($rc.X + $rc.Width -gt $x2) { $x2 = $rc.X + $rc.Width }
         if ($rc.Y + $rc.Height -gt $y2) { $y2 = $rc.Y + $rc.Height }
         $txt += $w.Text
+      }
+      if ($rot -and $x2 -gt $x1) {
+        $rx1 = 1e9; $ry1 = 1e9; $rx2 = -1e9; $ry2 = -1e9
+        foreach ($pt in @(@($x1,$y1), @($x2,$y1), @($x1,$y2), @($x2,$y2))) {
+          $dx = $pt[0] - $cx; $dy = $pt[1] - $cy
+          $nx = $cx + $dx * $cos - $dy * $sin
+          $ny = $cy + $dx * $sin + $dy * $cos
+          if ($nx -lt $rx1) { $rx1 = $nx }; if ($ny -lt $ry1) { $ry1 = $ny }
+          if ($nx -gt $rx2) { $rx2 = $nx }; if ($ny -gt $ry2) { $ry2 = $ny }
+        }
+        $x1 = $rx1; $y1 = $ry1; $x2 = $rx2; $y2 = $ry2
       }
       [void]$lines.Add(@{ text = $txt; x = [int]$x1; y = [int]$y1; w = [int]($x2 - $x1); h = [int]($y2 - $y1) })
     }
@@ -624,7 +646,8 @@ class Desktop:
         return {"ok": False, "log": ["超时"], "ocr": [], "shot": str(shot)}
 
     # -- common combinations --
-    def read(self, focus: str | None = None, settle_ms: int = 0) -> Screen:
+    def read(self, focus: str | None = None, settle_ms: int = 0, *,
+             warn_missing: bool = True) -> Screen:
         acts = ([{"act": "wait", "ms": settle_ms}] if settle_ms else []) + [{"act": "ocr"}]
         data = self.run(acts, focus=focus)
         lines = [Line(str(o.get("text") or ""), int(o.get("x") or 0), int(o.get("y") or 0),
@@ -632,8 +655,11 @@ class Desktop:
                  for o in (data.get("ocr") or [])]
         if focus and _focus_missing(data):
             # What was read is whatever window happened to be in front - another
-            # program's text must never pass for the launcher's.
-            log.warning("桌面读屏：没找到 %s 的窗口，读到的不算数（截图 %s）", focus, data.get("shot"))
+            # program's text must never pass for the launcher's. Polling loops waiting
+            # for a newly-launched game window pass warn_missing=False so each poll
+            # does not fire a separate group alarm before the loop retries or reports.
+            (log.warning if warn_missing else log.info)(
+                "桌面读屏：没找到 %s 的窗口，读到的不算数（截图 %s）", focus, data.get("shot"))
             return Screen([], Path(data.get("shot") or ""), focus_missing=True)
         if not data.get("ok"):
             # The agent failed part-way (did not start, timed out, threw): whatever
@@ -747,8 +773,23 @@ def ocr_image_file(path: Path, timeout: float = 15.0) -> "str | None":
 
 
 # taskkill's exit code when no process has that image name: not being there is not
-# an error here. Any other non-zero code (1 = access denied) is a kill that failed.
+# an error here. Exit code 1 can also happen when every matched PID exited between
+# taskkill's snapshot and TerminateProcess (2026-11-25 10:05:19 Endfield.exe PID 5224:
+# 「错误: 无法终止进程 ... 原因: 没有此任务的实例在运行。」). Any other non-zero
+# code (1 = access denied) is a kill that failed.
 _TASKKILL_NOT_FOUND = 128
+_TASKKILL_GONE = ("没有此任务的实例在运行", "there is no running instance of the task")
+
+
+def _taskkill_already_gone(returncode: int, out: str) -> bool:
+    """True when taskkill returned 1 solely because every matched PID was already gone."""
+    if returncode != 1:
+        return False
+    lines = [ln.strip() for ln in out.splitlines() if ln.strip()]
+    reasons = [ln for ln in lines if ln.lower().startswith(("原因:", "原因：", "reason:"))]
+    errors = [ln for ln in lines if ln.lower().startswith(("错误:", "错误：", "error:"))]
+    return (bool(reasons) and len(reasons) >= len(errors)
+            and all(any(m in r.lower() for m in _TASKKILL_GONE) for r in reasons))
 
 
 def kill(*names: str) -> bool:
@@ -764,6 +805,9 @@ def kill(*names: str) -> bool:
             continue
         if r.returncode not in (0, _TASKKILL_NOT_FOUND):
             out = ((r.stdout or b"") + (r.stderr or b"")).decode("gbk", "replace").strip()
+            if _taskkill_already_gone(r.returncode, out):
+                log.info("结束 %s：进程已自行退出（%s）", name, " ".join(out.split()))
+                continue
             log.warning("结束 %s 没成功（退出码 %s）：%s", name, r.returncode, out)
             ok = False
     return ok
