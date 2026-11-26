@@ -306,7 +306,7 @@ public class ArkD {
   # 把聚焦窗口裁出来，灰度 + 高对比（黄底变白、字仍黑），放大两倍再认，
   # 坐标映射回屏幕。2026-09-02 实测整屏那遍读到 15 行就是没有按钮。
   function OcrWindow([string]$shotPath, [string]$outPath) {
-    if ($null -eq $win) { return @() }
+    if ($null -eq $win -or $win.R -le $win.L -or $win.B -le $win.T) { return @() }
     $src = [Drawing.Image]::FromFile($shotPath)
     $w = [Math]::Max(1, $win.R - $win.L); $h = [Math]::Max(1, $win.B - $win.T)
     $dst = New-Object Drawing.Bitmap ($w * 2), ($h * 2)
@@ -334,6 +334,12 @@ public class ArkD {
     }
     return $mapped
   }
+  function InWin($e) {
+    if ($null -eq $e) { return $false }
+    if ($null -eq $win -or $win.R -le $win.L -or $win.B -le $win.T) { return $true }
+    $mx = $e.x + $e.w / 2.0; $my = $e.y + $e.h / 2.0
+    return ($mx -ge $win.L -and $mx -le $win.R -and $my -ge $win.T -and $my -le $win.B)
+  }
   function Click([int]$x, [int]$y) {
     [ArkD]::SetCursorPos($x, $y) | Out-Null
     Start-Sleep -Milliseconds 250
@@ -356,10 +362,12 @@ public class ArkD {
       'ocr' {
         Shot $shot
         # 函数返回的 ArrayList 会被 PowerShell 展开成定长数组，重新装一遍才能 Add
+        # 聚焦窗口拿到边界时：窗口增强排在前面，整屏结果只保留中心点落在 $win 内的行，
+        # 避免桌面图标或后台其他窗口的同名文字混入或抢先命中。
         $lines = New-Object System.Collections.ArrayList
-        foreach ($e in @(Ocr $shot)) { [void]$lines.Add($e) }
         $extra = @(OcrWindow $shot ($shot -replace '\.png$', '-x2.png'))
         foreach ($e in $extra) { [void]$lines.Add($e) }
+        foreach ($e in @(Ocr $shot)) { if (InWin $e) { [void]$lines.Add($e) } }
         $out.ocr = @($lines)
         [void]$log.Add("ocr $($lines.Count) 行（窗口增强 $($extra.Count) 行）")
       }
@@ -380,8 +388,8 @@ public class ArkD {
           if ($null -eq $lines) {
             Shot $shot
             $lines = New-Object System.Collections.ArrayList
-            foreach ($e in @(Ocr $shot)) { [void]$lines.Add($e) }
             foreach ($e in @(OcrWindow $shot ($shot -replace '\.png$', '-x2.png'))) { [void]$lines.Add($e) }
+            foreach ($e in @(Ocr $shot)) { if (InWin $e) { [void]$lines.Add($e) } }
             $out.ocr = @($lines)
           }
           $want = ([string]$a.text) -replace '\s', ''
@@ -694,10 +702,12 @@ class Desktop:
         data = self.run([{"act": "wake"}], timeout=timeout)
         return bool(data.get("ok")) and "wake" in [str(x) for x in (data.get("log") or [])]
 
-    def click_text(self, text: str, focus: str | None = None) -> bool:
+    def click_text(self, text: str, focus: str | None = None, *,
+                   warn_missing: bool = True) -> bool:
         data = self.run([{"act": "click_text", "text": text}], focus=focus)
         if focus and _focus_missing(data):
-            log.warning("桌面点击：没找到 %s 的窗口，不点「%s」", focus, text)
+            (log.warning if warn_missing else log.info)(
+                "桌面点击：没找到 %s 的窗口，不点「%s」", focus, text)
             return False
         return bool(data.get("ok")) and bool(data.get("clicked"))
 
