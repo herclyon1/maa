@@ -672,12 +672,17 @@ def _part_r11_ledger_15_and_boot_lock():
     root = tmpdir("r11-")
     sd = root / "state"
     sd.mkdir()
+    now_r11 = datetime.now(tz=SERVER_TZ).replace(microsecond=0)
+    today_r11 = now_r11.strftime("%Y-%m-%d")
+    day_start = now_r11.replace(hour=0, minute=0, second=0)
+    seed_started = max(day_start, now_r11 - timedelta(minutes=10))
+    seed_finished = min(now_r11, seed_started + timedelta(minutes=5))
     seed_rec = RunRecord(
-        run_id="2026-11-26/endfield/MaaEnd-09-00-00",
+        run_id=f"{today_r11}/endfield/MaaEnd-{seed_started.strftime('%H-%M-%S')}",
         script="MaaEnd",
         user="Default",
-        started=datetime(2026, 11, 26, 9, 0, tzinfo=SERVER_TZ),
-        finished=datetime(2026, 11, 26, 9, 5, tzinfo=SERVER_TZ),
+        started=seed_started,
+        finished=seed_finished,
         ok=False,
         failed_tasks=["基质刷取"],
     )
@@ -686,7 +691,7 @@ def _part_r11_ledger_15_and_boot_lock():
     st_seed.save_pending({
         "pending": [record_to_payload(seed_rec)],
         "recovered": [],
-        "unsent": [["2026-11-26", "endfield", seed_rec.run_id, "⚠️ 没干完", "测试"]],
+        "unsent": [[today_r11, "endfield", seed_rec.run_id, "⚠️ 没干完", "测试"]],
     })
     st_seed.store.set("queues", "phone_seen", ["msg-old-1", "msg-old-2"])
     state_file = sd / statestore.FILE
@@ -736,7 +741,7 @@ def _part_r11_ledger_15_and_boot_lock():
 
         e.tick()
         check("tick skips source.fetch while state.json unread", (fetched["n"], e._fetch_owed), (0, True))
-        now_dl = datetime(2026, 11, 26, 9, 10, tzinfo=SERVER_TZ)
+        now_dl = now_r11
         nxt = e.next_deadline(now_dl)
         check("next_deadline schedules 重读 state.json in UNREAD_RETRY_S",
               nxt is not None and "重读 state.json" in nxt[1]
