@@ -470,26 +470,44 @@ def _files_sig(cfg) -> str:
     return hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()
 
 
+def _other_kinds(uids: list[str], maa_uid: str, kinds: dict[str, str]) -> list[str]:
+    others = []
+    for uid in uids:
+        kind = kinds.get(uid, "?")
+        if uid != maa_uid and kind not in others:
+            others.append(kind)
+    return others
+
+
 def _maa_queues(automas_dir) -> tuple[str, list[dict]]:
-    """(MAA's display name, [{name, times, others}]) for the timed queues holding MAA."""
+    """(MAA's display name, [{name, times, days, items, entries?, maa_uid, kinds, others}])
+    for the timed queues holding MAA."""
     from ark_relay.core import plan  # noqa: PLC0415
     cfg_dir = Path(automas_dir) / "config"
     scripts = plan._scripts(cfg_dir)
     maa = [uid for uid, s in scripts.items() if s.get("kind") == "MAA"]
     if len(maa) != 1:
         return "", []
+    maa_uid = maa[0]
+    kinds = {uid: (s.get("kind") or s.get("name") or "?") for uid, s in scripts.items()}
     out = []
     for q in plan.schedule(automas_dir):
         items = q.get("items", [])
-        if maa[0] not in items:
+        if maa_uid not in items:
             continue
-        others = []
-        for uid in items:
-            kind = (scripts.get(uid) or {}).get("kind") or (scripts.get(uid) or {}).get("name") or "?"
-            if uid != maa[0] and kind not in others:
-                others.append(kind)
-        out.append({"name": q["name"], "times": q.get("times", []), "others": others})
-    return scripts[maa[0]].get("name") or "MAA", out
+        row = {
+            "name": q["name"],
+            "times": q.get("times", []),
+            "days": q.get("days") or {},
+            "items": items,
+            "maa_uid": maa_uid,
+            "kinds": kinds,
+            "others": _other_kinds(items, maa_uid, kinds),
+        }
+        if "entries" in q:
+            row["entries"] = q["entries"]
+        out.append(row)
+    return scripts[maa_uid].get("name") or "MAA", out
 
 
 def _skip_default(queue: str, script: str):
@@ -613,6 +631,7 @@ def step(cfg, notifier, now: datetime | None = None, *, busy=lambda: False,
     lead_min: how far ahead a due is checked. The boot pass uses BOOT_LEAD_MIN; only a
     "no" found that early is kept (and acted on), so the tick still checks again in
     the last LEAD_MIN minutes - a stage changed after boot is not missed."""
+    from ark_relay.core import plan  # noqa: PLC0415
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if not getattr(cfg, "automas_dir", None):
         return
@@ -628,7 +647,11 @@ def step(cfg, notifier, now: datetime | None = None, *, busy=lambda: False,
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if not (due - timedelta(minutes=lead_min) <= now < due):
                 continue
+            running = plan.runs_at(q, hhmm, due)
+            if q["maa_uid"] not in running:
+                continue
             row = (_dues(cfg.state_dir).get(day) or {}).get(f"{q['name']}/{hhmm}")
             if isinstance(row, dict) and row.get("final", True):
                 continue
-            _gate_due(cfg, notifier, q, maa_name, due, now, skipper or _skip_default)
+            due_q = dict(q, others=_other_kinds(running, q["maa_uid"], q["kinds"]))
+            _gate_due(cfg, notifier, due_q, maa_name, due, now, skipper or _skip_default)

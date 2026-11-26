@@ -152,7 +152,8 @@ class Watchdog:
         self._gone_since: "float | None" = None
         self._crash = ""                # first crash line of the current MaaEnd's plugin
         self._handled: set[int] = set()
-        self._pid_lines: "int | None" = None   # lines_seen when this MaaEnd was first seen
+        self._pid_lines: "int | None" = None   # lines_seen at the prior completed check before this MaaEnd started
+        self._checked_lines: int = 0           # lines_seen at the last completed 30 s check (Watcher starts at 0)
         self._blind: set[int] = set()           # PIDs already reported as unreadable
         # Blocking dialogs (_dialog_held: 「协议更新」 and 「登录认证已失效」): when each
         # dialog's line was read (recorded on every tick, not only the 30 s look), counted for
@@ -194,6 +195,7 @@ class Watchdog:
         if not _maaend_running(snap):
             # Waiting or done: the 10 minutes start over once it is 「运行」 again.
             self._progress_at, self._gone_since = now, None
+            self._checked_lines = lines_seen
             self._dialog_reset(now, drop_all=True)
             return None
         procs = self.processes()
@@ -204,6 +206,7 @@ class Watchdog:
             # Forget it: Windows reuses PIDs, and a later MaaEnd that drew the same
             # number must get its own clocks and its own handled / blind marks.
             self._pid, self._gone_since = None, None
+            self._checked_lines = lines_seen
             self._handled.clear()
             self._blind.clear()
             self._dialog_reset(now, drop_all=True)
@@ -211,14 +214,17 @@ class Watchdog:
         if pid != self._pid:
             # A new MaaEnd: its own clocks, and the stderr file still holds the previous
             # run's text until go-service relaunches and rewrites it. Never carry an old PID's
-            # dialog sightings onto a new PID.
+            # dialog sightings onto a new PID. Use the line count from the previous completed
+            # 30 s check as the baseline so startup lines logged in the first 0-30 s before
+            # this PID is seen still count as progress (never mistaken for an unreadable log).
             prev_pid = self._pid
             self._pid, self._pid_seen_at, self._gone_since, self._crash = pid, now, None, ""
-            self._pid_lines = self._lines
+            self._pid_lines = self._checked_lines
             baseline = now if (prev_pid is not None or since_last == float("-inf")) else max(
                 since_last, now - CHECK_EVERY_SECONDS)
             self._dialog_reset(baseline)
             self._err_offset, self._err_head = self._stderr_now()
+        self._checked_lines = lines_seen
         if self._starting(procs):
             # The relay's helper is starting Endfield through the official launcher
             # (gameupdate/efstart.py, for the relay's own retries): no task has started,

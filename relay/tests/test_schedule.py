@@ -4541,5 +4541,88 @@ def _part_partial_queue_midnight_dedup():
         _plan.recent_due_queues = orig_recent
 
 
+def _part_stagegate_weekdays():
+    """stagegate.step honours TimeSet.Info.Days and QueueItem.Schedule.Days via plan.runs_at."""
+    import os
+    from datetime import datetime
+
+    from _parts import stagegate_fx
+    fx = stagegate_fx()
+
+    os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import stagegate as sg
+
+    ALL_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    NO_SUN = [d for d in ALL_DAYS if d != "Sunday"]
+    # 2026-10-10 is Saturday; 2026-10-11 is Sunday.
+    SAT_0852 = datetime(2026, 10, 10, 8, 52, tzinfo=SERVER_TZ)
+    SUN_0846 = datetime(2026, 10, 11, 8, 46, tzinfo=SERVER_TZ)
+    SUN_0852 = datetime(2026, 10, 11, 8, 52, tzinfo=SERVER_TZ)
+    SAT_0900 = datetime(2026, 10, 10, 9, 0, tzinfo=SERVER_TZ)
+    SUN_0900 = datetime(2026, 10, 11, 9, 0, tzinfo=SERVER_TZ)
+
+    def make_world(*, time_days=ALL_DAYS, maa_days=ALL_DAYS, maaend_days=ALL_DAYS):
+        am = fx.automas_dir(tmpdir(), beta3=True)
+        qf = am / "config" / "QueueConfig.json"
+        qc = json.loads(qf.read_text(encoding="utf-8"))
+        # Q0 is 早班 (09:00): I0=S-MAA, I1=S-END
+        qc["Q0"]["SubConfigsInfo"]["TimeSet"]["T1"]["Info"]["Days"] = list(time_days)
+        qc["Q0"]["SubConfigsInfo"]["QueueItem"]["I0"]["Schedule"]["Days"] = list(maa_days)
+        qc["Q0"]["SubConfigsInfo"]["QueueItem"]["I1"]["Schedule"]["Days"] = list(maaend_days)
+        qf.write_text(json.dumps(qc, ensure_ascii=False), encoding="utf-8")
+        return types.SimpleNamespace(state_dir=tmpdir(), automas_dir=am, maa_dir=fx.maa_dir(tmpdir()))
+
+    saved_pull = sg.PULL_FROM_QUEUE
+    try:
+        print("[1. 队列定时周日不跑（TimeSet.Info.Days 不含 Sunday）：周日不告警、不改队列、不写 dues]")
+        for pull_on in (False, True):
+            sg.PULL_FROM_QUEUE = pull_on
+            cfg, n, pulled = make_world(time_days=NO_SUN), _Notes(), []
+
+            def skipper(q, s, _p=pulled):
+                _p.append((q, s))
+                return {"queue": q, "queueId": "Q0", "script": s, "scriptId": "S-MAA", "position": 0, "day": "2026-10-11"}
+
+            sg.step(cfg, n, SUN_0846, busy=lambda: False, skipper=skipper, restorer=lambda rec: True,
+                    lead_min=sg.BOOT_LEAD_MIN)
+            sg.step(cfg, n, SUN_0852, busy=lambda: False, skipper=skipper, restorer=lambda rec: True)
+            check(f"PULL={pull_on} 周日不告警、不拉出", (n.sent, pulled), ([], []))
+            check(f"PULL={pull_on} 周日不落 stagegate_dues", sg._dues(cfg.state_dir), {})
+
+            sg.step(cfg, n, SAT_0852, busy=lambda: False, skipper=skipper, restorer=lambda rec: True)
+            want_title = texts.stage_gate("早班") if pull_on else texts.stage_gate_warn("早班")
+            check(f"PULL={pull_on} 对照周六正常告警", [t for t, _, _ in n.sent], [want_title])
+            check(f"PULL={pull_on} 对照周六拉出行为一致", pulled, [("早班", "MAA")] if pull_on else [])
+
+        print("\n[2. 队列周日照跑但 MAA 条目周日不跑（QueueItem.Schedule.Days 不含 Sunday）：周日不告警、不拉出]")
+        sg.PULL_FROM_QUEUE = True
+        cfg, n, pulled = make_world(time_days=ALL_DAYS, maa_days=NO_SUN, maaend_days=ALL_DAYS), _Notes(), []
+        sg.step(cfg, n, SUN_0852, busy=lambda: False,
+                skipper=lambda q, s: pulled.append((q, s)) or {"queue": q, "queueId": "Q0", "script": s, "scriptId": "S-MAA"},
+                restorer=lambda rec: True)
+        check("MAA 条目周日不跑：无假告警、不误拉", (n.sent, pulled), ([], []))
+        sg.step(cfg, n, SAT_0852, busy=lambda: False,
+                skipper=lambda q, s: pulled.append((q, s)) or {"queue": q, "queueId": "Q0", "script": s, "scriptId": "S-MAA"},
+                restorer=lambda rec: True)
+        check("对照周六 MAA 要跑：正常触发并拉出", (len(n.sent), pulled), (1, [("早班", "MAA")]))
+
+        print("\n[3. 周日早班只有 MAA 跑（MaaEnd 周日不跑）：拉出后 others 为空、settled_alone=True]")
+        sg.PULL_FROM_QUEUE = True
+        cfg, n, pulled = make_world(time_days=ALL_DAYS, maa_days=ALL_DAYS, maaend_days=NO_SUN), _Notes(), []
+        sg.step(cfg, n, SUN_0852, busy=lambda: False,
+                skipper=lambda q, s: pulled.append((q, s)) or {"queue": q, "queueId": "Q0", "script": s, "scriptId": "S-MAA"},
+                restorer=lambda rec: True)
+        check("周日拉出 MAA 后 settled_alone=True", sg.settled_alone(cfg.state_dir, "早班", SUN_0900), True)
+        sg.step(cfg, n, SAT_0852, busy=lambda: False,
+                skipper=lambda q, s: pulled.append((q, s)) or {"queue": q, "queueId": "Q0", "script": s, "scriptId": "S-MAA"},
+                restorer=lambda rec: True)
+        check("对照周六 MaaEnd 也跑：settled_alone=False", sg.settled_alone(cfg.state_dir, "早班", SAT_0900), False)
+    finally:
+        sg.PULL_FROM_QUEUE = saved_pull
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_guard_status_details, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window, _part_runwatch_queue_task_terminal_ahead, _part_partial_queue_midnight_dedup]))
+    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_guard_status_details, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window, _part_runwatch_queue_task_terminal_ahead, _part_partial_queue_midnight_dedup, _part_stagegate_weekdays]))
