@@ -9,23 +9,10 @@ Skipped tests are registered here too and may stay at most one week.
 
 ## Todo
 
-- [ ] **The two Wuthering Waves "which one" numbers on the remote have to become names a human can
-      read (the user, 2026-09-04):** 「给我标数字，我怎么知道 1234 是什么东西呢？」「无音区的名字没有必要，
-      但是他刷的套装非常重要」. OK-WW stores only the index and teleports by counting down the in-game
-      F2 teleport list, so the only authoritative source is that list itself; its order changes with
-      the version and with which areas are unlocked. Do not guess by aligning positions. Approach:
-      read "index → 无音区 name → echo set" off a screenshot of the F2 list, write it into a table in
-      the repo, and show the set names.
 - [ ] **MaaEnd support for Endfield 1.5.3 「雪凇幽梦」.** On 2026-09-02 23:10 four tasks were turned
       off in the master config as the user instructed (GiftOperator / GearAssembly / DeliveryJobs /
       EnvironmentMonitoring; backup as `.bak-*` next to the master, recorded in state as
       `maaend-disabled-for-1.5.3.json`). Turn them back on once MaaEnd supports 1.5.3.
-- [ ] **Update the client automatically on Endfield version-update days.** A version update downloads
-      through the Hypergryph launcher, it is not a hot patch. The relay recognises the day and does
-      not alarm; updating the client still needs a person to run the launcher once (「更新游戏」 at the
-      bottom right). Candidate: during the pre-update, when the day's official announcements include a
-      「版本更新说明」, start `Launcher.exe` in the interactive session, click update, and wait for
-      「开始游戏」 before releasing the morning shift.
 - [ ] **MaaEnd 「赠送干员礼物」 fails intermittently** (2026-09-01 11:06; the 11:31 retry healed
       itself). When it recurs the evidence bundle holds the material; report it upstream by the rules
       under 「Upstream issues」 below.

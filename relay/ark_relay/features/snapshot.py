@@ -109,10 +109,15 @@ def _mas(out: dict) -> None:
                 }
             elif "OK-WW" in str(name) or "ok-ww" in str(name):
                 quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
+                task = dict(u.get("Task", {}) or {})
                 out["OK-WW(MAS侧)"] = {
                     "这些设置生效吗": "生效" if quick else
                         "❌ 不生效：快速配置是关的，真正跑的是 OK-WW 自己的母本配置",
-                    **(u.get("Task", {}) or {}),
+                    **task,
+                    **_okww_readable_fields(
+                        task.get("WhichTacetSuppressionToFarm"),
+                        task.get("WhichForgeryChallengeToFarm"),
+                    ),
                 }
 
 
@@ -221,6 +226,18 @@ def _automas_dir() -> "str | None":
     return None
 
 
+def _okww_readable_fields(tacet_idx, forgery_idx) -> dict:
+    """Human-readable WuWa echo-set and forgery labels derived from F2 indices (R-07)."""
+    from ark_relay.core.wuwa_tables import wuwa_forgery, wuwa_tacet  # noqa: PLC0415
+    extra: dict = {}
+    if isinstance(tacet_idx, int) and not isinstance(tacet_idx, bool):
+        extra["无音区声骸套装"] = wuwa_tacet.sets_label(tacet_idx)
+        extra["无音区名称"] = wuwa_tacet.label(tacet_idx)
+    if isinstance(forgery_idx, int) and not isinstance(forgery_idx, bool):
+        extra["凝素领域名称"] = wuwa_forgery.label(forgery_idx)
+    return extra
+
+
 def _okww(out: dict) -> None:
     from ark_relay.core.config import master_config_dir  # noqa: PLC0415 - avoid an import cycle
 
@@ -234,9 +251,19 @@ def _okww(out: dict) -> None:
         if not p.exists():
             continue
         try:
-            ok[f[:-5]] = json.loads(p.read_text(encoding="utf-8"))
+            doc = json.loads(p.read_text(encoding="utf-8"))
         except Exception as exc:  # noqa: BLE001
             ok[f[:-5]] = f"读不了: {exc}"
+            continue
+        if f == "DailyTask.json" and isinstance(doc, dict):
+            doc = {
+                **doc,
+                **_okww_readable_fields(
+                    doc.get("Which Tacet Suppression to Farm"),
+                    doc.get("Which Forgery Challenge to Farm"),
+                ),
+            }
+        ok[f[:-5]] = doc
     out["OK-WW(母本·生效的)"] = ok
 
 

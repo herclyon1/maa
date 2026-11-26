@@ -448,6 +448,8 @@ CONTRACT: tuple[Item, ...] = tuple([
     *_items("MaaEnd", "script", "Game", ("SetResolution", "CloseOnFinish", "RestoreDisplayType",
                                          "RestoreResolution"), "maaend_window",
             "efstart_setup.py:install/restore (write)"),
+    *_items("MaaEnd", "script", "Update", ("TakeoverEnabled", "Channel"), "maaend_update",
+            "mastercfg.py:check_maaend_preupdate, selfcheck.py:_handed_updates_gaps", since="v5.8.0"),
     # ---- MAA user (SubConfigsInfo.UserData.<uid>); Stage.* and Task.Annihilation via masuser
     *_items("MAA", "user", "Stage", ("StageMode", "Stage", "Stage_1", "Stage_2", "Stage_3", "SeriesNumb"),
             "stage", "plan.py:_scripts, stagegate.py:run_verdict, snapshot.py:maa_fields, "
@@ -621,6 +623,69 @@ def check(automas_dir, version: str = "") -> Result:
         if not ok:
             missing.append(item)
     return Result(missing, unreadable, judged)
+
+
+MAAEND_PREUPDATE_WANT_CHANNEL = "beta"
+
+
+def _find_maaend_script(automas_dir=None, scripts=None) -> "tuple[dict | None, bool]":
+    """(MaaEnd script node, on_v58_yaml) from live `/api/scripts/get` dict or disk config."""
+    has_yaml = bool(automas_dir and (Path(automas_dir) / "config" / "scripts.yaml").is_file())
+    if isinstance(scripts, dict):
+        for sc in scripts.values():
+            if not isinstance(sc, dict):
+                continue
+            info = sc.get("Info") or {}
+            name = str(info.get("Name") or "")
+            if name.lower() == "maaend":
+                return sc, has_yaml
+    if automas_dir:
+        cfg_dir = Path(automas_dir) / "config"
+        try:
+            data = _load(cfg_dir / "ScriptConfig.json")
+        except (OSError, ValueError):
+            data = None
+        for inst, node in _nodes(data):
+            if _script_kind(inst, node) == "MaaEnd":
+                return node, has_yaml
+    return None, has_yaml
+
+
+def check_maaend_preupdate(automas_dir=None, scripts=None, version: str = "") -> list[str]:
+    """Detect MaaEnd pre-update chain break on AUTO-MAS v5.8+ (`Update.TakeoverEnabled` / `Channel`).
+
+    On v5.8+, AUTO-MAS took over MaaEnd updating (relay preupdate_maaend removed 21fa826f),
+    defaulting Update.TakeoverEnabled=false and Channel=stable; when either stays at default,
+    MaaEnd runs stale and only updates after the shift. Legacy v5.7 configs without an Update
+    group, scripts.yaml, or version >= v5.8.0 return [].
+    """
+    node, has_yaml = _find_maaend_script(automas_dir, scripts)
+    vk = version_key(version)
+    v58 = bool(vk is not None and vk >= version_key("v5.8.0"))
+    has_update = isinstance(node, dict) and isinstance(node.get("Update"), dict)
+    if not (has_update or has_yaml or v58):
+        return []
+    if node is None:
+        return ["终末地开跑前由调度程序接管更新：调度程序里没有 MaaEnd 这个脚本"]
+    upd = node.get("Update")
+    if not isinstance(upd, dict):
+        return ["终末地开跑前由调度程序接管更新：读不到更新设置"]
+    gaps: list[str] = []
+    takeover = upd.get("TakeoverEnabled")
+    if takeover is not True:
+        now = "读不到这一项" if takeover is None else ("关着" if takeover is False else "不是开着")
+        gaps.append(f"终末地开跑前由调度程序接管更新：{now}")
+    chan = upd.get("Channel")
+    chan_norm = str(chan or "").strip().lower()
+    if chan_norm != MAAEND_PREUPDATE_WANT_CHANNEL:
+        if not chan_norm:
+            now = "读不到这一项"
+        elif chan_norm == "stable":
+            now = "现在是稳定版而不是测试版"
+        else:
+            now = "现在不是测试版"
+        gaps.append(f"终末地更新通道：{now}")
+    return gaps
 
 
 log = logging.getLogger("ark.mastercfg")
@@ -1047,12 +1112,34 @@ def _okww_doc(f: Path) -> "dict | None":
     return doc
 
 
+def _okww_index_display(key: str, value) -> "str | None":
+    """Human-readable label for WuWa F2 serial keys; None for non-serial keys."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    from ark_relay.core.wuwa_tables import wuwa_forgery, wuwa_tacet  # noqa: PLC0415
+    if key == "Which Tacet Suppression to Farm":
+        return wuwa_tacet.sets_label(value)
+    if key == "Which Forgery Challenge to Farm":
+        return wuwa_forgery.label(value)
+    return None
+
+
+def _okww_index_options(key: str) -> "list[list] | None":
+    from ark_relay.core.wuwa_tables import wuwa_forgery, wuwa_tacet  # noqa: PLC0415
+    if key == "Which Tacet Suppression to Farm":
+        return [[lbl, idx] for idx, lbl in wuwa_tacet.choices()]
+    if key == "Which Forgery Challenge to Farm":
+        return [[lbl, idx] for idx, lbl in wuwa_forgery.choices()]
+    return None
+
+
 def read_okww(automas_dir, okww_dir) -> dict:
     """Values, candidates and Chinese names. Every Chinese name comes from the
     ok.po that ships with OK-WW (`Forgery Challenge` is officially 「凝素领域」,
-    `Tacet Suppression` 「无音区」).
+    `Tacet Suppression` 「无音区」). Tacet Suppression and Forgery Challenge indices
+    carry echo-set / weapon-material options and display names from wuwa_tables.
     """
-    out: dict = {"values": {}, "options": {}, "labels": {}, "readonly": {},
+    out: dict = {"values": {}, "options": {}, "labels": {}, "display": {}, "readonly": {},
                  "subs": OKWW_SUBS}
     try:
         from ark_relay.core import plan  # noqa: PLC0415
@@ -1075,6 +1162,10 @@ def read_okww(automas_dir, okww_dir) -> dict:
                 out["labels"][path] = zh[key]
             if key in cases:
                 out["options"][path] = [[zh.get(v, v), v] for v in cases[key]]
+            elif (idx_opts := _okww_index_options(key)) is not None:
+                out["options"][path] = idx_opts
+            if (disp := _okww_index_display(key, doc[key])) is not None:
+                out["display"][path] = disp
     for name, wanted in OKWW_READONLY.items():
         f = okww_file(automas_dir, name)
         if not f or not f.is_file():
@@ -1124,13 +1215,18 @@ def write_okww(automas_dir, path: str, value, okww_dir=None) -> tuple[bool, str]
         if allowed and new not in allowed:
             return False, f"「{key}」只能是 {'、'.join(allowed)} 之一，收到 {new!r}，已拒绝"
     if before == new:
-        return True, f"「{key}」本来就是 {before!r}，没有改动"
+        disp = _okww_index_display(key, before)
+        shown = f"{before}（{disp}）" if disp else repr(before)
+        return True, f"「{key}」本来就是 {shown}，没有改动"
     doc[key] = new
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
     now = json.loads(f.read_text(encoding="utf-8")).get(key)
     if now != new:
         return False, f"写了但没生效：「{key}」现在是 {now!r}"
-    return True, f"「{key}」：{before!r} → {now!r}"
+    b_disp, n_disp = _okww_index_display(key, before), _okww_index_display(key, now)
+    b_s = f"{before}（{b_disp}）" if b_disp else repr(before)
+    n_s = f"{now}（{n_disp}）" if n_disp else repr(now)
+    return True, f"「{key}」：{b_s} → {n_s}"
 
 
 # MAA and OK-WW config live in mastercfg_maa / mastercfg_okww; callers and tests

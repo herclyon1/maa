@@ -546,6 +546,10 @@ def _handed_updates_gaps(scripts: dict) -> list[str]:
         else:
             now = f"现在是「{value}」"
         gaps.append(f"{words}：{now}")
+    from ark_relay.core import mastercfg  # noqa: PLC0415
+    for g in mastercfg.check_maaend_preupdate(None, scripts=scripts):
+        if g not in gaps:
+            gaps.append(g)
     return gaps
 
 
@@ -714,7 +718,12 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
         out.append(Check(UPDATES_NAME, None, "判不了：调度程序没应答"))
     else:
         try:
-            gaps = _handed_updates_gaps(commands._mas("/api/scripts/get")["data"])
+            scripts_data = commands._mas("/api/scripts/get")["data"]
+            gaps = list(_handed_updates_gaps(scripts_data))
+            from ark_relay.core import mastercfg  # noqa: PLC0415
+            for g in mastercfg.check_maaend_preupdate(getattr(cfg, "automas_dir", None), scripts=scripts_data):
+                if g not in gaps:
+                    gaps.append(g)
         except Exception as exc:  # noqa: BLE001 - reported, not raised
             out.append(Check(UPDATES_NAME, False, f"读不到调度程序的脚本设置（{type(exc).__name__}）"))
         else:

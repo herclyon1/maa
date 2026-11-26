@@ -73,7 +73,12 @@ def _make_wuwa_forgery():
         hit = FORGERY.get(int(index))
         return f"{hit[1]}突破材料" if hit else "武器突破材料"
 
-    return types.SimpleNamespace(FORGERY=FORGERY, label=label, reward=reward)
+
+    def choices() -> list[tuple[int, str]]:
+        """(index, display label) for the phone/snapshot option list, in F2 order."""
+        return [(i, f"{i} · {FORGERY[i][1]}（{FORGERY[i][0]}）") for i in sorted(FORGERY)]
+
+    return types.SimpleNamespace(FORGERY=FORGERY, label=label, reward=reward, choices=choices)
 
 
 wuwa_forgery = _make_wuwa_forgery()
@@ -106,6 +111,28 @@ def _make_wuwa_tacet():
         return f"无音区·{hit[0]}" if hit else f"第 {index} 个无音区（对照表没登记）"
 
 
+    def sets(index: int, day: "str | None" = None) -> "tuple[str, str] | None":
+        """The two echo sets this tacet field drops, or None when unlisted (never guessed)."""
+        if isinstance(index, bool) or not str(index).isdigit():
+            return None
+        hit = _table(day).get(int(index))
+        return hit[1] if hit else None
+
+
+    def sets_label(index: int, day: "str | None" = None) -> str:
+        """Human-readable echo sets for snapshots / remote UI, e.g. 「衔梦照世之心 ＋ 茜染怀想之花」."""
+        pair = sets(index, day)
+        if not pair:
+            return f"第 {index} 个无音区（声骸套装没登记）"
+        return " ＋ ".join(pair)
+
+
+    def choices(day: "str | None" = None) -> list[tuple[int, str]]:
+        """(index, echo sets label) for the phone/snapshot option list, in F2 order."""
+        tbl = _table(day)
+        return [(i, " ＋ ".join(tbl[i][1])) for i in sorted(tbl)]
+
+
     def reward(index: int, day: "str | None" = None) -> str:
         """Yield: the two echo sets this tacet field always drops. OK-WW never reads
         the reward screen, so the drop is reported from this table."""
@@ -114,7 +141,10 @@ def _make_wuwa_tacet():
             return f"声骸（第 {index} 个无音区，套装没登记）"
         return "声骸套装 " + "、".join(hit[1]) + "（按无音区固定掉落）"
 
-    return types.SimpleNamespace(NEW_LIST_FROM=NEW_LIST_FROM, TACET=TACET, TACET_BEFORE_3_7=TACET_BEFORE_3_7, _table=_table, label=label, reward=reward)
+    return types.SimpleNamespace(
+        NEW_LIST_FROM=NEW_LIST_FROM, TACET=TACET, TACET_BEFORE_3_7=TACET_BEFORE_3_7,
+        _table=_table, label=label, sets=sets, sets_label=sets_label, choices=choices, reward=reward,
+    )
 
 
 wuwa_tacet = _make_wuwa_tacet()

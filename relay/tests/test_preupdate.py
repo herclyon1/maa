@@ -3722,6 +3722,7 @@ the relay reads before the game machine installs it.
     BETA3 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.3-excerpt.py.txt"
     BETA4 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.4-excerpt.py.txt"
     NEW_IN_BETA4 = ["MaaEndConfig Game.LaunchMode", "MaaEndConfig Game.LauncherPath"]
+    NEW_IN_V58 = ["MaaEndConfig Update.Channel", "MaaEndConfig Update.TakeoverEnabled"]
 
 
     def run_main(*argv):
@@ -3743,7 +3744,7 @@ the relay reads before the game machine installs it.
                   if i.level == "user" and i.key in masuser.MOVED else i for i in mascontract.CONTRACT]
 
         print("[v5.7.0-beta.3 against the list before masuser: the 10-14 move is named]")
-        gaps = w.compare(beta3, before)
+        gaps = w.compare(beta3, before, version="v5.7.0-beta.4")
         moved = sorted(g.split(":")[0] + " -> " + g.split("moved to ")[1].split(" (")[0]
                        for g in gaps if "moved to" in g)
         check("every MAA user item the relay read from Info is reported moved", moved, [
@@ -3759,13 +3760,22 @@ the relay reads before the game machine installs it.
         check("nothing else is reported but the two settings beta.4 brought in",
               sorted(set(named(gaps)) - {m.split(" -> ")[0] for m in moved}), NEW_IN_BETA4)
         check("v5.7.0-beta.2 against that same list: only those two (it still kept the rest in Info)",
-              named(w.compare(beta2, before)), NEW_IN_BETA4)
+              named(w.compare(beta2, before, version="v5.7.0-beta.4")), NEW_IN_BETA4)
 
         print("\n[the current list (mascontract + masuser)]")
-        check("v5.7.0-beta.4: nothing changed", w.compare(beta4, mascontract.CONTRACT, masuser.MOVED), [])
+        check("v5.7.0-beta.4 with version: nothing changed",
+              w.compare(beta4, mascontract.CONTRACT, masuser.MOVED, version="v5.7.0-beta.4"), [])
+        check("v5.7.0-beta.4 unversioned: flags only v5.8.0 MaaEnd Update items",
+              sorted(named(w.compare(beta4, mascontract.CONTRACT, masuser.MOVED))), NEW_IN_V58)
         check("v5.7.0-beta.3: only the two settings beta.4 brought in",
-              named(w.compare(beta3, mascontract.CONTRACT, masuser.MOVED)), NEW_IN_BETA4)
-        check("v5.7.0-beta.2: the same two", named(w.compare(beta2, mascontract.CONTRACT, masuser.MOVED)), NEW_IN_BETA4)
+              named(w.compare(beta3, mascontract.CONTRACT, masuser.MOVED, version="v5.7.0-beta.4")), NEW_IN_BETA4)
+        check("v5.7.0-beta.2: the same two",
+              named(w.compare(beta2, mascontract.CONTRACT, masuser.MOVED, version="v5.7.0-beta.4")), NEW_IN_BETA4)
+        v58 = {k: dict(v) for k, v in beta4.items()}
+        v58["MaaEndConfig"][("Update", "TakeoverEnabled")] = None
+        v58["MaaEndConfig"][("Update", "Channel")] = None
+        check("v5.8.0 with MaaEnd Update.TakeoverEnabled + Channel: nothing changed",
+              w.compare(v58, mascontract.CONTRACT, masuser.MOVED, version="v5.8.0"), [])
 
         print("\n[a key a release drops is reported, a whole class too]")
         fake = [mascontract.Item("MAA", "user", "Stage", "NoSuchKey", "stage", "x.py:f"),

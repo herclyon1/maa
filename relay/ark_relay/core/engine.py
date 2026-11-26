@@ -416,6 +416,8 @@ class Engine:
         # Failures that a later retry got past. Still reported, and reported as
         # an unresolved fault - the run survived, the bug did not go away.
         self._recovered: dict[tuple[str, str], RunRecord] = {}
+        self._pending_restored = False
+        self._fetch_owed = False
         self._restore_pending()
         self._missed_alerted: set[str] = set()
         # run_id -> how many ticks _handle raised on it (tick, HANDLE_TRIES).
@@ -491,10 +493,28 @@ class Engine:
 
     # ---------- survive restarts ----------
 
-    def _restore_pending(self) -> None:
-        """Reload alerts that were queued but never delivered."""
+    # Steps skipped while state.json has never been read since boot (D-1017 boot
+    # read-lock): running them on an unread empty state would misread marks/holds.
+    _UNREAD_SKIP_STEPS = frozenset({
+        "推送积压告警", "周常门", "月卡提醒", "需求表", "漏跑检查", "补跑",
+        "补活跃", "基质刷垫子", "临时查看", "队列后更新", "收工体检", "日报", "关机",
+    })
+
+    def _restore_pending(self) -> bool:
+        """Reload alerts that were queued but never delivered.
+
+        Returns False when state.json could not be read on boot (e.g. Windows lock):
+        the in-memory buckets stay unread and _persist_pending refuses to overwrite
+        state.json until a later tick reads it back."""
+        if getattr(self, "_pending_restored", False):
+            return True
         from ark_relay.core.collector import payload_to_record  # noqa: PLC0415 - avoid cycle
-        data = self.state.load_pending()
+        try:
+            data = self.state.load_pending(fresh=True)
+        except OSError as exc:
+            log.info("开机读不到 state.json（%s），未送达的告警暂不恢复，读回来之前跳过依赖它的步骤",
+                     type(exc).__name__)
+            return False
         dropped = []
         for bucket, target in (("pending", self._pending), ("recovered", self._recovered)):
             for item in data.get(bucket, []):
@@ -521,8 +541,12 @@ class Engine:
         if self._pending or self._recovered or self._unsent_unresolved:
             log.info("从磁盘恢复了 %d 条未送达的告警",
                      len(self._pending) + len(self._recovered) + len(self._unsent_unresolved))
+        self._pending_restored = True
+        return True
 
     def _persist_pending(self) -> None:
+        if not getattr(self, "_pending_restored", True) and not self._restore_pending():
+            raise PermissionError("state.json 开机还没读回来，拒绝把未送达告警覆盖成空的")
         from ark_relay.core.collector import record_to_payload  # noqa: PLC0415 - avoid cycle
         def payload(r: RunRecord) -> dict:
             p = record_to_payload(r)
@@ -577,43 +601,50 @@ class Engine:
             self._observe_modes()
         except Exception:
             log.exception("读模式开关出错，本轮按「没开任何模式」继续")
-        given_up = self._given_up()
-        code = self._code_version()
-        try:
-            # A given-up record stays out until the code changes: a deploy (the fix
-            # for the alarm below) gets one more round of HANDLE_TRIES at it.
-            records = self.source.fetch(
-                self.state.seen | {k for k, v in given_up.items() if v.get("code") == code})
-        except Exception:
-            log.exception("读取运行记录失败，本轮按没有新记录处理")
+        if not getattr(self, "_pending_restored", True) and not self._restore_pending():
+            self._fetch_owed = True
             records = []
-        landed = False
-        for rec in records:
+            landed = False
+        else:
+            self._fetch_owed = False
+            given_up = self._given_up()
+            code = self._code_version()
             try:
-                self._handle(rec)
+                # A given-up record stays out until the code changes: a deploy (the fix
+                # for the alarm below) gets one more round of HANDLE_TRIES at it.
+                records = self.source.fetch(
+                    self.state.seen | {k for k, v in given_up.items() if v.get("code") == code})
             except Exception:
-                n = self._handle_fails[rec.run_id] = self._handle_fails.get(rec.run_id, 0) + 1
-                if n < HANDLE_TRIES:
-                    log.info("处理运行记录失败（第 %d 次，下一轮再试）: %s", n, rec.run_id, exc_info=True)
+                log.exception("读取运行记录失败，本轮按没有新记录处理")
+                records = []
+            landed = False
+            for rec in records:
+                try:
+                    self._handle(rec)
+                except Exception:
+                    n = self._handle_fails[rec.run_id] = self._handle_fails.get(rec.run_id, 0) + 1
+                    if n < HANDLE_TRIES:
+                        log.info("处理运行记录失败（第 %d 次，下一轮再试）: %s", n, rec.run_id, exc_info=True)
+                        continue
+                    log.exception("运行记录连续 %d 次处理失败，不再重试，这一趟先不记进账，"
+                                  "等修好部署后再补记一次: %s", n, rec.run_id)
+                    self._handle_fails.pop(rec.run_id, None)
+                    given_up[rec.run_id] = {"code": code, "at": datetime.now(tz=SERVER_TZ).isoformat()}
+                    self._set_given_up(given_up)
+                    self._handled_any = landed = True
                     continue
-                log.exception("运行记录连续 %d 次处理失败，不再重试，这一趟先不记进账，"
-                              "等修好部署后再补记一次: %s", n, rec.run_id)
                 self._handle_fails.pop(rec.run_id, None)
-                given_up[rec.run_id] = {"code": code, "at": datetime.now(tz=SERVER_TZ).isoformat()}
-                self._set_given_up(given_up)
+                self.state.mark_seen(rec.run_id)
+                if given_up.pop(rec.run_id, None) is not None:
+                    log.info("之前放弃的运行记录这次记进账了: %s", rec.run_id)
+                    self._set_given_up(given_up)
                 self._handled_any = landed = True
-                continue
-            self._handle_fails.pop(rec.run_id, None)
-            self.state.mark_seen(rec.run_id)
-            if given_up.pop(rec.run_id, None) is not None:
-                log.info("之前放弃的运行记录这次记进账了: %s", rec.run_id)
-                self._set_given_up(given_up)
-            self._handled_any = landed = True
         if landed:
             # On disk too: a restart on the same boot (a deploy) still knows it saw them land.
             shutdown.note_handled(self, datetime.now(tz=SERVER_TZ))
         # Every step is caught on its own; a broken one must not take the rest with
         # it. Shutdown and the daily report are last.
+        skip_unread = not getattr(self, "_pending_restored", True)
         for what, step in (
             ("刷声骸到点收工", self._echo_farm_deadline),
             ("协议空间开关保护", self._guard_maaend_switches),
@@ -648,6 +679,8 @@ class Engine:
             ("留机锁到期", self._check_alarm_hold_expiry),
             ("关机", self._maybe_shutdown),
         ):
+            if skip_unread and what in self._UNREAD_SKIP_STEPS:
+                continue
             try:
                 step()
             except Exception:
@@ -904,7 +937,10 @@ class Engine:
         from ark_relay.features import needtable  # noqa: PLC0415
         out = []
         state_file = getattr(getattr(self.state, "store", None), "path", None)
-        if state_file is not None and statestore.refused_since(state_file) is not None:
+        if state_file is not None and (
+                statestore.refused_since(state_file) is not None
+                or not getattr(self, "_pending_restored", True)
+                or getattr(self, "_fetch_owed", False)):
             out.append((now + timedelta(seconds=statestore.UNREAD_RETRY_S), "重读 state.json"))
         for moment in (collector.next_moment(now), needtable.next_moment(self.cfg.state_dir, now)):
             if moment is not None:

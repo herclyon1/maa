@@ -252,6 +252,8 @@ _BILI_UID = 1955897084
 _BILI_SPI = "https://api.bilibili.com/x/frontend/finger/spi"
 _BILI_NAV = "https://api.bilibili.com/x/web-interface/nav"
 _BILI_FEED = "https://api.bilibili.com/x/polymer/web-dynamic/v1/feed/space"
+_BILI_OPUS_FEED = "https://api.bilibili.com/x/polymer/web-dynamic/v1/opus/feed/space"
+_BILI_DETAIL = "https://api.bilibili.com/x/polymer/web-dynamic/v1/detail"
 _BILI_POST_URL = "https://www.bilibili.com/opus/{id}"
 _BILI_MIX = (46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49,
              33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
@@ -260,6 +262,7 @@ _BILI_MIX = (46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43
 _BILI_PAGES = 12
 _BILI_OLDEST = timedelta(days=50)
 _BILI_TRIES = 5
+_BILI_OPUS_TRIES = 3
 
 
 class BiliFeedProblem(RuntimeError):
@@ -387,23 +390,94 @@ def wuwa_bili_post(items: list, ver: "str | None", now: datetime
     return best[1:] if best else None
 
 
-def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=None):
-    """(page URL, title, images) of the Bilibili copy of the version-news post;
-    None when the feed lists fine but the post is not in it. Raises
-    BiliFeedProblem when a page stays empty or unreadable after _BILI_TRIES."""
-    import time  # noqa: PLC0415
+def _bili_visitor_cookie(get) -> str:
+    """Fetch visitor buvid3/buvid4 cookie from SPI; raise BiliFeedProblem on malformed answer."""
+    raw = get(_BILI_SPI, "")
+    spi = raw.get("data") if isinstance(raw, dict) and isinstance(raw.get("data"), dict) else None
+    if not spi or not spi.get("b_3") or not spi.get("b_4"):
+        raise BiliFeedProblem(f"spi gave no buvid: {bili_shape(raw)}")
+    return f"buvid3={spi['b_3']}; buvid4={urllib.parse.quote(str(spi['b_4']))}"
 
-    def fetch(url: str, cookie: str) -> dict:
-        return hub._json(url, _UA_BROWSER, None, {"Cookie": cookie, "Origin": "https://space.bilibili.com",
-                                              "Referer": f"https://space.bilibili.com/{_BILI_UID}/dynamic"})
-    get = get or fetch
-    sleep = sleep or hub._pause
-    clock = clock or time.time
 
-    def visitor() -> str:
-        spi = get(_BILI_SPI, "")["data"]
-        return f"buvid3={spi['b_3']}; buvid4={urllib.parse.quote(spi['b_4'])}"
-    cookie = visitor()
+def _bili_opus_detail(opus_id: str, get, cookie: str) -> dict:
+    """Fetch one Bilibili opus dynamic detail item (carrying pub_ts and full pics)."""
+    url = f"{_BILI_DETAIL}?id={urllib.parse.quote(str(opus_id))}&features=itemOpusStyle"
+    d = get(url, cookie)
+    data = d.get("data") if isinstance(d, dict) and isinstance(d.get("data"), dict) else {}
+    item = data.get("item")
+    if not (isinstance(d, dict) and d.get("code") == 0 and isinstance(item, dict)):
+        raise BiliFeedProblem(f"opus detail {opus_id} unreadable: {bili_shape(d)}")
+    return item
+
+
+def _bili_opus_poster(ver: "str | None", now: datetime, get, sleep, cookie: str = ""):
+    """Fallback Bilibili poster lookup via opus/feed/space + dynamic detail (#3 / R-10).
+
+    `feed/space` intermittently returns `code=0, items=[]` under anonymous risk control;
+    `opus/feed/space` lists the account's图文/opus posts without WBI signing and avoids that
+    risk-control path. Still raises BiliFeedProblem on empty/non-zero answers so risk
+    control is never mistaken for "no post".
+    """
+    offset = ""
+    for page in range(_BILI_PAGES):
+        if page:
+            sleep(1)
+        shapes = []
+        for attempt in range(_BILI_OPUS_TRIES):
+            if attempt:
+                sleep(2 * attempt)
+            q = urllib.parse.urlencode({
+                "host_mid": _BILI_UID, "page": page + 1, "type": "all", "offset": offset,
+            })
+            d = get(f"{_BILI_OPUS_FEED}?{q}", cookie)
+            data = d.get("data") if isinstance(d, dict) and isinstance(d.get("data"), dict) else {}
+            items = data.get("items") or []
+            if isinstance(d, dict) and d.get("code") == 0 and items:
+                break
+            shapes.append(bili_shape(d))
+        else:
+            raise BiliFeedProblem(f"opus feed page {page + 1} listed nothing in {_BILI_OPUS_TRIES} tries "
+                                  f"(risk control, not \"no post\"): {shapes[-1]}")
+        opus_ids = [str(it.get("opus_id") or "") for it in items if isinstance(it, dict) and it.get("opus_id")]
+        if not opus_ids:
+            raise BiliFeedProblem(f"opus feed page {page + 1}: none of {len(items)} items has opus_id "
+                                  f"(shape changed?): {json.dumps(items[0], ensure_ascii=False)[:400]}")
+        saw_preview = False
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            oid = str(it.get("opus_id") or "")
+            text = str(it.get("content") or "")
+            if ver and f"{ver}版本前瞻" in text:
+                saw_preview = True
+            head = next((x for x in text.splitlines() if "版本资讯" in x), "")
+            if not oid or not head or (ver and f"{ver}版本" not in head):
+                continue
+            item = _bili_opus_detail(oid, get, cookie)
+            hit = wuwa_bili_post([item], ver, now)
+            if hit:
+                return _BILI_POST_URL.format(id=hit[0]), hit[1], hit[2]
+        if saw_preview:
+            log.info("Bilibili opus feed: no %s version-news post; page %d reached %s版本前瞻",
+                     ver, page + 1, ver)
+            return None
+        if page >= 2:
+            newest_at = _bili_at(_bili_opus_detail(opus_ids[0], get, cookie))
+            if newest_at is not None and newest_at < now - _BILI_OLDEST:
+                log.info("Bilibili opus feed: no %s version-news post; page %d's newest item is %s, past the cutoff",
+                         ver or "current", page + 1, f"{newest_at:%Y-%m-%d}")
+                return None
+        offset = str(data.get("offset") or "")
+        if not data.get("has_more") or not offset:
+            log.info("Bilibili opus feed: no %s version-news post, the feed ends at page %d",
+                     ver or "current", page + 1)
+            return None
+    log.info("Bilibili opus feed: no %s version-news post in %d pages", ver or "current", _BILI_PAGES)
+    return None
+
+
+def _bili_space_feed(ver: "str | None", now: datetime, get, sleep, clock, cookie: str):
+    """Primary Bilibili space feed lookup (WBI-signed feed/space)."""
     img_key, sub_key = bili_wbi_keys(get(_BILI_NAV, cookie))   # once per run
     preview_at: datetime | None = None
     offset = ""
@@ -414,7 +488,7 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
         for attempt in range(_BILI_TRIES):
             if attempt:
                 sleep(3 * attempt)
-                cookie = visitor()
+                cookie = _bili_visitor_cookie(get)
             q = bili_sign({"host_mid": _BILI_UID, "offset": offset, "timezone_offset": -480, "platform": "web",
                            "features": "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote",
                            "web_location": "333.1387", "dm_img_list": "[]",
@@ -463,6 +537,35 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
             return None
     log.info("Bilibili feed: no %s version-news post in %d pages", ver or "current", _BILI_PAGES)
     return None
+
+
+def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=None, opus_get=None):
+    """(page URL, title, images) of the Bilibili copy of the version-news post;
+    None when the feed lists fine but the post is not in it. Falls back to the
+    opus/feed/space endpoint when space/feed hits silent `code=0, items=[]` risk
+    control; raises BiliFeedProblem when both stay empty or unreadable."""
+    import time  # noqa: PLC0415
+
+    def fetch(url: str, cookie: str) -> dict:
+        return hub._json(url, _UA_BROWSER, None, {"Cookie": cookie, "Origin": "https://space.bilibili.com",
+                                              "Referer": f"https://space.bilibili.com/{_BILI_UID}/dynamic"})
+    fallback = opus_get if opus_get is not None else (fetch if get is None else None)
+    get = get or fetch
+    sleep = sleep or hub._pause
+    clock = clock or time.time
+
+    cookie = ""
+    try:
+        cookie = _bili_visitor_cookie(get)
+        return _bili_space_feed(ver, now, get, sleep, clock, cookie)
+    except BiliFeedProblem as feed_err:
+        if fallback is None:
+            raise
+        log.info("Bilibili space feed 触发风控或格式异常，切 opus/feed/space 备用源重试：%s", feed_err)
+        try:
+            return _bili_opus_poster(ver, now, fallback, sleep, cookie=cookie)
+        except BiliFeedProblem as opus_err:
+            raise BiliFeedProblem(f"{feed_err}; opus fallback failed: {opus_err}") from opus_err
 
 
 class KuroListProblem(RuntimeError):

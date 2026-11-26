@@ -457,8 +457,17 @@ def _ntfy_code(exc) -> "tuple[int, str]":
         return 0, ""
 
 
+SEEN_WAIT_WHY = "state.json 暂时读不出来，拿不到已处理指令名单"
+
+
+class SeenUnread(OSError):
+    """state.json could not be read on boot, so Mailbox refuses to read commands without its dedup list."""
+
+
 def _why(exc: BaseException) -> str:
     """One short reason for a failed request, for a log line a person reads."""
+    if isinstance(exc, SeenUnread):
+        return str(exc) or SEEN_WAIT_WHY
     if isinstance(exc, urllib.error.HTTPError):
         code, text = _ntfy_code(exc)
         return f"ntfy 回 {exc.code}" + (f" {code}" if code else "") + (f" {text}" if text else "")
@@ -1681,7 +1690,12 @@ class Mailbox:
         # The bucket the whole state goes to (state_cos); None keeps the old
         # pieces-on-ntfy path.
         self.cos = cos
-        self._seen = self._load_seen()
+        self._seen: list[str] = []
+        self._seen_loaded = False
+        try:
+            self._ensure_seen()
+        except SeenUnread as exc:
+            log.info("开机拿不到手机指令去重名单（%s），读回来之前不读信箱、不重跑旧指令", exc)
         # Stopping the service must be able to sever this connection immediately.
         # A read timeout alone is not enough: worst case it waits out a whole
         # timeout period, while a Windows service stop only grants 30 seconds of
@@ -1797,13 +1811,29 @@ class Mailbox:
         from ark_relay.core.statestore import StateStore  # noqa: PLC0415
         return StateStore(self.state_dir)
 
-    def _load_seen(self) -> "list[str]":
-        data = self._store().get("queues", "phone_seen")
-        return [str(x) for x in data] if isinstance(data, list) else []
+    def _ensure_seen(self) -> None:
+        if self._seen_loaded:
+            return
+        try:
+            data = self._store().get("queues", "phone_seen", fresh=True)
+        except OSError as exc:
+            raise SeenUnread(f"{SEEN_WAIT_WHY}（{type(exc).__name__}）") from exc
+        disk = [str(x) for x in data] if isinstance(data, list) else []
+        self._seen = list(dict.fromkeys([*disk, *self._seen]))[-SEEN_KEEP:]
+        self._seen_loaded = True
 
     def _save_seen(self) -> None:
+        if not self._seen_loaded:
+            log.warning("已处理指令名单开机还没读回来，暂不覆写 state.json 里的 phone_seen")
+            return
+        snap = list(self._seen[-SEEN_KEEP:])
+
+        def _merge(cur):
+            prev = [str(x) for x in cur] if isinstance(cur, list) else []
+            return list(dict.fromkeys([*prev, *snap]))[-SEEN_KEEP:]
+
         try:
-            self._store().set("queues", "phone_seen", list(self._seen[-SEEN_KEEP:]))
+            self._store().update("queues", "phone_seen", _merge)
         except OSError:
             log.warning("处理过的消息 id 存不下来，同一条指令可能被执行两次",
                         exc_info=True)
@@ -2022,7 +2052,8 @@ class Mailbox:
 
     def _read_backlog(self, since: str = "24h") -> "list[dict]":
         """The commands waiting in the mailbox not yet handled; raises when ntfy
-        cannot be read."""
+        cannot be read or state.json's seen list has not been read back yet."""
+        self._ensure_seen()
         url = f"{NTFY}/{self.topic}/json?poll=1&since={since}"
         req = urllib.request.Request(url, headers={"User-Agent": _UA})
         started = int(time.time())
@@ -2181,6 +2212,7 @@ class Mailbox:
         while not stop():
             streaming = False                # the stream was open when it dropped
             try:
+                self._ensure_seen()
                 if self.backlog_missed:
                     self._late_backlog(on_cmd, on_backlog)   # raises while ntfy still does not answer
                 # **`since` is mandatory**: a streaming subscription delivers only

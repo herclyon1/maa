@@ -393,3 +393,13 @@ against a threshold of 0.7 although the reward had arrived):
 1. The character is left inside the challenge arena, so the 基质刷取 that follows fails as a
    knock-on (`↩️返回大世界` cannot get out). The root cause of that 基质 failure is this task.
 2. It burns AUTO-MAS's retry budget (`RunTimesLimit=3`).
+
+## MaaEnd pre-update takeover (`scripts.yaml` / `fix_maaend_preupdate.py`)
+
+From AUTO-MAS v5.8.0 onward, `MaaEndConfig` stores pre-run update takeover under `Update`:
+`TakeoverEnabled` (default `false`) and `Channel` (default `stable`). Because the relay handed
+MaaEnd updates to AUTO-MAS (`21fa826f`), leaving either at default breaks MaaEnd pre-updates.
+The relay's boot self-check (`selfcheck.py`), contract (`mastercfg.py`), and machine check `#R02`
+now flag `TakeoverEnabled != true` or `Channel != beta`. Use
+`scripts/windows/fix_maaend_preupdate.py` (read-only by default; `--apply` after unlock via
+`--api` or `--file`) to inspect and repair `D:\ark\automas\config\scripts.yaml`.
