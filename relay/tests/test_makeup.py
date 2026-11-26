@@ -2741,6 +2741,174 @@ its failures are pushed like any other's, saying whose run it was.
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
+def _part_collect_retry_robustness():
+    """collect_retry resilience: tasklist/taskkill timeouts and unreadable log files."""
+    import json
+    import os
+    import subprocess
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.features import collect_retry as cr
+
+    FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
+    zh = json.loads((FX / "zh_cn.json").read_text(encoding="utf-8"))
+    labels = cr.failed_labels_from_locale(zh)
+
+    warns = _Messages()
+    cr.log.addHandler(warns)
+    saved_run = cr.subprocess.run
+    try:
+        print("[_running: passes timeout and degrades cleanly on TimeoutExpired / OSError]")
+        seen_kw = {}
+
+        def _fake_ok(argv, **kw):
+            seen_kw.update(kw)
+            return types.SimpleNamespace(stdout='"MaaEnd.exe","1234","Console","1","50,000 K"\n')
+
+        cr.subprocess.run = _fake_ok
+        check("_running parses CSV output", cr._running(("MaaEnd.exe", "Endfield.exe")), {"MaaEnd.exe"})
+        check("_running sets a positive timeout",
+              isinstance(seen_kw.get("timeout"), (int, float)) and seen_kw["timeout"] > 0, True)
+
+        def _fake_timeout(argv, **kw):
+            raise subprocess.TimeoutExpired(argv, kw.get("timeout") or 30)
+
+        warns.lines.clear()
+        cr.subprocess.run = _fake_timeout
+        check("_running on TimeoutExpired returns empty set instead of hanging", cr._running(("MaaEnd.exe",)), set())
+        check("_running logs one plain-Chinese WARNING",
+              (len(warns.lines), [texts.plain(m) for m in warns.lines]), (1, [[]]))
+
+        def _fake_oserr(argv, **kw):
+            raise OSError("tasklist missing")
+
+        warns.lines.clear()
+        cr.subprocess.run = _fake_oserr
+        check("_running on OSError returns empty set", cr._running(("MaaEnd.exe",)), set())
+        check("_running OSError warning is plain Chinese",
+              (len(warns.lines), [texts.plain(m) for m in warns.lines]), (1, [[]]))
+
+        print("\n[_kill: timeout on first process does not skip killing the second in run_retry finally]")
+        killed_cmds = []
+
+        def _kill_first_times_out(argv, **kw):
+            killed_cmds.append(list(argv))
+            if len(killed_cmds) == 1:
+                raise subprocess.TimeoutExpired(argv, kw.get("timeout") or 30)
+            return types.SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+        warns.lines.clear()
+        cr.subprocess.run = _kill_first_times_out
+        md_k = tmpdir() / "maaend_kill"
+        (md_k / "debug").mkdir(parents=True)
+        (md_k / "debug" / "2026-09-12-1.log").write_bytes((FX / "mxu-app-override-line.log").read_bytes())
+        saved_bring = cr._bring_up_and_run
+        cr._bring_up_and_run = lambda *a, **k: ({"AutoCollectRoute15": True}, "")
+        try:
+            verdict, note = cr.run_retry(md_k, ["AutoCollectRoute15"], "saturday", spawn=lambda *a: None)
+        finally:
+            cr._bring_up_and_run = saved_bring
+        check("run_retry still returns its verdict when first _kill times out", (verdict, note),
+              ({"AutoCollectRoute15": True}, ""))
+        check("both MaaEnd.exe and Endfield.exe got taskkill attempts",
+              [cmd[-1] for cmd in killed_cmds], ["MaaEnd.exe", "Endfield.exe"])
+        check("_kill timeout warning is plain Chinese",
+              (len(warns.lines), [texts.plain(m) for m in warns.lines]), (1, [[]]))
+    finally:
+        cr.subprocess.run = saved_run
+        cr.log.removeHandler(warns)
+
+    print("\n[run_retry: unreadable / vanishing MXU app logs are skipped without crashing]")
+    md = tmpdir() / "maaend_logs"
+    dbg = md / "debug"
+    dbg.mkdir(parents=True)
+    older = dbg / "2026-09-12-1.log"
+    newer = dbg / "2026-09-12-2.log"
+    vanished = dbg / "2026-09-12-3.log"
+    older.write_bytes((FX / "mxu-app-override-line.log").read_bytes())
+    newer.write_text("locked newest log", encoding="utf-8")
+    vanished.write_text("vanishing log", encoding="utf-8")
+    os.utime(older, (1700000100, 1700000100))
+    os.utime(newer, (1700000200, 1700000200))
+    os.utime(vanished, (1700000300, 1700000300))
+
+    real_read_text = Path.read_text
+    real_stat = Path.stat
+    called_overrides = []
+    saved_bring = cr._bring_up_and_run
+    saved_kill = cr._kill
+
+    def _read_locked(self, *a, **kw):
+        if self == newer:
+            raise PermissionError(13, "log file locked (test)")
+        return real_read_text(self, *a, **kw)
+
+    def _stat_vanished(self, *a, **kw):
+        if self == vanished:
+            raise FileNotFoundError(2, "log vanished (test)")
+        return real_stat(self, *a, **kw)
+
+    Path.read_text = _read_locked
+    Path.stat = _stat_vanished
+    cr._bring_up_and_run = lambda _md, rs, ov, **kw: (called_overrides.append(ov) or {r: True for r in rs}, "")
+    cr._kill = lambda name: None
+    try:
+        v, note = cr.run_retry(md, ["AutoCollectRoute15"], "saturday", spawn=lambda *a: None)
+        check("skips vanished + locked newer logs and falls back to older override",
+              (v, note, len(called_overrides)), ({"AutoCollectRoute15": True}, "", 1))
+    finally:
+        Path.read_text = real_read_text
+        Path.stat = real_stat
+        cr._bring_up_and_run = saved_bring
+        cr._kill = saved_kill
+
+    md_only = tmpdir() / "maaend_unreadable"
+    (md_only / "debug").mkdir(parents=True)
+    bad_log = md_only / "debug" / "2026-09-12-1.log"
+    bad_log.write_text("cannot read", encoding="utf-8")
+    spawned = []
+
+    def _read_bad(self, *a, **kw):
+        if self == bad_log:
+            raise OSError(5, "I/O error (test)")
+        return real_read_text(self, *a, **kw)
+
+    Path.read_text = _read_bad
+    try:
+        v, note = cr.run_retry(md_only, ["AutoCollectRoute15"], "saturday", spawn=lambda *a: spawned.append(a))
+    finally:
+        Path.read_text = real_read_text
+    check("all MXU app logs unreadable: refuses cleanly without spawning",
+          (v, "找不到上一趟采集的参数" in note, spawned), ({"AutoCollectRoute15": None}, True, []))
+
+    print("\n[latest_gathering_run: unreadable history log is skipped without crashing]")
+    hist = tmpdir() / "history_err"
+    (hist / "d").mkdir(parents=True)
+    good_hist = hist / "d" / "good.log"
+    locked_hist = hist / "d" / "locked.log"
+    good_hist.write_text((FX / "automas-MaaEnd-06-17-17.log").read_text(encoding="utf-8"), encoding="utf-8")
+    locked_hist.write_text("[x] 任务完成: 🧺自动采集\n", encoding="utf-8")
+
+    def _read_hist_locked(self, *a, **kw):
+        if self == locked_hist:
+            raise PermissionError(13, "history log locked (test)")
+        return real_read_text(self, *a, **kw)
+
+    Path.read_text = _read_hist_locked
+    try:
+        rec, rts = cr.latest_gathering_run(
+            [{"script": "MaaEnd", "run_id": "d/good"}, {"script": "MaaEnd", "run_id": "d/locked"}],
+            hist, labels)
+        check("skips unreadable newest history log and reads earlier MaaEnd run",
+              (rec and rec["run_id"], rts), ("d/good", ["AutoCollectRoute15", "AutoCollectRoute16"]))
+        rec2, rts2 = cr.latest_gathering_run([{"script": "MaaEnd", "run_id": "d/locked"}], hist, labels)
+        check("only unreadable history log: returns (None, [])", (rec2, rts2), (None, []))
+    finally:
+        Path.read_text = real_read_text
+
+
 def _part_retry_note_time():
     """The 「后来在 … 那趟重试里」 note names the retry by its start, on both clocks."""
     #!/usr/bin/env python3
@@ -2759,4 +2927,4 @@ def _part_retry_note_time():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_collect_history_db, _part_collect_main, _part_collect_blocked, _part_collect_retry_cutoff, _part_collect_watch, _part_makeup_main, _part_hand_started_retry, _part_makeup_midnight, _part_hand_started_runs, _part_retry_note_time]))
+    sys.exit(run_parts([_part_collect_history_db, _part_collect_main, _part_collect_blocked, _part_collect_retry_cutoff, _part_collect_retry_robustness, _part_collect_watch, _part_makeup_main, _part_hand_started_retry, _part_makeup_midnight, _part_hand_started_runs, _part_retry_note_time]))

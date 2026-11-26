@@ -451,15 +451,27 @@ def api(path: str, body: dict | None = None, timeout: int = 30):
     return json.loads(raw) if raw.strip() else {}
 
 
+_TASKLIST_TIMEOUT_S = 30
+
+
 def _running(names: tuple[str, ...]) -> set[str]:
-    out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True,
-                         encoding="utf-8", errors="replace").stdout
+    try:
+        out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace",
+                             timeout=_TASKLIST_TIMEOUT_S, check=False).stdout or ""
+    except (OSError, subprocess.SubprocessError):
+        log.warning("自动采集补跑：查程序列表超过 %d 秒没返回或没能运行，按没在跑处理", _TASKLIST_TIMEOUT_S)
+        return set()
     have = {ln.split('","')[0].lstrip('"').lower() for ln in out.splitlines() if ln}
     return {n for n in names if n.lower() in have}
 
 
 def _kill(name: str) -> None:
-    subprocess.run(["taskkill", "/f", "/im", name], capture_output=True, timeout=30, check=False)
+    try:
+        subprocess.run(["taskkill", "/f", "/im", name], capture_output=True,
+                       timeout=_TASKLIST_TIMEOUT_S, check=False)
+    except (OSError, subprocess.SubprocessError):
+        log.warning("自动采集补跑：关掉 %s 超过 %d 秒没返回或没能运行", name, _TASKLIST_TIMEOUT_S)
 
 
 def _game_exe(maaend_dir: Path) -> Path | None:
@@ -487,6 +499,29 @@ def _wait(pred, seconds: int, step: float = 3.0) -> bool:
     return False
 
 
+def _latest_logged_override(debug: Path) -> list[dict] | None:
+    """Newest MXU app log's AutoCollectSchedule override, skipping logs that vanish or cannot be read."""
+    try:
+        candidates = list(debug.glob("20??-??-??-*.log"))
+    except OSError:
+        return None
+    dated: list[tuple[float, Path]] = []
+    for p in candidates:
+        try:
+            dated.append((p.stat().st_mtime, p))
+        except OSError:
+            continue
+    dated.sort()
+    for _, p in reversed(dated):
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if parts := logged_override(text):
+            return parts
+    return None
+
+
 def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeout: int = 1200,
               evidence: "dict | None" = None, state_dir=None) -> tuple[dict[str, bool | None], str]:
     """Bring up MXU and the game, send the override, wait, judge. Returns (verdict, note).
@@ -498,13 +533,7 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
     is not the official launcher's. Fullscreen is written back before MaaEnd is closed.
     `evidence`, when given, gets "nodes": {route: the maafw.log line of its verdict}.
     """
-    debug = maaend_dir / "debug"
-    app_logs = sorted(debug.glob("20??-??-??-*.log"), key=lambda p: p.stat().st_mtime)
-    parts = None
-    for p in reversed(app_logs):
-        parts = logged_override(p.read_text(encoding="utf-8", errors="replace"))
-        if parts:
-            break
+    parts = _latest_logged_override(maaend_dir / "debug")
     if not parts:
         return {r: None for r in routes}, "MaaEnd 的日志里找不到上一趟采集的参数，不敢自己编，这次不补跑"
     override = build_override(parts, routes, weekday)
@@ -545,13 +574,15 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
     """`again(routes)` builds the override of the second round (run_retry); None: one round."""
     debug = maaend_dir / "debug"
     global MXU  # noqa: PLW0603 - the port is discovered per launch
-    if "MaaEnd.exe" in _running(("MaaEnd.exe",)):
+    running = "MaaEnd.exe" in _running(("MaaEnd.exe",))
+    if running:
         MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
         if not _wait(lambda: api("/maa/state", timeout=5) is not None, 10, step=2):
             # Running but deaf: a leftover instance whose port is gone. Start over.
             _kill("MaaEnd.exe")
             time.sleep(3)
-    if "MaaEnd.exe" not in _running(("MaaEnd.exe",)):
+            running = "MaaEnd.exe" in _running(("MaaEnd.exe",))
+    if not running:
         spawn(maaend_dir / "MaaEnd.exe", maaend_dir, ())
         time.sleep(8)
     MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
@@ -653,7 +684,11 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
 
 def _maafw_text(debug: Path) -> str:
     by_stem: dict[str, Path] = {}
-    for p in [*debug.glob("maafw*.log"), *debug.glob("maafw.bak.*.log.gz")]:
+    try:
+        found = [*debug.glob("maafw*.log"), *debug.glob("maafw.bak.*.log.gz")]
+    except OSError:
+        return ""
+    for p in found:
         stem = p.name[:-3] if p.suffix == ".gz" else p.name
         if stem not in by_stem or p.suffix != ".gz":
             by_stem[stem] = p
@@ -814,7 +849,10 @@ def latest_gathering_run(ledger_entries: list[dict], history_dir: Path, labels: 
         p = _history_log(history_dir, rec)
         if p is None:
             continue
-        text = p.read_text(encoding="utf-8", errors="replace")
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
         if not _VERDICT.search(text):
             continue
         return rec, failed_routes(text, labels)

@@ -14,6 +14,7 @@ import gzip
 import json
 import logging
 import re
+import threading
 import zlib
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -831,6 +832,7 @@ def route_windows(text: str) -> list[tuple[str, datetime, datetime]]:
 # 「戲斗中无法使用，请离战斗后尝沣」; the three ground-loot shots had none of these words.
 _OCR_STRIP = re.compile(r"[\s，,。\.、|!！?？:：;；'\"「」『』（）()]+")
 _COMBAT_SHOT_CACHE: dict[tuple[str, int, int], bool] = {}
+_COMBAT_SHOT_CACHE_LOCK = threading.Lock()
 
 
 def has_combat_block_text(text: str) -> bool:
@@ -859,9 +861,11 @@ def is_combat_block_shot(maaend_dir, name: str, *, ocr_fn=None) -> bool:
     except OSError:
         return True
     key = (str(path), st.st_mtime_ns, st.st_size)
-    if ocr_fn is None and key in _COMBAT_SHOT_CACHE:
-        return _COMBAT_SHOT_CACHE[key]
     if ocr_fn is None:
+        with _COMBAT_SHOT_CACHE_LOCK:
+            cached = _COMBAT_SHOT_CACHE.get(key)
+        if cached is not None:
+            return cached
         from ark_relay.core import desktop  # noqa: PLC0415
         text = desktop.ocr_image_file(path)
     else:
@@ -870,9 +874,10 @@ def is_combat_block_shot(maaend_dir, name: str, *, ocr_fn=None) -> bool:
         return True
     hit = has_combat_block_text(text)
     if ocr_fn is None:
-        if len(_COMBAT_SHOT_CACHE) >= 256:
-            _COMBAT_SHOT_CACHE.clear()
-        _COMBAT_SHOT_CACHE[key] = hit
+        with _COMBAT_SHOT_CACHE_LOCK:
+            if len(_COMBAT_SHOT_CACHE) >= 256 and key not in _COMBAT_SHOT_CACHE:
+                _COMBAT_SHOT_CACHE.clear()
+            _COMBAT_SHOT_CACHE[key] = hit
     if not hit:
         preview = " ".join(text.split())[:80] or "（无文字）"
         log.info("自动采集：%s 截图里没有「战斗中无法使用」（读到：%s），不算被挡", name, preview)

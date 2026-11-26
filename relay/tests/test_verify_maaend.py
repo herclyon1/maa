@@ -3370,5 +3370,102 @@ def _part_unreachable_note_pushed_now():
     check("不写「今天没有官方公告」", texts.UNREACHABLE_SHAPE_NOTE in body, False)
 
 
+def _part_combat_shot_cache_lock():
+    """collector_maaend._COMBAT_SHOT_CACHE is thread-safe across concurrent reads, writes, and >256 clears."""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import desktop
+    from ark_relay.features import collector_maaend as cm
+
+    md = tmpdir() / "maaend_cache"
+    on_err = md / "debug" / "on_error"
+    on_err.mkdir(parents=True)
+    names = []
+    expected = {}
+    for i in range(300):
+        name = f"2026.11.23-10.{i // 60:02d}.{i % 60:02d}.000___MapNavigatorObstacleDevice_InteractPost.png"
+        (on_err / name).write_bytes(f"img-{i}".encode())
+        names.append(name)
+        expected[name] = (i % 2 == 0)
+
+    orig_ocr = desktop.ocr_image_file
+    with cm._COMBAT_SHOT_CACHE_LOCK:
+        cm._COMBAT_SHOT_CACHE.clear()
+    try:
+        print("[concurrent read/write + >256 clear under _COMBAT_SHOT_CACHE_LOCK]")
+
+        def _fake_ocr(path: Path) -> str:
+            idx = int(path.read_bytes().decode().split("-")[1])
+            return "战斗中无法使用，请脱离战斗后尝试" if idx % 2 == 0 else "协议纹石 | 灼壳虫"
+
+        desktop.ocr_image_file = _fake_ocr
+        workers = 8
+        barrier = threading.Barrier(workers)
+        errors = []
+
+        def _worker(tid: int):
+            barrier.wait()
+            for r in range(2):
+                order = names if (tid + r) % 2 == 0 else list(reversed(names))
+                for n in order:
+                    got = cm.is_combat_block_shot(md, n)
+                    if got != expected[n]:
+                        errors.append(f"{n}: got {got!r}, want {expected[n]!r}")
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = [pool.submit(_worker, tid) for tid in range(workers)]
+            for f in futs:
+                f.result()
+
+        check("concurrent reads/writes across >256 eviction raised nothing and matched verdicts", errors, [])
+        with cm._COMBAT_SHOT_CACHE_LOCK:
+            cache_len = len(cm._COMBAT_SHOT_CACHE)
+        check("cache stays bounded to <= 256 entries after concurrent eviction", cache_len <= 256, True)
+
+        print("\n[cache lock is not held across desktop.ocr_image_file]")
+        with cm._COMBAT_SHOT_CACHE_LOCK:
+            cm._COMBAT_SHOT_CACHE.clear()
+        cached_name = names[0]
+        slow_name = names[1]
+        check("prime cached entry", cm.is_combat_block_shot(md, cached_name), expected[cached_name])
+
+        entered = threading.Event()
+        release = threading.Event()
+        ocr_calls = []
+
+        def _blocking_ocr(path: Path) -> str:
+            ocr_calls.append(path.name)
+            if path.name == slow_name:
+                entered.set()
+                release.wait(timeout=5)
+            return _fake_ocr(path)
+
+        desktop.ocr_image_file = _blocking_ocr
+        holder_res = []
+
+        def _slow_call():
+            holder_res.append(cm.is_combat_block_shot(md, slow_name))
+
+        t = threading.Thread(target=_slow_call)
+        t.start()
+        check("slow OCR call started", entered.wait(timeout=5), True)
+        got_cached = []
+        t2 = threading.Thread(target=lambda: got_cached.append(cm.is_combat_block_shot(md, cached_name)))
+        t2.start()
+        t2.join(timeout=2)
+        check("cached lookup returns while another thread is inside OCR",
+              (not t2.is_alive(), got_cached), (True, [expected[cached_name]]))
+        release.set()
+        t.join(timeout=5)
+        check("slow OCR thread finished with right verdict", holder_res, [expected[slow_name]])
+        check("cached lookup did not re-invoke OCR", ocr_calls, [slow_name])
+    finally:
+        desktop.ocr_image_file = orig_ocr
+        with cm._COMBAT_SHOT_CACHE_LOCK:
+            cm._COMBAT_SHOT_CACHE.clear()
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_agreement, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now]))
+    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_agreement, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now, _part_combat_shot_cache_lock]))
