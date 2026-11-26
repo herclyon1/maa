@@ -59,6 +59,8 @@ Shared parts live in `ark_relay/core/`, feature modules live flat in `ark_relay/
 | `maintenance.py` | 三游戏官方停服维护公告与终末地开服状态读取 |
 | `makeup.py` | 明日方舟与终末地失败后的自动补跑及当天标记 |
 | `activity.py` | 鸣潮每日活跃度不足 100 时的晚班补齐与告警 |
+| `ak_activity.py` | 明日方舟新开与复刻活动检测（官网活动公告 + MAA `StageActivityV2.json`）、状态去重与群/好友双路提醒 |
+| `friend_events.py` | 好友微信 3 类严格白名单事件源（次日新卡池、5 天内月卡、明日方舟开活动）、幂等队列与双硬锁门禁 |
 | `collect_retry.py` | 终末地自动采集失败路线单独补跑（最多两轮） |
 | `modes.py` | 调试模式与「下次跑完不关机」开关读写 |
 | `hardlock.py` | 硬锁（11-26 用户令）：锁着不派发、不补跑、不收信箱指令（调试模式除外）、不自更新；定时开机按设计关机；只有两步合格的解锁记录才解除 |

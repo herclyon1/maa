@@ -338,6 +338,15 @@ def _shifts(eng) -> list[tuple[str, str]]:
         return []
 
 
+def _emit_friend_banners(eng, fresh: "list[tuple[str, datetime, str]]", now: datetime) -> None:
+    try:
+        from ark_relay.features import friend_events  # noqa: PLC0415
+        for game, when, who in fresh:
+            friend_events.emit_next_day_banner(eng.cfg, game, when, who, now=now)
+    except Exception:
+        log.warning("明日新卡池好友提醒入队失败", exc_info=True)
+
+
 def _announce_banners(eng, now: datetime,
                       nxt: "dict[str, tuple[datetime, str]]") -> None:
     """Announce in the WeCom group, the day before, a banner that opens tomorrow.
@@ -356,6 +365,7 @@ def _announce_banners(eng, now: datetime,
         return                      # Not delivered, so do not mark it; retry next round
     for game, when, _ in fresh:
         eng.state.mark_banner_announced(f"{game}-{when:%Y%m%d%H%M}")
+    _emit_friend_banners(eng, fresh, now)
     log.info("📣 已在群里播报明天开的卡池：%s",
              "、".join(g for g, _, _ in fresh))
 

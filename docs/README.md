@@ -26,5 +26,6 @@ Rule: **a newly added document must be registered here**; gate 12 of `scripts/ma
 | `scripts/windows/okww-landed.py` | Verifies OK-WW settings took effect (`okww-check.sh`) |
 | `scripts/windows/pkg_deploy.py` | Stages version folders for installed relay (`scripts/mac/lib/deploy-pkg.sh`) |
 | `scripts/windows/run-probe.py` | Live run probe on the game PC (`watch-run.sh`) |
+| `scripts/windows/set_maa_os4_medicine999.py` | Hardlock-gated AUTO-MAS MAA config switcher for `OS-4` + `MedicineNumb=999` (`--check` read-only default `0/2`, `--apply` refuses under `HARDLOCK.json` with `RC=4`, otherwise backs up, writes via API and verifies all 8 fields) |
 | `scripts/windows/skip-shutdown.bat` | Desktop toggle writing `skip_next_shutdown` into `StateStore` |
 | `scripts/windows/smoke.py` | Post-deploy import and boot-line smoke check on the game PC |

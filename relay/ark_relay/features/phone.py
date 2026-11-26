@@ -1092,24 +1092,36 @@ def status(state_dir, today: "date | None" = None) -> dict:
     return _status_from(data, today)
 
 
+def due_items(state_dir, today: "date | None" = None) -> list[dict]:
+    """Monthly cards due for reminder today (strictly 0 <= days_left <= WARN_DAYS)."""
+    today = today or _today()
+    with _MONTHCARD_LOCK:
+        data = _load(state_dir)
+    if data.get("_notified") == today.isoformat():
+        return []
+    due = [(g, v) for g, v in _status_from(data, today).items() if 0 <= v["还剩"] <= WARN_DAYS]
+    due.sort(key=lambda gv: gv[1]["还剩"])
+    return [
+        {
+            "game": g,
+            "days_left": int(v["还剩"]),
+            "last": str(v["最后领取"]),
+            "line": f"{g}月卡还剩 {v['还剩']} 天，最后一次领取是 {_md(date.fromisoformat(v['最后领取']))}",
+        }
+        for g, v in due
+    ]
+
+
 def due_notice(state_dir, today: "date | None" = None) -> "tuple[str, str] | None":
     """Today's reminder: (title, body), or None when nothing is due or it already went out today.
 
     The caller sends it and then calls `mark_sent`, so a push that reached nobody
     is tried again on the next tick instead of being lost for the day.
     """
-    today = today or _today()
-    with _MONTHCARD_LOCK:
-        data = _load(state_dir)
-    if data.get("_notified") == today.isoformat():
+    items = due_items(state_dir, today=today)
+    if not items:
         return None
-    due = [(g, v) for g, v in _status_from(data, today).items() if 0 <= v["还剩"] <= WARN_DAYS]
-    if not due:
-        return None
-    due.sort(key=lambda gv: gv[1]["还剩"])
-    lines = [f"{g}月卡还剩 {v['还剩']} 天，最后一次领取是 {_md(date.fromisoformat(v['最后领取']))}"
-             for g, v in due]
-    return "💳 月卡快到期", "\n".join(lines)
+    return "💳 月卡快到期", "\n".join(it["line"] for it in items)
 
 
 def mark_sent(state_dir, today: "date | None" = None) -> None:

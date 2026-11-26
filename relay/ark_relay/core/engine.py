@@ -37,7 +37,7 @@ log = logging.getLogger("ark.engine")
 # Engine steps not taken while hard-locked (features/hardlock.py): each starts a run or
 # writes into AUTO-MAS, the games or COS.
 LOCKED_STEPS = frozenset({
-    "协议空间开关保护", "需求表", "关卡门", "重试上限", "补跑", "补活跃", "基质刷垫子", "队列后更新", "周常门",
+    "协议空间开关保护", "明日方舟活动提醒", "需求表", "关卡门", "重试上限", "补跑", "补活跃", "基质刷垫子", "队列后更新", "周常门",
 })
 # Short-lived cache for `_scripts_running`; see the comment on that method.
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False, "gen": 0}
@@ -502,7 +502,7 @@ class Engine:
     # Steps skipped while state.json has never been read since boot (D-1017 boot
     # read-lock): running them on an unread empty state would misread marks/holds.
     _UNREAD_SKIP_STEPS = frozenset({
-        "推送积压告警", "周常门", "月卡提醒", "需求表", "漏跑检查", "补跑",
+        "推送积压告警", "周常门", "月卡提醒", "明日方舟活动提醒", "需求表", "漏跑检查", "补跑",
         "补活跃", "基质刷垫子", "临时查看", "队列后更新", "收工体检", "日报", "关机",
     })
 
@@ -669,6 +669,7 @@ class Engine:
             ("推送积压告警", self._flush_pending),
             ("周常门", self._weekly_gates),
             ("月卡提醒", self._monthcard_notice),
+            ("明日方舟活动提醒", self._ak_activity_notice),
             ("需求表", self._need_table),
             # Before the missed-run check and the shutdown decision: both read what
             # the stage gate pulled (stagegate.excused / recent_pulled).
@@ -740,10 +741,27 @@ class Engine:
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""
-        from ark_relay.features import phone as monthcard  # noqa: PLC0415
+        from ark_relay.features import friend_events, phone as monthcard  # noqa: PLC0415
+        items = monthcard.due_items(self.state.dir)
         due = monthcard.due_notice(self.state.dir)
         if due and not self.notifier.send(*due):
             monthcard.mark_sent(self.state.dir)
+            try:
+                for it in items:
+                    friend_events.emit_monthcard_expiring(
+                        self.cfg,
+                        game=it["game"],
+                        days_left=it["days_left"],
+                        last_date=it["last"],
+                        text=it["line"],
+                    )
+            except Exception:
+                log.warning("月卡到期好友提醒入队失败", exc_info=True)
+
+    def _ak_activity_notice(self) -> None:
+        """Notify once when a new or rerun Arknights activity opens (ak_activity.py)."""
+        from ark_relay.features import ak_activity  # noqa: PLC0415
+        ak_activity.step(self)
 
     def _need_table(self) -> None:
         """Once a server day, on a thread of its own: the App's need table rebuilt and put on COS (needtable.py)."""
