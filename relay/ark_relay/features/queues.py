@@ -10,6 +10,7 @@ line a day; ALARM_AFTER failures in a row for another reason are one group alarm
 from __future__ import annotations
 
 import logging
+import os
 import json
 import shutil
 from datetime import datetime
@@ -253,6 +254,10 @@ def _enabled_via_backend(name: str, enabled: bool) -> tuple[bool, str] | None:
 def apply(automas_dir: Path, name: str, enabled: bool | None = None,
           scripts: list[str] | None = None, state_dir: Path | None = None) -> tuple[bool, str]:
     """Enable/disable a queue and/or set which scripts it runs today."""
+    from ark_relay.features import hardlock  # noqa: PLC0415
+    if (enabled is True or scripts is not None) and hardlock.active(
+            state_dir or os.environ.get("ARK_STATE_DIR", "")):
+        return False, hardlock.refused(f"恢复队列「{name}」的定时或改它的脚本")
     name = names.canonical(name)
     if enabled is not None and not isinstance(enabled, bool):
         return False, f"enabled 必须是 true/false，收到 {enabled!r}"

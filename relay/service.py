@@ -252,7 +252,13 @@ SvcStop sets the stop event and only then pushes, on the SCM's thread; the
         # move them.
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:main」
         _wait_for_network(log)
-        if self._stop_in_boot(log) or boot_stages._stage_selfupdate(log):
+        # Hard-locked (ark_relay/features/hardlock.py): no self-update, no boot step that
+        # starts a game or writes into AUTO-MAS / the games.
+        from ark_relay.features import hardlock  # noqa: PLC0415
+        self._locked = hardlock.active(cfg.state_dir)
+        if self._locked:
+            log.info("🔒 硬锁中：这次开机不自更新、不预更新、不开游戏、不改调度程序；没东西在跑就按设计关机")
+        if self._stop_in_boot(log) or (not self._locked and boot_stages._stage_selfupdate(log)):
             return
         if self._stop_in_boot(log):         # a stop that came while it fetched
             return
@@ -268,10 +274,12 @@ SvcStop sets the stop event and only then pushes, on the SCM's thread; the
 
     def _main_after_selfupdate(self, cfg, engine, notifier, log) -> None:
         boot_stages._stage_flush_copies(notifier, log)
-        boot_stages._stage_patch_okww(cfg, notifier, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_patch_okww(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
-        boot_stages._stage_automas_jobfix(cfg, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_automas_jobfix(cfg, log)
         if self._stop_in_boot(log):
             return
         boot_stages._stage_backfill_manual_stops(engine, log)
@@ -288,19 +296,23 @@ SvcStop sets the stop event and only then pushes, on the SCM's thread; the
             return
         # AUTO-MAS answers from here on; before the pre-update, which can take the
         # boot window up to the queue time (stagegate.py, "Where it runs").
-        boot_stages._stage_stagegate(engine, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_stagegate(engine, log)
         if self._stop_in_boot(log):
             return
-        boot_stages._stage_endfield_start(cfg, notifier, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_endfield_start(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
         boot_stages._stage_selfcheck(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
-        boot_stages._stage_preupdate(cfg, notifier, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_preupdate(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
-        boot_stages._stage_reenable_maaend(cfg, notifier, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_reenable_maaend(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
         boot_stages._stage_collect_watch(cfg, notifier, log)
@@ -312,10 +324,12 @@ SvcStop sets the stop event and only then pushes, on the SCM's thread; the
         boot_stages._stage_maa_start_watch(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
-        boot_stages._stage_gameupdate(cfg, notifier, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_gameupdate(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
-        boot_stages._stage_annihilation(engine, notifier, log)
+        if not getattr(self, "_locked", False):
+            boot_stages._stage_annihilation(engine, notifier, log)
         if self._stop_in_boot(log):
             return
         boot_stages._stage_machinecheck(cfg, notifier, log)

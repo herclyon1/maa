@@ -33,6 +33,12 @@ from ark_relay.core.notify import Notifier
 from ark_relay.core.collector import Source
 
 log = logging.getLogger("ark.engine")
+
+# Engine steps not taken while hard-locked (features/hardlock.py): each starts a run or
+# writes into AUTO-MAS, the games or COS.
+LOCKED_STEPS = frozenset({
+    "协议空间开关保护", "需求表", "关卡门", "重试上限", "补跑", "补活跃", "基质刷垫子", "队列后更新", "周常门",
+})
 # Short-lived cache for `_scripts_running`; see the comment on that method.
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False, "gen": 0}
 _SCRIPTS_CACHE_LOCK = threading.Lock()
@@ -644,6 +650,17 @@ class Engine:
             shutdown.note_handled(self, datetime.now(tz=SERVER_TZ))
         # Every step is caught on its own; a broken one must not take the rest with
         # it. Shutdown and the daily report are last.
+        # Hard-locked (features/hardlock.py): the steps that start a run or write into
+        # AUTO-MAS / the games / COS are not taken; watching, alarms, reports and the
+        # power-off still are.
+        from ark_relay.features import hardlock  # noqa: PLC0415
+        locked = hardlock.active(self.cfg.state_dir)
+        if locked:
+            try:
+                from ark_relay.features import commands  # noqa: PLC0415
+                hardlock.timers_off(commands._mas)
+            except Exception:  # AUTO-MAS down or busy: the next tick tries again
+                log.info("硬锁中：这一轮没能核对调度程序定时（下一轮再核）", exc_info=True)
         skip_unread = not getattr(self, "_pending_restored", True)
         for what, step in (
             ("刷声骸到点收工", self._echo_farm_deadline),
@@ -679,7 +696,7 @@ class Engine:
             ("留机锁到期", self._check_alarm_hold_expiry),
             ("关机", self._maybe_shutdown),
         ):
-            if skip_unread and what in self._UNREAD_SKIP_STEPS:
+            if (locked and what in LOCKED_STEPS) or (skip_unread and what in self._UNREAD_SKIP_STEPS):
                 continue
             try:
                 step()
@@ -947,6 +964,25 @@ class Engine:
                 out.append(moment)
         return out
 
+    def _missed_moments(self, now: datetime) -> list[tuple[datetime, str]]:
+        """Missed-run check moments for scheduled queues (today & tomorrow)."""
+        out: list[tuple[datetime, str]] = []
+        for q in plan.schedule(self.cfg.automas_dir):
+            for hhmm in q.get("times", []):
+                try:
+                    hh, mm = (int(x) for x in hhmm.split(":"))
+                except ValueError:
+                    continue
+                due0 = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+                for due in (due0, due0 + timedelta(days=1)):
+                    if not plan.runs_at(q, hhmm, due):
+                        continue        # that time runs nothing that day: nothing to miss
+                    key = f"{due:%Y-%m-%d}/{q['name']}/{hhmm}"
+                    moment = due + timedelta(minutes=MISSED_GRACE_MIN)
+                    if moment > now and key not in self._missed_alerted:
+                        out.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
+        return out
+
     def next_deadline(self, now: datetime | None = None) -> tuple[datetime, str] | None:
         """The next moment any purely time-based decision can change.
 
@@ -968,6 +1004,12 @@ class Engine:
                 return (check, "核对关机有没有关下去")
             return None
         cands: list[tuple[datetime, str]] = []
+        # Hard-locked (features/hardlock.py): wake every minute to put AUTO-MAS's timers back to
+        # off and to judge the power-off again (debug mode's end and the 08:25 pre-cut window
+        # have no deadline of their own).
+        from ark_relay.features import hardlock  # noqa: PLC0415
+        if hardlock.active(self.cfg.state_dir):
+            cands.append((now + timedelta(seconds=hardlock.TIMERS_EVERY_S), "硬锁：核一次调度程序定时，再判一次关机"))
 
         try:
             cands.extend(self._reread_moments(now))
@@ -983,23 +1025,7 @@ class Engine:
             cands.append((now + timedelta(minutes=echofarm.RESTART_QUIET_MINUTES),
                           "看一眼刷声骸还活着没"))
 
-        def today_and_tomorrow(hh: int, mm: int):
-            due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            return due, due + timedelta(days=1)
-
-        for q in plan.schedule(self.cfg.automas_dir):
-            for hhmm in q.get("times", []):
-                try:
-                    hh, mm = (int(x) for x in hhmm.split(":"))
-                except ValueError:
-                    continue
-                for due in today_and_tomorrow(hh, mm):
-                    if not plan.runs_at(q, hhmm, due):
-                        continue        # that time runs nothing that day: nothing to miss
-                    key = f"{due:%Y-%m-%d}/{q['name']}/{hhmm}"
-                    moment = due + timedelta(minutes=MISSED_GRACE_MIN)
-                    if moment > now and key not in self._missed_alerted:
-                        cands.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
+        cands.extend(self._missed_moments(now))
 
         try:
             entries = self._recent_entries(now)

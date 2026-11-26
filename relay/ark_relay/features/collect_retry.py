@@ -960,6 +960,10 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     read (default today); the weekday attached to the retry is always the
     real one, since that is the game's clock.
     """
+    from ark_relay.features import hardlock  # noqa: PLC0415
+    if hardlock.active(eng.cfg.state_dir):
+        hardlock.refused("采集路线单补")
+        return False
     from ark_relay.core import texts  # noqa: PLC0415
     from ark_relay.core.config import SERVER_TZ, atomic_write_text  # noqa: PLC0415
     from ark_relay.features.preupdate import _spawn_interactive  # noqa: PLC0415

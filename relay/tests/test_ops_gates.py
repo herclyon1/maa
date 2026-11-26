@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, fx_dir, require, run_parts, tmpdir
+from _parts import check, fails, fx_dir, require, run_parts, stage_mac_script, tmpdir
 
 # Prefer the active latest Python (4x faster startup than macOS /usr/bin/python3 stub) for bash sub-scripts.
 _PY_BIN = Path(sys.executable).parent
@@ -113,11 +113,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
     def run(*args, mode="ok", timeout="15", probe=REACHABLE, cli=False):
         (base / "fake.json").write_text(json.dumps({"mode": mode, "log": str(log), "shim": str(shim)}),
                                         encoding="utf-8")
-        if cli or (mode == "hang" and probe == REACHABLE):
-            env = dict(os.environ, TECHLOG_WINRUN=f"{sys.executable} {fake}", TECHLOG_REMOTE_DIR=str(tech),
-                       TECHLOG_FETCH_TIMEOUT=timeout, TECHLOG_PROBE=probe, TECHLOG_PROBE_TIMEOUT=SHORT_S)
-            r = subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, env=env, timeout=60)
-            return r.returncode, r.stdout, r.stderr
+        use_real_run = cli or (mode == "hang" and probe == REACHABLE)
         import contextlib
         import io
         import runpy
@@ -157,7 +153,8 @@ runpy.run_path(sys.argv[0], run_name="__main__")
                 sys.modules.pop("arklog", None)
             return w_rc, w_out.getvalue().encode("utf-8"), w_err.getvalue().encode("utf-8")
 
-        tool.run = inproc_winrun
+        if not use_real_run:
+            tool.run = inproc_winrun
         out_buf, err_buf = io.StringIO(), io.StringIO()
         try:
             with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
@@ -322,11 +319,12 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         "techlog_handled.py": tool.WRITE_SCRIPT.format(tech_dir=tool.REMOTE_DIR, day="2026-10-10",
                                                        line=tool.handled_line("R-20261010-2300-1", "def5678")),
     }
+    winrun_staged = stage_mac_script(ROOT, "winrun.sh")
     for name, text in gens.items():
         gen = base / name
         gen.write_text(text, encoding="utf-8")
         compile(text, str(gen), "exec")
-        r = subprocess.run([str(ROOT / "scripts" / "mac" / "winrun.sh"), "--py", str(gen)], capture_output=True, text=True,
+        r = subprocess.run([str(winrun_staged), "--py", str(gen)], capture_output=True, text=True,
                            env=dict(os.environ, WINRUN_DRY_RUN="1"), timeout=30)
         check(f"{name}: winrun dry run lets it through", (r.returncode, "dry-run" in r.stdout), (0, True))
 
@@ -977,9 +975,9 @@ def _part_winps_shutdown_guard():
     import subprocess
 
     root = Path(__file__).resolve().parents[2]
-    winps = root / "scripts" / "mac" / "winps.sh"
-    wingui = root / "scripts" / "mac" / "wingui.sh"
-    winrun = root / "scripts" / "mac" / "winrun.sh"
+    winps = stage_mac_script(root, "winps.sh")
+    wingui = stage_mac_script(root, "wingui.sh")
+    winrun = stage_mac_script(root, "winrun.sh")
     tmp = tmpdir()
     sent = tmp / "sent.ps1"
     # Clean temporary git repo with tag relay-20261124000000 so host dirty tree / HEAD never interferes.
@@ -1103,7 +1101,7 @@ def _part_estop_layout():
     import tempfile
 
     ROOT = Path(__file__).resolve().parents[2]
-    SCRIPT = Path(os.environ.get("ESTOP_SH") or ROOT / "scripts" / "mac" / "estop.sh")
+    SCRIPT = Path(os.environ["ESTOP_SH"]) if os.environ.get("ESTOP_SH") else stage_mac_script(ROOT, "estop.sh")
 
 
     FAKE_SSH = r'''#!PYTHON

@@ -166,7 +166,42 @@ def stagegate_fx():
     )
 
 
-__all__ = ["check", "fails", "fx_dir", "require", "run_parts", "stagegate_fx", "tmpdir"]
+def stage_mac_script(root: Path, name: str) -> Path:
+    """Copy one scripts/mac/*.sh into a temp repo mirror without its HARDLOCK-1126 top guard.
+
+    The real scripts/mac/* files stay unconditionally hard-locked (exit 75 on real invocation);
+    unit tests run this staged copy solely against stubbed ssh/scp/curl and temp git dirs.
+    """
+    base = tmpdir(f"ark-mac-{name}-")
+    mac_dir = base / "scripts" / "mac"
+    mac_dir.mkdir(parents=True)
+    for top in ("relay", "queue", "docs"):
+        src = root / top
+        if src.exists():
+            os.symlink(src, base / top)
+    src_mac = root / "scripts" / "mac"
+    for item in src_mac.iterdir():
+        if item.name != name:
+            os.symlink(item, mac_dir / item.name)
+    lines = (src_mac / name).read_text(encoding="utf-8").splitlines(keepends=True)
+    out = []
+    skip_next = False
+    for ln in lines:
+        if ln.startswith("# HARDLOCK-1126"):
+            skip_next = True
+            continue
+        if skip_next and "hardlock.py" in ln:
+            skip_next = False
+            continue
+        skip_next = False
+        out.append(ln)
+    dst = mac_dir / name
+    dst.write_text("".join(out), encoding="utf-8")
+    dst.chmod(0o755)
+    return dst
+
+
+__all__ = ["check", "fails", "fx_dir", "require", "run_parts", "stage_mac_script", "stagegate_fx", "tmpdir"]
 
 # The failed checks of the part running now; emptied before each part.
 fails: list[str] = []

@@ -64,6 +64,30 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
+def _hardlock_1126(component, allow=()):
+    import importlib.util as _u  # noqa: PLC0415
+    import sys as _s  # noqa: PLC0415
+    if len(_s.argv) > 1 and _s.argv[1] in allow:
+        return
+    try:
+        _sp = _u.spec_from_file_location("hardlock_1126", "/Users/herclyon/Money/审批记录/硬锁/hardlock.py")
+        _m = _u.module_from_spec(_sp)
+        _sp.loader.exec_module(_m)
+        _locked, _msg = _m.check(component)
+        if _locked:
+            _m.note_refusal(component, " ".join(_s.argv))
+    except Exception as _e:  # noqa: BLE001 - 失败即锁
+        _locked, _msg = True, "🔒 硬锁中（锁模块读不出：%s，按锁处理）" % type(_e).__name__
+    if _locked:
+        print(_msg, file=_s.stderr)
+        raise SystemExit(75)
+
+
+if __name__ == "__main__":      # 只在被当脚本跑时拦；测试 import 它不受影响
+    _hardlock_1126('disk_tidy')
+
+
 # Measured in the 10-13 22:45 inventory (raw/wt-table.txt, scanned 22:25): every worktree a
 # process was working in had a file changed minutes earlier (app-r1 22:23, gamesim-u8 22:22).
 # 2 h is the activity window that inventory used; it is also the floor tier's idle window.

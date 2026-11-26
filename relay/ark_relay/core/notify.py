@@ -622,6 +622,16 @@ class Notifier:
         finally:
             _NOTE_TLS.busy = False
 
+    def _wechat_locked(self, title: str) -> bool:
+        """WeChat pushing hard-locked (features/hardlock.py, kind "wechat"): nothing goes to 企业微信 or
+        Server酱; the title is logged instead and the caller is told it was handled, so nothing retries."""
+        from ark_relay.features import hardlock  # noqa: PLC0415 - avoids an import cycle
+        if not hardlock.active(self._state_dir, "wechat"):
+            return False
+        self._last.delivered = ()
+        log.info("🔒 硬锁中：微信推送没发（企业微信群/Server酱/企业微信应用）：%s", str(title)[:200])
+        return True
+
     def send(self, title: str, body: str, *, alert: bool = False, daily: bool = False) -> list[str]:
         """Returns failures only when the message reached nobody.
 
@@ -633,6 +643,8 @@ class Notifier:
         Server酱 (see the orders above).
         """
         self._last.delivered = ()
+        if self._wechat_locked(title):
+            return []
         route = route_of(title, alert=alert, daily=daily)
         if route == "log":
             log.info("不推送（日报或手机页已有）：%s ｜ %s", title, body.replace("\n", " ")[:200])
@@ -668,6 +680,8 @@ class Notifier:
         notifications go to Server酱. So this does not go through `send()`: an info
         title routes to `_INFO_ORDER`, which is Server酱 only.
         """
+        if self._wechat_locked(title):
+            return []
         delivered, failed = self._fan_out(title, body,
                                           order=("企业微信机器人",),
                                           stop_on_first=True)
@@ -715,6 +729,8 @@ class Notifier:
     def send_group_image(self, path: Path) -> list[str]:
         """Send an image via the group robot. The self-built-app route needs an
         IP allowlist (60020); this one does not."""
+        if self._wechat_locked(f"图片 {Path(path).name}"):
+            return []
         if not self.wecom_bot.enabled:
             return ["群机器人未配置"]
         try:

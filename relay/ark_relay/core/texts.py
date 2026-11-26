@@ -891,7 +891,7 @@ _RELAY_PARTS = {
     "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
     "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",
     "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",
-    "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.plan": "排期",
+    "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.hardlock": "硬锁", "ark.plan": "排期",
     "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
     "ark.procs": "程序列表", "ark.tape": "回放用的输入记录",
     "ark": "主程序", "ark.errwatch": "报错转发", "ark.error_evidence": "当天日志外送",

@@ -731,6 +731,35 @@ def _boot_imminent(eng, now: datetime) -> str:
     return ""
 
 
+def _locked_verdict(eng, now: datetime) -> Verdict:
+    """decide() while hard-locked (hardlock.py): no shift runs, so a scheduled boot has
+    nothing to wait for and powers off once nothing runs and debug mode / the alarm hold
+    (both over ten minutes before the next scheduled power-on) are not holding. A boot
+    by hand stays on, as it does unlocked."""
+    from ark_relay.features import hardlock  # noqa: PLC0415
+    booted = eng._boot_time(now)
+    if booted is None:
+        return Verdict(False, "hardlock-hold", "硬锁中；" + BOOT_UNKNOWN)
+    if not hardlock.scheduled_boot(booted):
+        return Verdict(False, "hardlock-hold",
+                       f"硬锁中；这次是 {booted.astimezone(SERVER_TZ):%m-%d %H:%M} 手动开的机，不关")
+    if (now - eng._started_at).total_seconds() < eng.cfg.shutdown_min_uptime:
+        return Verdict(False, "uptime", "开机不够久")
+    if eng._scripts_running():
+        return Verdict(False, "running", "还有脚本或游戏在跑")
+    if hardlock.before_power_cut(now):
+        return Verdict(True, hardlock.GO_CUT,
+                       f"硬锁中：离 {hardlock.POWER_CUT} 插座断电不到 {hardlock.CUT_LEAD_MIN} 分钟，"
+                       "调试模式和故障留机锁都不再留机，按设计关机")
+    if modes.debug_active(eng.state.dir, now):
+        return Verdict(False, "hardlock-hold",
+                       f"硬锁中；调试模式开着（到 {modes.debug_until(eng.state.dir)}），到点就按设计关机")
+    if hold := modes.alarm_hold_info(eng.state.dir, now):
+        return Verdict(False, "hardlock-hold",
+                       f"硬锁中；故障留机锁开着（留机至 {hold.get('until') or '?'}），到点就按设计关机")
+    return Verdict(True, "go", "硬锁中：定时开机这一轮不跑班，没东西在跑，按设计关机")
+
+
 def decide(eng, now: datetime) -> Verdict:
     """Pure decision: reads state, writes nothing.
 
@@ -760,6 +789,9 @@ def decide(eng, now: datetime) -> Verdict:
                            f"关机没成功（关机命令 {at:%H:%M} 发出，过了 {ISSUED_STUCK_MIN} 分钟机器还开着）")
         # The relay's own power-off is under way.
         return Verdict(False, "issued", "关机命令已经发出去了，机器正在关")
+    from ark_relay.features import hardlock  # noqa: PLC0415
+    if hardlock.active(eng.state.dir):
+        return _locked_verdict(eng, now)
     entries = eng._recent_entries(now)
     booted = eng._boot_time(now)
     shift = _shift_queues(eng, now, booted) if booted is not None else []
@@ -1061,6 +1093,10 @@ def _issue_poweroff(eng, now: datetime, live_clock: bool, gen0: int, why: dict) 
             _record_poweroff(eng, None)
 
 
+# The locked power-off right before the 08:40 mains cut (hardlock.GO_CUT): nothing holds it then.
+_CUT = "go-cut"
+
+
 def _expire_debug_for_shutdown(eng) -> None:
     if expired_until := modes.expire_debug_if_due(eng.state.dir):
         log.info("🔧 调试模式（至 %s）已到期，释放被吞的关机机会并重新判关机", expired_until)
@@ -1119,14 +1155,14 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             eng._before_shutdown()
         except Exception:
             log.warning("关机前的待办检查失败", exc_info=True)
-        if modes.debug_active(eng.state.dir):
+        if v.code != _CUT and modes.debug_active(eng.state.dir):
             key = eng._shutdown_key(now)
             raw_skip = modes.shutdown_skipped_raw(eng.state.dir)
             if raw_skip not in (key, key + modes.DEBUG_SKIP_TAG):
                 modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
             log.info("🔧 关机前刚收到调试模式：这一次关机跳过（%s）", key)
             return False
-        if modes.alarm_hold_info(eng.state.dir, now):
+        if v.code != _CUT and modes.alarm_hold_info(eng.state.dir, now):
             key = eng._shutdown_key(now)
             if modes.shutdown_skipped(eng.state.dir) != key:
                 modes.mark_shutdown_skipped(eng.state.dir, key, by_alarm=True)
@@ -1137,10 +1173,10 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             return False
     with _SHUTDOWN_COND:
         gen0 = _ISSUE_STATE["gen"]
-    if modes.alarm_hold_info(eng.state.dir, now):
+    if v.code != _CUT and modes.alarm_hold_info(eng.state.dir, now):
         log.info("🚨 故障留机锁刚挂上：先不关机")
         return False
-    if modes.take_skip(eng.state.dir):
+    if v.code != _CUT and modes.take_skip(eng.state.dir):
         key = eng._shutdown_key(now)
         modes.mark_shutdown_skipped(eng.state.dir, key)
         log.info("⏸ 「下次跑完不关机」用掉了：这一次关机跳过（%s），"
@@ -1158,7 +1194,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     except Exception:  # the reason is for the user to read; the power-off goes on
         log.warning("关机原因没整理出来", exc_info=True)
         why = {"why": f"中继 {now:%H:%M} 判定本轮已处理完毕，发出关机"}
-    if modes.alarm_hold_info(eng.state.dir, now):
+    if v.code != _CUT and modes.alarm_hold_info(eng.state.dir, now):
         log.info("🚨 关机前发现故障留机锁：取消本次关机")
         return False
     return _issue_poweroff(eng, now, live_clock, gen0, why)

@@ -61,6 +61,7 @@ Shared parts live in `ark_relay/core/`, feature modules live flat in `ark_relay/
 | `activity.py` | 鸣潮每日活跃度不足 100 时的晚班补齐与告警 |
 | `collect_retry.py` | 终末地自动采集失败路线单独补跑（最多两轮） |
 | `modes.py` | 调试模式与「下次跑完不关机」开关读写 |
+| `hardlock.py` | 硬锁（11-26 用户令）：锁着不派发、不补跑、不收信箱指令（调试模式除外）、不自更新；定时开机按设计关机；只有两步合格的解锁记录才解除 |
 | `needtable.py` | App 库存页最新六星满练需求表重算与上传 |
 | `okww_overlay.py` | 鸣潮 `ok_tasks/` 扩展补丁安装与上游源码锚点核对（`okww_files/`） |
 | `phone.py` | 手机遥控状态组装、信箱长连接与命令队列、开机 `queue/config.json` 收件、COS 与 ntfy 同步、心跳与月卡提醒 |

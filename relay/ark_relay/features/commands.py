@@ -13,6 +13,7 @@ from ark_relay.core import config as names, texts, mastercfg as masuser
 from datetime import datetime
 from pathlib import Path
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
+from ark_relay.features import hardlock
 from ark_relay.features.redbutton import _mas, mas_post, ESTOP_LAST, ESTOP_WINDOWS_FILE, estop, estop_label, estop_windows
 
 # Config field -> plain words. The push is read by a person on a phone, and
@@ -103,6 +104,11 @@ ALLOWED = REVERSIBLE | MUTATING
 # Stage codes look like TO-5 / CE-6 / 1-7 / LS-6. Refuse anything else outright
 # rather than trusting a model not to invent one.
 _STAGE_RE = re.compile(r"^[A-Za-z0-9]{1,4}-[A-Za-z0-9]{1,3}$")
+
+
+def _state_dir() -> Path:
+    """The relay's state dir, as _skip_today / _weekly_boss read it."""
+    return Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
 
 
 def _script_config() -> Path:
@@ -729,6 +735,8 @@ def run_script(script: str) -> tuple[bool, str]:
     Used when one game has to be re-run after its client update. Dispatching the
     whole queue would run the other games again too (and spend their stamina).
     """
+    if hardlock.active(_state_dir()):
+        return False, hardlock.refused(f"派发脚本「{script}」")
     try:
         scripts = _mas("/api/scripts/get")["data"]
     except Exception as exc:  # noqa: BLE001
@@ -753,6 +761,8 @@ def run_script(script: str) -> tuple[bool, str]:
 
 def _run_now(queue: str) -> tuple[bool, str]:
     """Run one round of a queue right now, through the AUTO-MAS dispatch API."""
+    if hardlock.active(_state_dir()):
+        return False, hardlock.refused(f"开跑队列「{queue}」")
     queue = names.canonical(queue)
     try:
         queues = _mas("/api/queue/get")["data"]
@@ -817,6 +827,51 @@ def _weekly_boss(cmd: dict) -> tuple[bool, str]:
     return ok, msg
 
 
+def _echo_farm_cmd(cmd: dict) -> tuple[bool, str]:
+    """Start one echo-farm session from a phone/inbox command."""
+    # Farm one boss for its 4-cost echoes until a wall-clock time: an overworld
+    # boss, or with "weekly": true the boss-th weekly boss.
+    # The count OK-WW understands is set high; echofarm owns the clock.
+    from ark_relay.features import echofarm  # noqa: PLC0415
+    from ark_relay.core.config import Config  # noqa: PLC0415
+    from ark_relay.core.wuwa_tables import wuwa_boss as _wt; label = _wt.label  # noqa: PLC0415
+    # "sent" (the phone's send time, put in by run_phone_cmd) makes a
+    # backlog order mean the deadline its sender meant - see echofarm.start.
+    sent = cmd.get("sent")
+    sent = (datetime.fromtimestamp(sent, tz=SERVER_TZ)
+            if isinstance(sent, int) and not isinstance(sent, bool) else None)
+    weekly = cmd.get("weekly") is True
+    name = str(cmd.get("name") or "") or (f"周本第 {cmd.get('boss')} 个" if weekly
+                                          else label(cmd.get("boss")))
+    # "target_stat" + "target_count" (2026-11-20): stop once that many echoes with that
+    # main stat were picked up; "until" is then the backstop. Without them, by time.
+    return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"), name,
+                          sent=sent, weekly=weekly, target_stat=cmd.get("target_stat") or "",
+                          target_count=cmd.get("target_count"),
+                          target_set=cmd.get("target_set") or "")
+
+
+def _skip_shutdown_cmd(cmd: dict) -> tuple[bool, str]:
+    from ark_relay.features.modes import set_skip_shutdown  # noqa: PLC0415
+    state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+    # Both spellings of "pull back" are accepted. The canonical form is
+    # off:true, but other actions (weekly_boss / toggle_task) use `on`,
+    # and two spellings in one interface get sent wrongly sooner or
+    # later, so both are treated as cancel.
+    off = bool(cmd.get("off")) or cmd.get("on") is False
+    if not off:
+        # Pressed inside the relay's own 60-second power-off countdown,
+        # where storing the mark would be too late: cancel the countdown.
+        # That uses the order up on this shutdown, so no mark is stored.
+        from ark_relay.features import shutdown  # noqa: PLC0415
+        outcome, text = shutdown.abort_countdown()
+        if outcome == "aborted":
+            return True, text
+        if outcome == "failed":
+            return False, text
+    return set_skip_shutdown(state_dir, not off)
+
+
 def apply_command(cmd: dict) -> tuple[bool, str]:
     """Validate and apply one command. Never raises; always reports.
 
@@ -826,6 +881,9 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
     action = str(cmd.get("action") or "").strip()
     if action not in ALLOWED:
         return False, texts.action_not_allowed(action)
+    # 硬锁（hardlock.py）：只剩调试模式能下，别的指令一律不做。
+    if action not in hardlock.ORDERS_WHILE_LOCKED and hardlock.active(_state_dir()):
+        return False, hardlock.refused(f"指令「{action}」")
 
     # Gate ②: mutating actions must carry the operator's confirmation.
     if action in MUTATING and not cmd.get("confirmed"):
@@ -872,26 +930,7 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         if action == "weekly_boss":
             return _weekly_boss(cmd)
         if action == "echo_farm":
-            # Farm one boss for its 4-cost echoes until a wall-clock time: an overworld
-            # boss, or with "weekly": true the boss-th weekly boss.
-            # The count OK-WW understands is set high; echofarm owns the clock.
-            from ark_relay.features import echofarm  # noqa: PLC0415
-            from ark_relay.core.config import Config  # noqa: PLC0415
-            from ark_relay.core.wuwa_tables import wuwa_boss as _wt; label = _wt.label  # noqa: PLC0415
-            # "sent" (the phone's send time, put in by run_phone_cmd) makes a
-            # backlog order mean the deadline its sender meant - see echofarm.start.
-            sent = cmd.get("sent")
-            sent = (datetime.fromtimestamp(sent, tz=SERVER_TZ)
-                    if isinstance(sent, int) and not isinstance(sent, bool) else None)
-            weekly = cmd.get("weekly") is True
-            name = str(cmd.get("name") or "") or (f"周本第 {cmd.get('boss')} 个" if weekly
-                                                  else label(cmd.get("boss")))
-            # "target_stat" + "target_count" (2026-11-20): stop once that many echoes with that
-            # main stat were picked up; "until" is then the backstop. Without them, by time.
-            return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"), name,
-                                  sent=sent, weekly=weekly, target_stat=cmd.get("target_stat") or "",
-                                  target_count=cmd.get("target_count"),
-                                  target_set=cmd.get("target_set") or "")
+            return _echo_farm_cmd(cmd)
         if action == "echo_farm_until":
             from ark_relay.features.echofarm import retime  # noqa: PLC0415
             from ark_relay.core.config import Config  # noqa: PLC0415
@@ -910,24 +949,7 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
             return True, set_tacet_shots(state_dir, bool(cmd.get("on", False)))
         if action == "skip_shutdown":
-            from ark_relay.features.modes import set_skip_shutdown  # noqa: PLC0415
-            state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-            # Both spellings of "pull back" are accepted. The canonical form is
-            # off:true, but other actions (weekly_boss / toggle_task) use `on`,
-            # and two spellings in one interface get sent wrongly sooner or
-            # later, so both are treated as cancel.
-            off = bool(cmd.get("off")) or cmd.get("on") is False
-            if not off:
-                # Pressed inside the relay's own 60-second power-off countdown,
-                # where storing the mark would be too late: cancel the countdown.
-                # That uses the order up on this shutdown, so no mark is stored.
-                from ark_relay.features import shutdown  # noqa: PLC0415
-                outcome, text = shutdown.abort_countdown()
-                if outcome == "aborted":
-                    return True, text
-                if outcome == "failed":
-                    return False, text
-            return set_skip_shutdown(state_dir, not off)
+            return _skip_shutdown_cmd(cmd)
     except Exception as exc:
         log.exception("执行指令失败: %s", action)
         return False, f"执行出错: {exc}"

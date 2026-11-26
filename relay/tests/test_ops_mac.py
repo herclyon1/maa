@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir
+from _parts import check, fails, require, run_parts, stage_mac_script, tmpdir
 
 # Prefer the active latest Python (4x faster startup than macOS /usr/bin/python3 stub) for bash sub-scripts.
 _PY_BIN = Path(sys.executable).parent
@@ -652,7 +652,7 @@ def _part_order_now_confirmed():
     import tempfile
 
     ROOT = Path(__file__).resolve().parents[2]
-    SCRIPT = ROOT / "scripts" / "mac" / "order-now.sh"
+    SCRIPT = stage_mac_script(ROOT, "order-now.sh")
     sys.path.insert(0, str(ROOT / "relay"))
     from ark_relay.features.commands import MUTATING
 
@@ -706,7 +706,7 @@ def _part_order_push_main():
     import subprocess
     import tempfile
 
-    SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "mac" / "order.sh"
+    SCRIPT = stage_mac_script(Path(__file__).resolve().parents[2], "order.sh")
 
 
     def git(cwd, *args):
@@ -996,7 +996,7 @@ def _part_wingui_guards():
 
     ROOT = Path(__file__).resolve().parents[2]
     MAC = ROOT / "scripts" / "mac"
-    WINGUI = MAC / "wingui.sh"
+    WINGUI = stage_mac_script(ROOT, "wingui.sh")
     FAKE = tmpdir("wingui-")
     (FAKE / "bin").mkdir()
     (FAKE / "tmp").mkdir()

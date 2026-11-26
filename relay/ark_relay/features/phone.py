@@ -1642,9 +1642,14 @@ class Inbox:
     def _apply(self, commands: list) -> list[str]:
         out: list[str] = []
         others = [c for c in commands if isinstance(c, dict)]
+        from ark_relay.features import hardlock  # noqa: PLC0415
+        locked = hardlock.active(self.state_dir)
 
         for cmd in others:
             act = cmd.get("action")
+            if locked and act not in hardlock.ORDERS_WHILE_LOCKED:
+                out.append("✗ " + hardlock.refused(f"信箱指令「{act}」"))
+                continue
             if act == "queue":
                 if not self.automas_dir:
                     out.append("✗ 队列：找不到 AUTO-MAS 目录，跳过")

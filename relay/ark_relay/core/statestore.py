@@ -297,6 +297,8 @@ FIELDS: dict[str, dict[str, str]] = {
         "debug_until": "调试模式到什么时候（YYYY-MM-DD HH:MM）",
         "alarm_hold": "故障留机锁：{until, boot, reason, created_at, at, boot_at}（本班有未修完群报警时挂起，防机器自动/提前关机）",
         "alarm_hold_cleared_at": "最近一次解锁故障留机锁的北京时间高水位（ISO +08:00，防迟到外部留机指令僵尸复锁）",
+        "hardlock": "硬锁（features/hardlock.py）：{since, file}；见过一次 HARDLOCK.json 就记下，删文件不解锁，只有带合格 release 的锁文件才解除",
+        "hardlock_wechat": "微信推送硬锁（features/hardlock.py KINDS[\"wechat\"]）：{since, file}；见过一次 HARDLOCK_WECHAT.json 就记下，规矩同上",
     },
     "versions": {
         "announced_notes": "上一条「已更新」推送的说明原文（一模一样就不再推）",

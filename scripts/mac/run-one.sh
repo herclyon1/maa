@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
+case "${1:-}" in status) ;; *) /opt/homebrew/bin/python3 -I /Users/herclyon/Money/审批记录/硬锁/hardlock.py check relay "$(basename "$0") $*" || exit 75; esac
 # 手动跑任务的唯一入口。内含派发闸门 + 派发后 75 秒自动首查。
 #
 #   run-one.sh status            # 现在在跑什么

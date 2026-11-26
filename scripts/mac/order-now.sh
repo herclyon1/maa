@@ -1,4 +1,6 @@
 #!/bin/bash
+# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
+/opt/homebrew/bin/python3 -I /Users/herclyon/Money/审批记录/硬锁/hardlock.py check relay "$(basename "$0") $*" || exit 75
 # Send one command to the running relay right now, the way the phone page does
 # (ntfy live channel). `order.sh` writes the repo inbox, which the relay reads
 # only at boot, before shutdown and on retry - so it is the "machine is off"
