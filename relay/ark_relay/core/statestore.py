@@ -648,8 +648,8 @@ class StateStore:
             raise KeyError(f"没有 {name!r} 这一段")
         return dict(self._load()[name])
 
-    def get(self, section: str, key: str, default=None):
-        return self._load().get(section, {}).get(key, default)
+    def get(self, section: str, key: str, default=None, *, fresh: bool = False):
+        return self._load(fresh=fresh).get(section, {}).get(key, default)
 
     # ---------- write ----------
     def set(self, section: str, key: str, value) -> None:

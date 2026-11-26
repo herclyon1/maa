@@ -917,6 +917,7 @@ MAS_SETTING_WHAT = {
     "maaend_wait": "终末地的等待秒数",
     "maaend_launch": "终末地的游戏位置和开游戏方式",
     "maaend_window": "终末地跑脚本时开成窗口、跑完改回全屏的设置",
+    "maaend_update": "终末地脚本开跑前更新的接管和通道设置",
     "stage": "方舟的关卡设置",
     "medicine": "方舟的理智药数量",
     "fight": "方舟的刷理智开关",
@@ -937,6 +938,7 @@ MAS_SETTING_BREAKS = {
     "maaend_wait": "手机上改终末地的等待秒数",
     "maaend_launch": "开机时核对调度程序能不能经官方启动器开终末地",
     "maaend_window": "跑终末地前把游戏开成窗口（不勾 DirectX 11 时 MaaEnd 靠它认游戏画面）、跑完改回全屏",
+    "maaend_update": "开机自检核对调度程序是不是在开跑前自动更新终末地脚本",
     "stage": "开跑前查关卡、明日安排、手机上显示和修改关卡",
     "medicine": "明日安排和手机上显示、修改理智药",
     "fight": "开跑前查关卡和明日安排",
@@ -952,7 +954,7 @@ MAS_SETTING_BREAKS = {
 }
 # The AUTO-MAS setting groups by the column they are shown in.
 MAS_GROUP_ZH = {"Info": "基本信息", "Stage": "关卡", "Task": "任务", "Data": "数据",
-                "Run": "运行", "Game": "游戏", "Schedule": "日程", "ALL": "计划表全周"}
+                "Run": "运行", "Game": "游戏", "Update": "更新", "Schedule": "日程", "ALL": "计划表全周"}
 MAS_FILE_ZH = {"ScriptConfig.json": "脚本设置", "QueueConfig.json": "队列设置",
                "PlanConfig.json": "关卡计划表", "config": "设置文件夹"}
 MAS_CONTRACT_CHECK = "中继要读的调度程序设置都在原处"

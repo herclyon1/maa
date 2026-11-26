@@ -477,6 +477,25 @@ def _off_records_gone(ctx):
     return mc.Result(mc.PASS, "开机后 state.json 里已经没有 maaend_disabled_spmed（另两条旧记录也没有）")
 
 
+# ------------------------------------------------------------------ #R02
+
+@mc.check("#R02", "终末地脚本预更新已交由调度程序接管（测试版通道）", "A", "boot")
+def _maaend_preupdate_contract(ctx):
+    """Detect MaaEnd pre-update chain break on AUTO-MAS v5.8+ scripts.yaml (R-02)."""
+    from ark_relay.core import mastercfg  # noqa: PLC0415
+    cfg = ctx.get("cfg")
+    automas_dir = getattr(cfg, "automas_dir", None) if cfg is not None else ctx.get("automas_dir")
+    if not automas_dir:
+        return None
+    node, has_yaml = mastercfg._find_maaend_script(automas_dir)
+    if not (has_yaml or (isinstance(node, dict) and isinstance(node.get("Update"), dict))):
+        return None
+    gaps = mastercfg.check_maaend_preupdate(automas_dir)
+    if gaps:
+        return mc.Result(mc.FAIL, "；".join(gaps))
+    return mc.Result(mc.PASS, "终末地开跑前预更新已由调度程序接管，且通道为测试版")
+
+
 # ------------------------------------------------------- game client updates
 
 def _notes(ctx, what: str) -> list[dict]:

@@ -303,32 +303,75 @@ def _maa_script(data: dict) -> tuple[str, dict] | None:
     return found[0] if len(found) == 1 else None
 
 
+def _live_maa_users(mas_get=None) -> "list[dict] | None":
+    """Active MAA users from the live AUTO-MAS backend, or None when unavailable.
+
+    On boot, inbox/phone `set_stage` updates AUTO-MAS in memory seconds before
+    `_stage_stagegate` runs, while disk `scripts.yaml` / `ScriptConfig.json` can
+    still hold the pre-update stage (verify-ledger #179: 08:46:43 logged TL-4 right
+    after confirming 1-7). Only queries the live backend on Windows (or when
+    `mas_get` is injected) and falls back cleanly to disk files on any failure."""
+    if mas_get is None:
+        from ark_relay.core import config  # noqa: PLC0415
+        if not config.IS_WINDOWS:
+            return None
+        from ark_relay.features import commands  # noqa: PLC0415
+
+        def mas_get(path: str, body=None):
+            return commands._mas(path, body, timeout=3)
+    try:
+        from ark_relay.core import plan  # noqa: PLC0415
+        scripts = (mas_get("/api/scripts/get") or {}).get("data")
+        if not isinstance(scripts, dict):
+            return None
+        maa = [
+            sid for sid, sc in scripts.items()
+            if isinstance(sc, dict) and plan._script_kind(
+                (sc.get("Info") or {}).get("Path") or (sc.get("Info") or {}).get("RootPath") or ""
+            ) == "MAA"
+        ]
+        if len(maa) != 1:
+            return None
+        raw_users = (mas_get("/api/scripts/user/get", {"scriptId": maa[0]}) or {}).get("data")
+        if not isinstance(raw_users, dict):
+            return None
+        return [u for u in raw_users.values()
+                if isinstance(u, dict) and masuser.runs(masuser.info_view(u))]
+    except Exception:  # noqa: BLE001 - fall back to disk files
+        return None
+
+
 def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None,
-                every: list | None = None) -> tuple[str, str, str]:
+                every: list | None = None, *, mas_get=None) -> tuple[str, str, str]:
     """Will MAA accept the Fight stage AUTO-MAS sends at `at`? (verdict, stage, reason).
 
     problems: as in check - files that could not be read are added to it, not logged.
     every: when given, gets each user's own (verdict, stage, reason), users AUTO-MAS
     does not run left out.
+    mas_get: optional live AUTO-MAS API reader `(path, body=None) -> dict`; on Windows
+    defaults to `commands._mas(..., timeout=3)` so boot stagegate sees stages just updated
+    in memory by inbox/phone `set_stage` (#179), falling back to disk when unavailable.
 
     "no" when any user AUTO-MAS runs is "no" (audit 11-08 B-D23: until then only when all
     were, so a second account's stage that MAA cannot reach went unsaid while the first
     one's could); the reason names that user when there are several."""
     cfg_dir = Path(automas_dir) / "config" if automas_dir else None
-    try:
-        data = _load(cfg_dir / "ScriptConfig.json") if cfg_dir else None
-    except (OSError, ValueError) as exc:
-        said = f"AUTO-MAS 的脚本设置读不了（{type(exc).__name__}），MAA 这一班的关卡不查"
-        if problems is None:
-            log.warning("关卡门：%s", said)
-        else:
-            problems.append(said)
-        return UNKNOWN, "", "脚本设置读不了"
-    script = _maa_script(data) if data else None
-    if script is None:
-        return UNKNOWN, "", "找不到唯一的 MAA 脚本"
-    users = [u for u in ((script[1].get("SubConfigsInfo") or {}).get("UserData") or {}).values()
-             if isinstance(u, dict) and masuser.runs(masuser.info_view(u))]
+    users = _live_maa_users(mas_get)
+    if users is None:
+        try:
+            data = _load(cfg_dir / "ScriptConfig.json") if cfg_dir else None
+        except (OSError, ValueError) as exc:
+            said = f"AUTO-MAS 的脚本设置读不了（{type(exc).__name__}），MAA 这一班的关卡不查"
+            if problems is None:
+                log.warning("关卡门：%s", said)
+            else:
+                problems.append(said)
+            return UNKNOWN, "", "脚本设置读不了"
+        script = _maa_script(data) if data else None
+        if script is None:
+            return UNKNOWN, "", "找不到唯一的 MAA 脚本"
+        users = [u for u in ((script[1].get("SubConfigsInfo") or {}).get("UserData") or {}).values()
+                 if isinstance(u, dict) and masuser.runs(masuser.info_view(u))]
     verdicts: list[tuple[str, str, str]] = []
     for u in users:
         # masuser: AUTO-MAS v5.7.0-beta.3 keeps the stage items in a Stage group, not Info.
@@ -568,10 +611,11 @@ def _put_back(cfg, now: datetime, busy, restorer) -> None:
         _store(cfg.state_dir).set("updates", "stagegate_skips", left)
 
 
-def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetime, skipper) -> None:
+def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetime, skipper,
+              *, mas_get=None) -> None:
     problems: list = []
     every: list = []
-    v, stage, why = run_verdict(cfg.automas_dir, cfg.maa_dir, due, problems, every)
+    v, stage, why = run_verdict(cfg.automas_dir, cfg.maa_dir, due, problems, every, mas_get=mas_get)
     log.info("关卡门：%s %s 的 MAA 关卡 %s —— %s%s", q["name"], f"{due:%H:%M}", stage or "（当前关）",
              {YES: "走得到", NO: "走不到", UNKNOWN: "不知道，不拦"}[v], f"（{why}）" if why else "")
     # Files that could not be read: one WARNING per due (errwatch pushes each WARNING
@@ -625,7 +669,7 @@ def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetim
 
 
 def step(cfg, notifier, now: datetime | None = None, *, busy=lambda: False,
-         skipper=None, restorer=None, lead_min: int = LEAD_MIN) -> None:
+         skipper=None, restorer=None, lead_min: int = LEAD_MIN, mas_get=None) -> None:
     """One pass: put back what is due to go back, then check the MAA dues coming up.
 
     lead_min: how far ahead a due is checked. The boot pass uses BOOT_LEAD_MIN; only a
@@ -654,4 +698,4 @@ def step(cfg, notifier, now: datetime | None = None, *, busy=lambda: False,
             if isinstance(row, dict) and row.get("final", True):
                 continue
             due_q = dict(q, others=_other_kinds(running, q["maa_uid"], q["kinds"]))
-            _gate_due(cfg, notifier, due_q, maa_name, due, now, skipper or _skip_default)
+            _gate_due(cfg, notifier, due_q, maa_name, due, now, skipper or _skip_default, mas_get=mas_get)

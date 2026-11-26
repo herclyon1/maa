@@ -188,13 +188,32 @@ def _defines(items: dict, group: str, key: str) -> bool:
     return any(fnmatch.fnmatchcase(group, g) and fnmatch.fnmatchcase(key, k) for g, k in items)
 
 
-def compare(classes: dict[str, dict], contract, moved: "dict[str, str] | None" = None) -> list[str]:
+_TAG_VER = re.compile(r"v\d+\.\d+\.\d+(?:-beta\.\d+)?")
+
+
+def _ver_key(version: str):
+    m = _TAG_VER.search(str(version or ""))
+    if not m:
+        return None
+    base, _, beta = m.group(0).lstrip("v").partition("-beta.")
+    parts = [int(x) for x in base.split(".")]
+    return (*parts, 0 if beta else 1, int(beta or 0))
+
+
+def compare(classes: dict[str, dict], contract, moved: "dict[str, str] | None" = None,
+            version: str = "") -> list[str]:
     """One plain line per listed item `classes` (parse()) no longer keeps where the relay
     reads it; [] when every item is kept. `moved` is masuser.MOVED: those keys are read from
-    their new group or from Info."""
+    their new group or from Info. When `version` is given, items introduced after it (`since`)
+    are skipped."""
     moved = moved or {}
+    have = _ver_key(version)
     out = []
     for it in contract:
+        if have is not None and getattr(it, "since", ""):
+            need = _ver_key(it.since)
+            if need is not None and have < need:
+                continue
         items = classes.get(it.owner)
         if items is None:
             out.append(f"{it.owner} {it.group}.{it.key}: class {it.owner} is gone (feature {it.use}; read by {it.source})")
@@ -278,7 +297,7 @@ def main(argv: list[str]) -> int:
         print(f"{tag}: {CONFIG_PATH} has no config classes - not the file expected")
         return 3
     contract, moved = _relay_contract()
-    gaps = compare(classes, contract, moved)
+    gaps = compare(classes, contract, moved, version=tag)
     if not gaps:
         print(f"{tag}: all {len(contract)} AUTO-MAS settings the relay reads are still there")
         return 0

@@ -1490,8 +1490,8 @@ class State:
     def save_pending(self, payload: dict) -> None:
         self.store.set("queues", "pending", dict(payload))
 
-    def load_pending(self) -> dict:
-        data = self.store.get("queues", "pending")
+    def load_pending(self, *, fresh: bool = False) -> dict:
+        data = self.store.get("queues", "pending", fresh=fresh)
         return dict(data) if isinstance(data, dict) else {}
 
     def report_sent(self, day: str) -> bool:
