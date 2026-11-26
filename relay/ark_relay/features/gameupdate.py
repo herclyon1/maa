@@ -772,7 +772,7 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
             log.info("游戏更新：中继正在停止，不再处理 %s", game)
             return
         script = maintenance.SCRIPT_OF.get(game, "")
-        if not relay_updates_client(game) and not needs_rerun(cfg.state_dir, clock(), script):
+        if not relay_updates_client(game) and not needs_rerun(cfg.state_dir, now, script):
             # Nothing to prepare (AUTO-MAS updates this client before its next
             # run) and nothing to re-run: the round ran before the maintenance,
             # or the operator stopped it. Waiting for the servers would only hold
@@ -797,10 +797,13 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
             continue
         # Ready. Servers still down: only wait when the script actually needs a
         # re-run; otherwise finish now instead of holding the shift's power-off.
+        # Use the same ledger day `now` as `_rerun_script` below so a maintenance
+        # window crossing midnight never reads an empty Day2 ledger here and then
+        # dispatches Day1's failed script before `end`.
         if end:
             at = clock()
             if at < end:
-                if not needs_rerun(cfg.state_dir, at, script):
+                if not needs_rerun(cfg.state_dir, now, script):
                     log.info("游戏更新：%s 客户端已就绪，%s 不用补跑，不等开服", game, script)
                 else:
                     # Only Endfield is opened here (_prepare_client): 明日方舟 and 鸣潮 open

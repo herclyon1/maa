@@ -3362,6 +3362,59 @@ def _part_replay():
         sys.exit(main())
 
 
+def _mc_import_sandbox(mc, on_exec):
+    """Context manager replacing ark_relay.features.machinechecks in CPython's real import machinery."""
+    import contextlib
+    import importlib.machinery
+
+    @contextlib.contextmanager
+    def _ctx():
+        from ark_relay import features as features_pkg
+        mod_name = "ark_relay.features.machinechecks"
+        mc.load()
+        saved = (dict(mc.CHECKS), dict(mc.CANNOT), mc._LOADED[0], sys.modules.get(mod_name),
+                 hasattr(features_pkg, "machinechecks"), getattr(features_pkg, "machinechecks", None))
+
+        class _Finder:
+            def find_spec(self, fullname, path=None, target=None):
+                return importlib.machinery.ModuleSpec(fullname, self) if fullname == mod_name else None
+
+            def create_module(self, spec):
+                return None
+
+            def exec_module(self, module):
+                on_exec(module)
+
+        finder = _Finder()
+        mc.CHECKS.clear()
+        mc.CANNOT.clear()
+        mc._LOADED[0] = False
+        sys.modules.pop(mod_name, None)
+        if hasattr(features_pkg, "machinechecks"):
+            delattr(features_pkg, "machinechecks")
+        sys.meta_path.insert(0, finder)
+        try:
+            yield
+        finally:
+            if finder in sys.meta_path:
+                sys.meta_path.remove(finder)
+            if saved[3] is not None:
+                sys.modules[mod_name] = saved[3]
+            else:
+                sys.modules.pop(mod_name, None)
+            if saved[4]:
+                features_pkg.machinechecks = saved[5]
+            elif hasattr(features_pkg, "machinechecks"):
+                delattr(features_pkg, "machinechecks")
+            mc.CHECKS.clear()
+            mc.CHECKS.update(saved[0])
+            mc.CANNOT.clear()
+            mc.CANNOT.update(saved[1])
+            mc._LOADED[0] = saved[2]
+
+    return _ctx()
+
+
 def _part_machinecheck_concurrency():
     """Concurrent load(), judge() and restate() must not hit dict-size-changed,
     miss checks during import, or lose verdicts to racing file writes."""
@@ -3380,48 +3433,41 @@ def _part_machinecheck_concurrency():
     real_write = mc._write
     now = datetime(2026, 11, 26, 10, 0, tzinfo=SERVER_TZ)
     try:
-        print("[并发 load()：导入期间阻塞其他线程，不抛 dict changed size、不漏检]")
-        mc.CHECKS.clear()
-        mc.CANNOT.clear()
-        mc._LOADED[0] = False
+        print("[并发 load()：走 CPython 真 _ModuleLock 串行导入，不抛 dict changed size、不漏检]")
         import_calls = [0]
 
-        def slow_import(name, *a, **k):
-            if name != "ark_relay.features.machinechecks":
-                return real_import(name, *a, **k)
+        def slow_exec(_mod):
             import_calls[0] += 1
             for i in range(20):
                 cid = f"#95{i:02d}"
                 mc.check(cid, f"并发样例 {i}", "A", "run")(
                     lambda ctx, cid=cid: mc.Result(mc.PASS, f"ok-{cid}"))
                 time.sleep(0.002)
-            return None
 
-        importlib.import_module = slow_import
-        d1 = tmpdir()
-        barrier = threading.Barrier(8)
-        results: list[list[str]] = []
-        errors: list[BaseException] = []
-        lock = threading.Lock()
+        with _mc_import_sandbox(mc, slow_exec):
+            d1 = tmpdir()
+            barrier = threading.Barrier(8)
+            results: list[list[str]] = []
+            errors: list[BaseException] = []
+            lock = threading.Lock()
 
-        def worker_load():
-            try:
-                barrier.wait(5.0)
-                got = mc.judge(d1, "run", {}, now=now)
-                with lock:
-                    results.append([cid for cid, _ in got])
-            except BaseException as exc:  # noqa: BLE001
-                with lock:
-                    errors.append(exc)
+            def worker_load():
+                try:
+                    barrier.wait(5.0)
+                    got = mc.judge(d1, "run", {}, now=now)
+                    with lock:
+                        results.append([cid for cid, _ in got])
+                except BaseException as exc:  # noqa: BLE001
+                    with lock:
+                        errors.append(exc)
 
-        threads = [threading.Thread(target=worker_load) for _ in range(8)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(10.0)
-        importlib.import_module = real_import
+            threads = [threading.Thread(target=worker_load) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(10.0)
         check("no RuntimeError or crash during concurrent load", errors, [])
-        check("import_module ran exactly once", import_calls[0], 1)
+        check("machinechecks exec_module ran exactly once", import_calls[0], 1)
         check("every thread saw all 20 checks", [len(r) for r in results], [20] * 8)
 
         print("[导入失败一次后 _LOADED 保持 False，下次重试能成功]")
@@ -3517,5 +3563,66 @@ def _part_machinecheck_concurrency():
         mc._LOADED[0] = saved_loaded
 
 
+def _part_machinecheck_abba_deadlock():
+    """Two-thread concurrent `from ark_relay.features import machinechecks` + `mc.load()/judge()`
+    must never ABBA-deadlock between CPython's _ModuleLock and machinecheck._LOAD_LOCK."""
+    import threading
+    import time
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import machinecheck as mc
+
+    now = datetime(2026, 11, 26, 10, 0, tzinfo=SERVER_TZ)
+    in_module_lock = threading.Event()
+    loader_started = threading.Event()
+    errors: list[BaseException] = []
+    imported: list[object] = []
+    judged: list[list[str]] = []
+
+    def abba_exec(_mod):
+        # Thread 1 holds CPython's _ModuleLock; wait for Thread 2 to enter mc.load()
+        # before taking _LOAD_LOCK via @mc.check and mc.cannot.
+        in_module_lock.set()
+        loader_started.wait(2.0)
+        time.sleep(0.05)
+        mc.check("#9601", "ABBA 回归核对", "A", "run")(lambda ctx: mc.Result(mc.PASS, "abba-ok"))
+        mc.cannot("#9602", "ABBA 回归不可自动", "仅回归测试")
+
+    print("[两线程并发 import machinechecks 与 machinecheck.load()/judge()：无 ABBA 死锁]")
+    with _mc_import_sandbox(mc, abba_exec):
+        d_abba = tmpdir()
+
+        def direct_importer():
+            try:
+                from ark_relay.features import machinechecks as mod
+                imported.append(mod)
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        def load_and_judge():
+            try:
+                in_module_lock.wait(2.0)
+                loader_started.set()
+                mc.load()
+                got = mc.judge(d_abba, "run", {}, now=now)
+                judged.append([cid for cid, _ in got])
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        t_imp = threading.Thread(target=direct_importer, daemon=True)
+        t_ld = threading.Thread(target=load_and_judge, daemon=True)
+        t_imp.start()
+        t_ld.start()
+        t_imp.join(5.0)
+        t_ld.join(5.0)
+        check("both threads finished within 5s (no ABBA deadlock)",
+              (not t_imp.is_alive(), not t_ld.is_alive(), errors, len(imported)),
+              (True, True, [], 1))
+        check("load()/judge() waited for import and saw registered check & cannot",
+              (judged, "#9602" in mc.CANNOT, mc._LOADED[0]), ([["#9601"]], True, True))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mc_phone_banners, _part_mc_runs, _part_mc_runs_state_read_fails, _part_mc_system, _part_mc_system_fixes, _part_selfcheck_main, _part_selfcheck_one_push, _part_machinecheck_main, _part_machinecheck_wait, _part_replay, _part_machinecheck_concurrency]))
+    sys.exit(run_parts([_part_mc_phone_banners, _part_mc_runs, _part_mc_runs_state_read_fails, _part_mc_system, _part_mc_system_fixes, _part_selfcheck_main, _part_selfcheck_one_push, _part_machinecheck_main, _part_machinecheck_wait, _part_replay, _part_machinecheck_concurrency, _part_machinecheck_abba_deadlock]))

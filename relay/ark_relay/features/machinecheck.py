@@ -82,8 +82,11 @@ CHECKS: dict[str, Check] = {}
 # Items that cannot be automated: id -> (what, why).
 CANNOT: dict[str, tuple[str, str]] = {}
 _LOADED = [False]
-# Guards one-time module import + CHECKS/CANNOT registration so concurrent callers
-# never observe a half-populated dict or hit "dictionary changed size during iteration".
+# Guards CHECKS/CANNOT mutations, snapshot reads, and _LOADED with short lock holds
+# only — never held across importlib.import_module. Direct `import machinechecks`
+# holds CPython's _ModuleLock while @check / cannot() take _LOAD_LOCK, so holding
+# _LOAD_LOCK during import_module would ABBA-deadlock; CPython's _ModuleLock already
+# serialises concurrent imports and waits for module initialisation to finish.
 _LOAD_LOCK = threading.RLock()
 # Guards read-modify-write of machinecheck.json (and _last_error) across threads.
 _STATE_LOCK = threading.RLock()
@@ -93,11 +96,9 @@ def load() -> None:
     """Import ark_relay.features.machinechecks once to register all checks."""
     if _LOADED[0]:
         return
+    import importlib  # noqa: PLC0415
+    importlib.import_module("ark_relay.features.machinechecks")
     with _LOAD_LOCK:
-        if _LOADED[0]:
-            return
-        import importlib  # noqa: PLC0415
-        importlib.import_module("ark_relay.features.machinechecks")
         _LOADED[0] = True
 
 
@@ -196,7 +197,9 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     out: list[tuple[str, Result]] = []
     matched: dict[str, Check] = {}
-    for c in list(CHECKS.values()):
+    with _LOAD_LOCK:
+        checks = list(CHECKS.values())
+    for c in checks:
         if event not in c.triggers:
             continue
         try:
@@ -294,8 +297,9 @@ def daily_section(state_dir) -> str:
     """The daily report's 「上机核对」 lines: every check's latest verdict, or that it still waits."""
     from ark_relay.core import texts  # noqa: PLC0415
     load()
-    checks = list(CHECKS.items())
-    cannot_items = list(CANNOT.items())
+    with _LOAD_LOCK:
+        checks = list(CHECKS.items())
+        cannot_items = list(CANNOT.items())
     if not checks and not cannot_items:
         return ""
     data = read(state_dir)

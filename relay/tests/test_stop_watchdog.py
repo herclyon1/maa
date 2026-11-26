@@ -854,7 +854,7 @@ def _part_maaend_watchdog_startup_lines():
 
     RUNNING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
     WAITING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "等待"}]}]}
-    PID1, PID2 = 21260, 21360
+    PID1, PID2 = 21260, 200
 
     def procs_for(pid):
         base = [("System", 4), ("Endfield.exe", 18800), ("go-service.exe", 21932), ("cpp-algo.exe", 21940)]
@@ -920,39 +920,43 @@ def _part_maaend_watchdog_startup_lines():
     check("真杀新 PID", r.killed[:1], [PID1])
     check("报卡死而非盲报警", [t for t, _, _ in r.notes.sent], [texts.MAAEND_STUCK_KILLED])
 
-    print("\n[旧 PID 换新 PID 在同一 30s 窗内：新 PID 启动日志后卡死仍真杀]")
+    print("\n[同 30s 窗内换 PID（prev_pid 非空）：旧 PID 退出前多写 5 行、新 PID 日志不可读 → 报盲报警，不盲杀]")
     r = _Rig(snap=RUNNING, pid=PID1)
-    r.step(60, new_lines=10)                    # PID1 running, _checked_lines=10
-    r.procs = procs_for(PID2)
-    r.step(5, new_lines=20)                     # <30s: PID2 writes startup lines then hangs
-    r.step(30)                                  # first sight of PID2
-    r.stall()
-    check("真杀 PID2", r.killed[:1], [PID2])
-    check("报卡死而非盲报警", [t for t, _, _ in r.notes.sent], [texts.MAAEND_STUCK_KILLED])
+    r.step(60, new_lines=10)                    # PID1 running, lines=10
+    r.step(5, new_lines=5)                      # <30s: old PID1 writes 5 lines before exiting
+    r.procs = procs_for(PID2)                   # new PID 200 starts with unreadable maafw.log
+    r.step(30)                                  # first sight of PID 200 (lines still 15)
+    r.stall(minutes=12)
+    check("同窗换 PID 不把旧 PID 的 5 行算成新 PID 产出：不杀 PID 200", r.killed, [])
+    check("同窗换 PID 触发盲报警而非卡死强杀", [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND])
 
-    print("\n[新 PID 启动后首个 30s 检查遇 snapshot/processes 暂时 None：不冲掉启动前基线]")
+    print("\n[snap=None 或 procs=None 故障后紧接新 PID 启动且日志不可读 → 报盲报警，不盲杀]")
     for kind in ("snap", "procs"):
         r = _Rig(snap=WAITING, pid=None)
-        r.step(60)                              # baseline = 0
-        r.snap, r.procs = RUNNING, procs_for(PID1)
-        r.step(5, new_lines=40)                 # <30s startup lines then hang
+        r.step(60)                              # clean WAITING check, baseline = 0
         if kind == "snap":
             r.snap = None
         else:
-            r.procs = None
-        r.step(30)                              # transient None check must not advance baseline
-        r.snap, r.procs = RUNNING, procs_for(PID1)
-        r.step(35)                              # recovered: first sight of PID1
-        r.stall()
-        check(f"{kind}=None 恢复后仍真杀", (r.killed[:1], [t for t, _, _ in r.notes.sent]),
-              ([PID1], [texts.MAAEND_STUCK_KILLED]))
+            r.snap, r.procs = RUNNING, None
+        r.step(30, new_lines=5)                 # failed check invalidates _checked_lines; 5 lines from outage window
+        r.snap, r.procs = RUNNING, procs_for(PID2)
+        r.step(35)                              # recovered: first sight of PID 200, log unreadable afterward
+        r.stall(minutes=12)
+        check(f"{kind}=None 故障后不继承旧基线误杀 PID 200", r.killed, [])
+        check(f"{kind}=None 故障后触发盲报警", [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND])
 
-    print("\n[刚开机首跳已读到启动日志随后卡死：10 分钟后真杀]")
+    print("\n[刚开机首跳无前置空闲检查：不凭首跳已有行数盲杀，首跳后再有新行卡死才真杀]")
     r = _Rig(snap=RUNNING, pid=PID1)
-    r.step(60, new_lines=40)                    # Watcher started at 0, read 40 lines before first tick
-    r.stall()
-    check("首跳带启动行后卡死仍真杀", (r.killed[:1], [t for t, _, _ in r.notes.sent]),
-          ([PID1], [texts.MAAEND_STUCK_KILLED]))
+    r.step(60, new_lines=40)                    # first tick ever (since_last=-inf), no prior clean idle check
+    r.stall(minutes=12)
+    check("无前置空闲检查且首跳后无新行：不盲杀、报盲报警",
+          (r.killed, [t for t, _, _ in r.notes.sent]), ([], [texts.MAAEND_WATCH_BLIND]))
+    r2 = _Rig(snap=RUNNING, pid=PID1)
+    r2.step(60, new_lines=40)
+    r2.step(60, new_lines=10)                   # confirmed lines written after PID1 first seen
+    r2.stall()
+    check("首跳后确有新行再卡死：10 分钟后真杀",
+          (r2.killed[:1], [t for t, _, _ in r2.notes.sent]), ([PID1], [texts.MAAEND_STUCK_KILLED]))
 
     print("\n[对照：新 PID 确实一行未读到（日志真读不到）→ 照旧报盲报警不杀]")
     r = _Rig(snap=WAITING, pid=None)

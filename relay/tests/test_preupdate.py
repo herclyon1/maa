@@ -2350,6 +2350,42 @@ def _part_gameupdate_wait_open():
                               sleep=slept.append, clock=lambda: after_restart, stopping=lambda: False),
               ([], [], []))
         check("重启后没有再去读启动器", again_reads, [])
+
+        print("\n[跨零点维护窗（now=Day1 23:40、clock=Day2 00:05、end=Day2 02:00）：统一按 now 查账本，等开服再补跑]")
+        day1_now = _dt(2026, 9, 4, 23, 40, tzinfo=gu.SERVER_TZ)
+        day2_start = _dt(2026, 9, 5, 0, 5, tzinfo=gu.SERVER_TZ)
+        day2_end = _dt(2026, 9, 5, 2, 0, tzinfo=gu.SERVER_TZ)
+        win_mid = (_dt(2026, 9, 4, 23, 0, tzinfo=gu.SERVER_TZ), day2_end, "官方公告：09-04 23:00–09-05 02:00")
+        (ST / "ledger-2026-09-05.jsonl").unlink(missing_ok=True)
+        (ST / "ledger-2026-09-04.jsonl").write_text(
+            json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n"
+            + json.dumps({"script": "OK-WW", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n",
+            encoding="utf-8",
+        )
+        for game_name, script_name in (("终末地", "MaaEnd"), ("鸣潮", "OK-WW")):
+            gu.save_windows(ST, {game_name: win_mid})
+            gu.mark_pending(ST, game_name, "官方公告")
+            t_mid = [day2_start]
+            slept_mid, disp_at, killed_mid = [], [], []
+            gu.kill = lambda *names, _k=killed_mid: _k.extend(names)
+
+            def _mid_sleep(s, _t=t_mid, _sl=slept_mid):
+                _sl.append(s)
+                _t[0] += _td(seconds=s)
+
+            notes, probs, reran = gu.run_deferred(
+                cfg, now=day1_now, desk=FakeDesk([["开始游戏"]]),
+                dispatch=lambda s, _t=t_mid, _da=disp_at: _da.append((s, _t[0])) or (True, "ok"),
+                sleep=_mid_sleep, clock=lambda _t=t_mid: _t[0], stopping=lambda: False)
+            check(f"{game_name} 跨零点正常等开服（睡满 60 秒轮询 + 120 秒开服缓冲）",
+                  (slept_mid.count(60) >= 115, 120 in slept_mid), (True, True))
+            check(f"{game_name} 仅在 02:00 开服且缓冲后才派发，不提前派发",
+                  (reran, probs, len(disp_at) == 1 and disp_at[0][0] == script_name
+                   and disp_at[0][1] >= day2_end + _td(seconds=120)),
+                  ([script_name], [], True))
+            if game_name == "终末地":
+                check("终末地等开服期间先关掉客户端进程", "Endfield.exe" in killed_mid, True)
+            check(f"{game_name} 补跑后清掉登记", gu.pending(ST), {})
     finally:
         gug._spawn, gug.kill, gu.kill, gu.restore_skips = saved
 
