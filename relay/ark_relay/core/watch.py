@@ -26,6 +26,8 @@ import time
 
 from ark_relay.core import config
 
+_monotonic = time.monotonic
+
 log = logging.getLogger("ark.watch")
 
 
@@ -70,6 +72,8 @@ def _windows(path: str, wake: threading.Event) -> bool:
         nonlocal handle
         infinite = 0xFFFFFFFF
         delay = 5.0
+        drop_at: float | None = None
+        warned_drop_at: float | None = None
         while True:
             while handle is not None:
                 if k.WaitForSingleObject(handle, infinite) != 0:
@@ -81,12 +85,21 @@ def _windows(path: str, wake: threading.Event) -> bool:
                 k.FindCloseChangeNotification(handle)
             handle = None
             wake.set()          # Make the caller run one backstop scan right away
-            log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
+            if drop_at is None:
+                drop_at = _monotonic()
+            # one fault, one push: one directory watcher outage starting at drop_at
+            if warned_drop_at != drop_at:
+                warned_drop_at = drop_at
+                log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
+            else:
+                log.info("目录监听仍未重建，%.0f 秒后再试；期间靠定时兜底", delay)
             time.sleep(delay)
             handle = _open()
             if handle is not None:
                 log.info("目录监听已重建")
                 delay = 5.0
+                drop_at = None
+                warned_drop_at = None
             else:
                 delay = min(delay * 2, 60.0)
 
@@ -140,6 +153,8 @@ def _kqueue(path: str, wake: threading.Event) -> bool:
         # Same as above: rebuild when it drops, do not just return.
         nonlocal fd, kq
         delay = 5.0
+        drop_at: float | None = None
+        warned_drop_at: float | None = None
         while True:
             if kq is not None:
                 try:
@@ -150,12 +165,21 @@ def _kqueue(path: str, wake: threading.Event) -> bool:
                     pass
                 _close()
             wake.set()
-            log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
+            if drop_at is None:
+                drop_at = _monotonic()
+            # one fault, one push: one directory watcher outage starting at drop_at
+            if warned_drop_at != drop_at:
+                warned_drop_at = drop_at
+                log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
+            else:
+                log.info("目录监听仍未重建，%.0f 秒后再试；期间靠定时兜底", delay)
             time.sleep(delay)
             try:
                 fd, kq = _open()
                 log.info("目录监听已重建")
                 delay = 5.0
+                drop_at = None
+                warned_drop_at = None
             except OSError:
                 delay = min(delay * 2, 60.0)
 

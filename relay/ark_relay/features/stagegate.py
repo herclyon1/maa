@@ -561,8 +561,15 @@ def _put_back(cfg, now: datetime, busy, restorer) -> None:
             except Exception as exc:  # noqa: BLE001 - kept and retried
                 problem = f"{type(exc).__name__}: {exc}"
             rec["tried"], changed = now.strftime(_FMT), True
-            log.warning("关卡门：MAA 没能放回队列「%s」（%s），放回之前这个队列不跑 MAA，%d 分钟后再试",
-                        rec.get("queue"), problem, RETRY_MIN)
+            due_err = f"{rec.get('due', '')}|{problem}"
+            # one fault, one push: same put-back failure for this due record
+            if rec.get("warned_err") != due_err:
+                rec["warned_err"] = due_err
+                log.warning("关卡门：MAA 没能放回队列「%s」（%s），放回之前这个队列不跑 MAA，%d 分钟后再试",
+                            rec.get("queue"), problem, RETRY_MIN)
+            else:
+                log.info("关卡门：MAA 仍没能放回队列「%s」（%s），%d 分钟后再试",
+                         rec.get("queue"), problem, RETRY_MIN)
         left.append(rec)
     if changed:
         _store(cfg.state_dir).set("updates", "stagegate_skips", left)

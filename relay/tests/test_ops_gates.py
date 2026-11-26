@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import os as _os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
+
+# Prefer the active latest Python (4x faster startup than macOS /usr/bin/python3 stub) for bash sub-scripts.
+_PY_BIN = Path(sys.executable).parent
+if (_PY_BIN / "python3").exists():
+    _os.environ["PATH"] = f"{_PY_BIN}:{_os.environ.get('PATH', '')}"
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
@@ -99,25 +105,79 @@ runpy.run_path(sys.argv[0], run_name="__main__")
 
 
     # The probe's and a hung read's limits, short so the two waits that run them out cost
-    # half a second each (they were 1 s). A probe to the local listener connects in the kernel
-    # whatever the load, and a hung read is killed at its limit however late it started.
-    SHORT_S = "0.5"
+    # 0.2 s each. A probe to the local listener connects in the kernel whatever the load,
+    # and a hung read is killed at its limit however late it started.
+    SHORT_S = "0.2"
 
 
-    def run(*args, mode="ok", timeout="15", probe=REACHABLE):
+    def run(*args, mode="ok", timeout="15", probe=REACHABLE, cli=False):
         (base / "fake.json").write_text(json.dumps({"mode": mode, "log": str(log), "shim": str(shim)}),
                                         encoding="utf-8")
-        env = dict(os.environ, TECHLOG_WINRUN=f"{sys.executable} {fake}", TECHLOG_REMOTE_DIR=str(tech),
-                   TECHLOG_FETCH_TIMEOUT=timeout, TECHLOG_PROBE=probe, TECHLOG_PROBE_TIMEOUT=SHORT_S)
-        r = subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, env=env, timeout=60)
-        return r.returncode, r.stdout, r.stderr
+        if cli or (mode == "hang" and probe == REACHABLE):
+            env = dict(os.environ, TECHLOG_WINRUN=f"{sys.executable} {fake}", TECHLOG_REMOTE_DIR=str(tech),
+                       TECHLOG_FETCH_TIMEOUT=timeout, TECHLOG_PROBE=probe, TECHLOG_PROBE_TIMEOUT=SHORT_S)
+            r = subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, env=env, timeout=60)
+            return r.returncode, r.stdout, r.stderr
+        import contextlib
+        import io
+        import runpy
+        saved_env = os.environ.get("TECHLOG_WINRUN")
+        saved_attrs = (tool.REMOTE_DIR, tool.FETCH_TIMEOUT, tool.PROBE, tool.PROBE_TIMEOUT, tool.run)
+        os.environ["TECHLOG_WINRUN"] = f"{sys.executable} {fake}"
+        tool.REMOTE_DIR = str(tech)
+        tool.FETCH_TIMEOUT = float(timeout)
+        tool.PROBE = probe
+        tool.PROBE_TIMEOUT = float(SHORT_S)
+
+        def inproc_winrun(wargs: list[str], _timeout: float) -> tuple[int, bytes, bytes]:
+            with open(log, "a", encoding="utf-8") as fh:
+                fh.write(repr(wargs) + "\n")
+            if mode == "down":
+                return 4, b"", b"winrun: remote produced no output (script never ran, or machine unreachable)\n"
+            if not wargs or wargs[0] != "--py":
+                return 9, b"", b""
+            reading = "TECHLOG_DONE" in Path(wargs[1]).read_text(encoding="utf-8")
+            if mode == "pyfail" and not reading:
+                return 4, b"", b"winrun: remote produced no output\n"
+            w_out, w_err = io.StringIO(), io.StringIO()
+            w_out.write("[机器时间] 10-10 23:00:00\n")
+            old_path, old_argv = list(sys.path), list(sys.argv)
+            sys.path.insert(0, str(shim))
+            sys.modules.pop("arklog", None)
+            sys.argv = [wargs[1]]
+            w_rc = 0
+            try:
+                with contextlib.redirect_stdout(w_out), contextlib.redirect_stderr(w_err):
+                    runpy.run_path(wargs[1], run_name="__main__")
+            except SystemExit as exc:
+                w_rc = exc.code if isinstance(exc.code, int) else 1
+            finally:
+                sys.path[:] = old_path
+                sys.argv[:] = old_argv
+                sys.modules.pop("arklog", None)
+            return w_rc, w_out.getvalue().encode("utf-8"), w_err.getvalue().encode("utf-8")
+
+        tool.run = inproc_winrun
+        out_buf, err_buf = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+                rc = tool.main(list(args))
+        except SystemExit as exc:
+            rc = exc.code if isinstance(exc.code, int) else 1
+        finally:
+            tool.REMOTE_DIR, tool.FETCH_TIMEOUT, tool.PROBE, tool.PROBE_TIMEOUT, tool.run = saved_attrs
+            if saved_env is None:
+                os.environ.pop("TECHLOG_WINRUN", None)
+            else:
+                os.environ["TECHLOG_WINRUN"] = saved_env
+        return rc, out_buf.getvalue(), err_buf.getvalue()
 
 
     relay_lines([])   # a quiet hour: one line, older than the window
 
     print("[no file on any of the three days: the relay has not written one yet]")
     log.write_text("")
-    rc, out, err = run("red")
+    rc, out, err = run("red", cli=True)
     check("exit code", rc, 0)
     check("says there is no technical log yet", out.splitlines(),
           [f"{tool.NO_LOG}（2026-10-08..2026-10-10 机器上都没有文件）"])
@@ -147,7 +207,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
           ["技术日志没读到：最近 3 天（winrun: remote produced no output (script never ran, or machine unreachable)）"])
     rc, out, err = run("red", "--days", "1", mode="hang", timeout=SHORT_S)
     check("a hung read: exit code", rc, 2)
-    check("a hung read: says it timed out", out.splitlines(), ["技术日志没读到：最近 1 天（超过 0.5 秒没回来）"])
+    check("a hung read: says it timed out", out.splitlines(), [f"技术日志没读到：最近 1 天（超过 {SHORT_S} 秒没回来）"])
     locked = tech / "2026-10-08.md"
     locked.write_text("x\n", encoding="utf-8")
     locked.chmod(0)
@@ -1068,9 +1128,14 @@ if kind == "PS":
         out = {"pkg": "LAYOUT=pkg", "legacy": "LAYOUT=legacy",
                "garbage": "pwsh : The term 'pwsh' is not recognized"}[ans]
     elif "sc.exe stop ArkRelayWatchdog" in body:
-        out = "WATCHDOG=Stopped\r\nSTOP_RC=0\r\nMAIN=STOPPED"
+        fail_lock = os.environ.get("FAKE_LOCK_FAIL", "")
+        wd_start = "Automatic" if fail_lock == "wd" else "Disabled"
+        main_task = "Ready" if fail_lock == "main" else "Disabled"
+        mas_task = "Ready" if fail_lock == "mas" else "Disabled"
+        out = (f"WATCHDOG=Stopped\r\nWATCHDOG_START={wd_start}\r\nSTOP_RC=0\r\n"
+               f"MAIN_TASK={main_task}\r\nMAIN=STOPPED\r\nMAS_TASK={mas_task}")
     elif "sc.exe start ArkRelayWatchdog" in body:
-        out = "WATCHDOG=Running\r\nMAIN=RUNNING"
+        out = "MAS_TASK=Ready\r\nWATCHDOG=Running\r\nWATCHDOG_START=Automatic\r\nMAIN_TASK=Ready\r\nMAIN=RUNNING"
     elif "Write-Output 'NONE'" in body:          # a kill tier
         out = "NONE\r\nGONE"
 else:
@@ -1086,27 +1151,28 @@ if out:
         b = d / "bin"
         b.mkdir()
         ssh = b / "ssh"
-        ssh.write_text(FAKE_SSH.replace("PYTHON", sys.executable, 1), encoding="utf-8")
+        ssh.write_text(FAKE_SSH.replace("PYTHON", f"{sys.executable} -S", 1), encoding="utf-8")
         ssh.chmod(0o755)
         curl = b / "curl"
         curl.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         curl.chmod(0o755)
-        return {**os.environ, "PATH": f"{b}:{os.environ['PATH']}", "ARK_HOST": "127.0.0.1"}
+        return {**os.environ, "PATH": f"{b}:{os.environ['PATH']}", "ARK_HOST": "127.0.0.1",
+                "ARK_ACTION_LOG": os.devnull}
 
 
-    def run(d: Path, env: dict, layout: str, *args: str) -> tuple[str, list[tuple[str, str]]]:
-        """(output, [(kind, command)] the script sent over ssh, in order)."""
+    def run(d: Path, env: dict, layout: str, *args: str, extra_env: dict | None = None) -> tuple[int, str, list[tuple[str, str]]]:
+        """(rc, output, [(kind, command)] the script sent over ssh, in order)."""
         log = d / f"ssh-{layout}-{'-'.join(a.strip('-') for a in args)}.log"
         log.unlink(missing_ok=True)
         r = subprocess.run(["bash", str(SCRIPT), *args], capture_output=True, timeout=90,
-                           env={**env, "FAKE_LOG": str(log), "FAKE_LAYOUT": layout})
+                           env={**env, "FAKE_LOG": str(log), "FAKE_LAYOUT": layout, **(extra_env or {})})
         out = (r.stdout + r.stderr).decode("utf-8", "replace")
         sent = []
         if log.exists():
             for chunk in log.read_text(encoding="utf-8").split("=== ")[1:]:
                 kind, _, body = chunk.partition("\n")
                 sent.append((kind, body.strip()))
-        return out, sent
+        return r.returncode, out, sent
 
 
     def pkg_stop(sent):
@@ -1133,7 +1199,8 @@ if out:
         for layout, why in (("timeout", "the layout question timed out"),
                             ("garbage", "the layout question came back without a LAYOUT line")):
             print(f"\n[{why}: stop the installed relay (watchdog, then the task), before AUTO-MAS is killed]")
-            out, sent = run(d, env, layout, "--keep-queue")
+            rc, out, sent = run(d, env, layout, "--keep-queue")
+            check("stop exits 0", rc, 0)
             stops = pkg_stop(sent)
             check("installed-relay stop was sent", len(stops), 1)
             kill = first_kill(sent)
@@ -1145,26 +1212,69 @@ if out:
             check("reports the relay stopped", "[中继] 已确认停止" in out, True)
 
             print(f"\n[{why}, --restore: start the installed relay, not the old service]")
-            out, sent = run(d, env, layout, "--restore")
+            rc, out, sent = run(d, env, layout, "--restore")
             check("installed-relay start was sent", len(pkg_start(sent)), 1)
             check("no sc start ark-relay", raw(sent, "sc start ark-relay"), [])
             check("reports the relay running", "中继（安装版）已在运行" in out, True)
 
-        print("\n[installed layout: as before]")
-        out, sent = run(d, env, "pkg", "--keep-queue")
-        check("installed-relay stop was sent", len(pkg_stop(sent)), 1)
+        print("\n[installed layout: cross-reboot hardlock on stop & full restore]")
+        rc, out, sent = run(d, env, "pkg", "--keep-queue")
+        check("pkg stop exits 0", rc, 0)
+        stops = pkg_stop(sent)
+        check("installed-relay stop was sent", len(stops), 1)
+        stop_ps = sent[stops[0]][1]
+        check("stop disables ArkRelayWatchdog StartType",
+              "Set-Service -Name ArkRelayWatchdog -StartupType Disabled" in stop_ps, True)
+        check("stop disables \\ArkRelay\\main scheduled task",
+              "Disable-ScheduledTask -TaskPath '\\ArkRelay\\' -TaskName 'main'" in stop_ps, True)
+        check("stop disables AUTO-MAS_AutoStart scheduled task",
+              "Disable-ScheduledTask -TaskName 'AUTO-MAS_AutoStart'" in stop_ps, True)
+        check("stop writes watchdog-stopped.txt estop marker",
+              "watchdog-stopped.txt" in stop_ps and "'estop '" in stop_ps, True)
+        check("PS_PKG layout check preserves LAYOUT=pkg when estop disabled both service and task",
+              "$estopLocked" in sent[0][1] and "($task -or $wd) -and ($estopLocked -or -not $legacyOn)" in sent[0][1],
+              True)
         check("no bare sc stop ark-relay", raw(sent, "sc stop ark-relay"), [])
         check("no unknown-layout warning", "没问到机器上是哪种中继" in out, False)
-        out, sent = run(d, env, "pkg", "--restore")
-        check("--restore starts the installed relay", len(pkg_start(sent)), 1)
+
+        # Partial cross-reboot lock failure must exit non-zero and never silently succeed
+        for which in ("wd", "main", "mas"):
+            rc_f, out_f, _ = run(d, env, "pkg", "--keep-queue", extra_env={"FAKE_LOCK_FAIL": which})
+            check(f"lock failure ({which}) exits non-zero", rc_f != 0, True)
+            check(f"lock failure ({which}) reports incomplete lock", "跨重启硬锁未完全生效" in out_f, True)
+
+        rc, out, sent = run(d, env, "pkg", "--restore")
+        starts = pkg_start(sent)
+        check("--restore starts the installed relay", len(starts), 1)
+        start_ps = sent[starts[0]][1]
+        check("--restore removes estop marker",
+              "Remove-Item -Path 'C:\\ProgramData\\ark-relay\\watchdog-stopped.txt'" in start_ps, True)
+        check("--restore sets ArkRelayWatchdog Automatic BEFORE sc.exe start",
+              (0 <= start_ps.find("Set-Service -Name ArkRelayWatchdog -StartupType Automatic")
+               < start_ps.find("sc.exe start ArkRelayWatchdog")), True)
+        check("--restore re-enables \\ArkRelay\\main BEFORE schtasks /run",
+              (0 <= start_ps.find("Enable-ScheduledTask -TaskPath '\\ArkRelay\\' -TaskName 'main'")
+               < start_ps.find("schtasks.exe /run /tn '\\ArkRelay\\main'")), True)
+        check("--restore re-enables AUTO-MAS_AutoStart inside PS_PKG_START before bash runs it",
+              "Enable-ScheduledTask -TaskName 'AUTO-MAS_AutoStart'" in start_ps, True)
         check("--restore does not start the old service", raw(sent, "sc start ark-relay"), [])
 
         print("\n[the machine says legacy: the old service, and only it]")
-        out, sent = run(d, env, "legacy", "--keep-queue")
+        rc, out, sent = run(d, env, "legacy", "--keep-queue")
+        check("legacy stop exits 0", rc, 0)
+        check("legacy stop disables ark-relay autostart",
+              len(raw(sent, "sc config ark-relay start= disabled")), 1)
         check("sc stop ark-relay was sent", len(raw(sent, "sc stop ark-relay")), 1)
+        check("legacy stop disables AUTO-MAS_AutoStart",
+              len(raw(sent, "schtasks /change /tn AUTO-MAS_AutoStart /disable")), 1)
         check("no installed-relay stop", pkg_stop(sent), [])
         check("reports the old service stopped", "[中继] 已确认停止" in out, True)
-        out, sent = run(d, env, "legacy", "--restore")
+        rc, out, sent = run(d, env, "legacy", "--restore")
+        check("legacy restore re-enables ark-relay before start",
+              (raw(sent, "sc config ark-relay start= auto")[0] < raw(sent, "sc start ark-relay")[0]), True)
+        check("legacy restore re-enables AUTO-MAS_AutoStart before run",
+              (raw(sent, "schtasks /change /tn AUTO-MAS_AutoStart /enable")[0]
+               < raw(sent, "schtasks /run /tn AUTO-MAS_AutoStart")[0]), True)
         check("--restore sends sc start ark-relay", len(raw(sent, "sc start ark-relay")), 1)
         check("--restore does not start the installed relay", pkg_start(sent), [])
         check("--restore reports ark-relay running", "ark-relay 已在运行" in out, True)

@@ -4020,5 +4020,188 @@ def _part_essence_filler_pushes_state():
     check("switched: phone state pushed once", pushed, ["基质切刷垫子"])
 
 
+def _part_scriptconfig_race_and_protocolspace_guard():
+    """R-09: _automas_busy() covers AUTO-MAS 「设置脚本」 (ScriptConfig) even when omitted from
+    runtime-snapshot, blocks master-config overwrite races in _set_master/set_plan, and
+    protects ProtocolSpace checkbox & enabledByController across ScriptConfig sessions."""
+    import json
+    import logging
+    import os
+    import types
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import engine as eng_mod, ledger as ledger_mod, mastercfg
+    from ark_relay.core.config import Config, SERVER_TZ
+    from ark_relay.features import commands, sanity_plan
+
+    root = tmpdir("r09-")
+    automas = root / "automas"
+    state_dir = root / "state"
+    (automas / "debug").mkdir(parents=True)
+    (automas / "config").mkdir(parents=True)
+    cfg_dir = automas / "data" / "sid" / "Default" / "ConfigFile"
+    cfg_dir.mkdir(parents=True)
+    master = cfg_dir / "mxu-MaaEnd.json"
+    applog = automas / "debug" / "app.log"
+
+    def write_master(ps_on=True, ae_on=False, ps_ctl=None, ae_ctl=None):
+        doc = {
+            "instances": [{
+                "id": "automas",
+                "name": "AUTO-MAS",
+                "controllerName": "Win32",
+                "tasks": [
+                    {
+                        "taskName": "ProtocolSpace",
+                        "enabled": ps_on,
+                        "enabledByController": {"Win32": ps_on if ps_ctl is None else ps_ctl},
+                        "optionValues": {
+                            "ProtocolSpaceTab": {"type": "select", "caseName": "OperatorProgression"},
+                            "OperatorProgression": {"type": "select", "caseName": "T-Creds"},
+                        },
+                    },
+                    {
+                        "taskName": "AutoEssence",
+                        "enabled": ae_on,
+                        "enabledByController": {"Win32": ae_on if ae_ctl is None else ae_ctl},
+                        "optionValues": {
+                            "AutoEssenceMenu": {"type": "select", "caseName": "Random"},
+                            "AutoEssenceChooseLocation": {"type": "checkbox", "caseNames": ["Hub"]},
+                        },
+                    },
+                ],
+            }]
+        }
+        master.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    now = datetime.now(tz=SERVER_TZ).replace(microsecond=0)
+    t_open = now - timedelta(minutes=2)
+    t_close = now - timedelta(seconds=10)
+    open_line = (f"{t_open:%Y-%m-%d %H:%M:%S}.100 | INFO     | 业务调度 | "
+                 "创建任务: ac990001-0000-1111-2222-333344445555, 模式: ScriptConfig, 触发来源: manual_task\n")
+    close_line = (f"{t_close:%Y-%m-%d %H:%M:%S}.200 | INFO     | 业务调度 | "
+                  "任务结束: ac990001-0000-1111-2222-333344445555\n")
+
+    saved_snap = eng_mod._automas_snapshot
+    saved_seen = dict(eng_mod._BUSY_SEEN)
+    saved_env = {k: os.environ.get(k) for k in ("ARK_AUTOMAS_DIR", "ARK_STATE_DIR")}
+    os.environ["ARK_AUTOMAS_DIR"] = str(automas)
+    os.environ["ARK_STATE_DIR"] = str(state_dir)
+    eng_mod._BUSY_SEEN.update(state_dir=state_dir, automas_dir=automas)
+
+    try:
+        print("[1. _automas_busy() covers ScriptConfig even when runtime-snapshot omits it]")
+        applog.write_text(open_line, encoding="utf-8")
+        eng_mod._automas_snapshot = lambda: {"tasks": []}
+        check("snapshot omits ScriptConfig, app.log has open ScriptConfig -> _automas_busy() True",
+              eng_mod._automas_busy(now=now), True)
+        seen = json.loads((state_dir / eng_mod.BUSY_FILE).read_text(encoding="utf-8"))["seen"]
+        check("#18 evidence records ScriptConfig as busy=True",
+              [(o["task"][:8], o["mode"], o["busy"]) for o in seen],
+              [("ac990001", "ScriptConfig", True)])
+        check("script_config_open() True while open", eng_mod.script_config_open(automas, now=now), True)
+
+        print("\n[2. Master-config writes refuse to race an open ScriptConfig session]")
+        write_master(ps_on=True, ae_on=False)
+        before_raw = master.read_text(encoding="utf-8")
+        ok_m, msg_m = commands._set_master({"game": "MaaEnd", "path": "ProtocolSpace/@enabled", "value": False})
+        check("_set_master refused during ScriptConfig", (ok_m, "设置脚本" in msg_m), (False, True))
+        ok_p, msg_p = sanity_plan.set_plan(automas, "Essence")
+        check("sanity_plan.set_plan refused during ScriptConfig", (ok_p, "设置脚本" in msg_p), (False, True))
+        check("master file untouched during ScriptConfig", master.read_text(encoding="utf-8"), before_raw)
+
+        # Close ScriptConfig session -> _automas_busy() becomes False and writes succeed
+        applog.write_text(open_line + close_line, encoding="utf-8")
+        check("after ScriptConfig ends -> _automas_busy() False", eng_mod._automas_busy(now=now), False)
+        check("script_config_open() False after end", eng_mod.script_config_open(automas, now=now), False)
+
+        print("\n[3. Controller-cache desync (enabled=True, enabledByController=False) fixed by set_plan & write_maaend]")
+        write_master(ps_on=True, ae_on=False, ps_ctl=False)
+        ok_sp, _ = sanity_plan.set_plan(automas, "OperatorProgression", "T-Creds")
+        doc_sp = json.loads(master.read_text(encoding="utf-8"))
+        ps_sp = mastercfg._maaend_task(doc_sp, "ProtocolSpace")
+        check("set_plan writes back synced enabledByController when enabled was already True",
+              (ok_sp, ps_sp["enabled"], ps_sp["enabledByController"]["Win32"]), (True, True, True))
+
+        write_master(ps_on=True, ae_on=False, ps_ctl=False)
+        ok_wm, _ = mastercfg.write_maaend(automas, None, "ProtocolSpace/@enabled", True)
+        doc_wm = json.loads(master.read_text(encoding="utf-8"))
+        ps_wm = mastercfg._maaend_task(doc_wm, "ProtocolSpace")
+        check("write_maaend syncs stale enabledByController even when enabled was already True",
+              (ok_wm, ps_wm["enabled"], ps_wm["enabledByController"]["Win32"]), (True, True, True))
+
+        print("\n[4. 10-17 replay through Engine.tick(): external ScriptConfig unticks ProtocolSpace -> auto-restored]")
+        warns: list[str] = []
+
+        class _W(logging.Handler):
+            def emit(self, rec):
+                if rec.levelno >= logging.WARNING:
+                    warns.append(rec.getMessage())
+
+        wh = _W()
+        mastercfg.log.addHandler(wh)
+        try:
+            write_master(ps_on=True, ae_on=False, ps_ctl=True)
+            cfg = Config(history_dir=root / "hist", state_dir=state_dir, automas_dir=automas,
+                         shutdown_after_run=False)
+            eng = eng_mod.Engine(cfg, types.SimpleNamespace(fetch=lambda s: []),
+                                 ledger_mod.State(state_dir), types.SimpleNamespace(send=lambda *a, **k: []))
+            eng._scripts_running = lambda: False
+            # Tick 1: records active ProtocolSpace intent
+            eng._guard_maaend_switches()
+            check("healthy ProtocolSpace produces no warning", warns, [])
+
+            # ScriptConfig opens and rewrites mxu-MaaEnd.json unticking ProtocolSpace
+            applog.write_text(open_line, encoding="utf-8")
+            write_master(ps_on=False, ae_on=False, ps_ctl=False)
+            eng._guard_maaend_switches()
+            doc_mid = json.loads(master.read_text(encoding="utf-8"))
+            check("while ScriptConfig still open, guard waits (no race overwrite)",
+                  mastercfg._maaend_task(doc_mid, "ProtocolSpace")["enabled"], False)
+
+            # ScriptConfig closes -> next tick detects untick, backs up, restores ProtocolSpace=True + warns
+            applog.write_text(open_line + close_line, encoding="utf-8")
+            eng._guard_maaend_switches()
+            doc_healed = json.loads(master.read_text(encoding="utf-8"))
+            ps_healed = mastercfg._maaend_task(doc_healed, "ProtocolSpace")
+            check("ProtocolSpace restored to True + controller cache True",
+                  (ps_healed["enabled"], ps_healed["enabledByController"]["Win32"]), (True, True))
+            check("backup file created before restore", bool(list(cfg_dir.glob("mxu-MaaEnd.json.bak-guard-*"))), True)
+            check("accidental untick restore logged WARNING", any("协议空间" in w for w in warns), True)
+
+            print("\n[5. Intentional edits (switch to AutoEssence or phone @enabled=False) are never reverted]")
+            warns.clear()
+            ok_e, _ = sanity_plan.set_plan(automas, "Essence")
+            check("switch to AutoEssence ok", ok_e, True)
+            eng._guard_maaend_switches()
+            doc_ae = json.loads(master.read_text(encoding="utf-8"))
+            check("ProtocolSpace stays False when AutoEssence is active",
+                  (mastercfg._maaend_task(doc_ae, "ProtocolSpace")["enabled"],
+                   mastercfg._maaend_task(doc_ae, "AutoEssence")["enabled"]), (False, True))
+            check("no warning on intentional AutoEssence switch", warns, [])
+
+            # Deliberate phone toggle off of both tasks -> remembered, not reverted
+            ok_off, _ = mastercfg.write_maaend(automas, None, "AutoEssence/@enabled", False)
+            check("deliberate phone toggle AutoEssence off ok", ok_off, True)
+            eng._guard_maaend_switches()
+            doc_off = json.loads(master.read_text(encoding="utf-8"))
+            check("deliberate off via phone is respected",
+                  (mastercfg._maaend_task(doc_off, "ProtocolSpace")["enabled"],
+                   mastercfg._maaend_task(doc_off, "AutoEssence")["enabled"]), (False, False))
+            check("no warning on deliberate off", warns, [])
+        finally:
+            mastercfg.log.removeHandler(wh)
+    finally:
+        eng_mod._automas_snapshot = saved_snap
+        eng_mod._BUSY_SEEN.clear()
+        eng_mod._BUSY_SEEN.update(saved_seen)
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mastercfg_main, _part_mastercfg_jsonc_strings, _part_mastercfg_protocolspace, _part_maaend_controller_cache, _part_maaend_defs_228, _part_maaend_migrate_options, _part_maaend_migrate_stock_switch, _part_maaend_migrate_unread_defs, _part_maaend_name_mismatch, _part_maaend_phone_page_beta5, _part_maaend_schedule_skip, _part_maaend_skipped_report, _part_maaend_write_readback, _part_maaend_watchdog_main, _part_maaend_no_d3d11_alarm, _part_maaend_essence_met, _part_maaend_essence_stamina_out, _part_maaend_full_at_anchor, _part_maaend_round_upper_bound, _part_maaend_sanity, _part_maaend_sanity_fit, _part_maaend_sanity_one_formula, _part_maaend_update_after_done, _part_maaend_update_record, _part_maaend_update_restart, _part_maaend_update_restart_never_final, _part_maaend_watchdog_onepush, _part_spmed_kept_off_push, _part_spmed_v232, _part_spmed_v233_rc1, _part_essence_filler_main, _part_essence_filler_pushes_state]))
+    sys.exit(run_parts([_part_mastercfg_main, _part_mastercfg_jsonc_strings, _part_mastercfg_protocolspace, _part_maaend_controller_cache, _part_maaend_defs_228, _part_maaend_migrate_options, _part_maaend_migrate_stock_switch, _part_maaend_migrate_unread_defs, _part_maaend_name_mismatch, _part_maaend_phone_page_beta5, _part_maaend_schedule_skip, _part_maaend_skipped_report, _part_maaend_write_readback, _part_maaend_watchdog_main, _part_maaend_no_d3d11_alarm, _part_maaend_essence_met, _part_maaend_essence_stamina_out, _part_maaend_full_at_anchor, _part_maaend_round_upper_bound, _part_maaend_sanity, _part_maaend_sanity_fit, _part_maaend_sanity_one_formula, _part_maaend_update_after_done, _part_maaend_update_record, _part_maaend_update_restart, _part_maaend_update_restart_never_final, _part_maaend_watchdog_onepush, _part_spmed_kept_off_push, _part_spmed_v232, _part_spmed_v233_rc1, _part_essence_filler_main, _part_essence_filler_pushes_state, _part_scriptconfig_race_and_protocolspace_guard]))

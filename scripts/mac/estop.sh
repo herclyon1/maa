@@ -113,8 +113,11 @@ run_ps() {
 # off the task, not assumed: the installer lets it be chosen.
 # The installed relay is the one in use while its task or its watchdog is enabled.
 # With both disabled or missing the machine is reported as legacy (the old service
-# ark-relay). An empty answer (ssh timed out, pwsh failed) is neither: the callers then
-# stop and start the installed relay, whose stop also sends `sc stop ark-relay`.
+# ark-relay) — EXCEPT when estop itself disabled them (watchdog-stopped.txt starts with
+# `estop`) or when the legacy ark-relay service is absent/disabled, so `--restore` after
+# a cross-reboot estop still restores the installed relay instead of the retired service.
+# An empty answer (ssh timed out, pwsh failed) is neither: the callers then stop and
+# start the installed relay, whose stop also sends `sc stop ark-relay`.
 PS_PKG=$(cat <<'PSFN'
 $ErrorActionPreference = 'Continue'
 function Test-Main {
@@ -130,7 +133,11 @@ function Test-Main {
 }
 $task = Get-ScheduledTask -TaskPath '\ArkRelay\' -TaskName 'main' -ErrorAction SilentlyContinue
 $wd = Get-Service ArkRelayWatchdog -ErrorAction SilentlyContinue
-$pkg = ($task -and "$($task.State)" -ne 'Disabled') -or ($wd -and "$($wd.StartType)" -ne 'Disabled')
+$estopMarker = 'C:\ProgramData\ark-relay\watchdog-stopped.txt'
+$estopLocked = (Test-Path -LiteralPath $estopMarker) -and ((Get-Content -LiteralPath $estopMarker -Raw -ErrorAction SilentlyContinue) -match '^estop\b')
+$legacy = Get-Service ark-relay -ErrorAction SilentlyContinue
+$legacyOn = $legacy -and "$($legacy.StartType)" -ne 'Disabled'
+$pkg = ($task -and "$($task.State)" -ne 'Disabled') -or ($wd -and "$($wd.StartType)" -ne 'Disabled') -or (($task -or $wd) -and ($estopLocked -or -not $legacyOn))
 PSFN
 )
 
@@ -141,32 +148,37 @@ if (\$pkg) { 'LAYOUT=pkg' } else { 'LAYOUT=legacy' }" | tr -d '\r')
   sed -n 's/^LAYOUT=//p' <<<"$out" | head -1
 }
 
-# Stop the installed relay: watchdog first and waited for (switch.py stop()), then
-# `launch.py stop`, which asks the relay to stop and returns 0 only once its mutex is
-# gone (app_main.py stop(), up to 40 s). If it is still there after that, end the task
-# outright: this is the red button. A clean `sc stop` does not fire the watchdog's
-# restart-on-failure actions, so it stays down until --restore or the next boot.
-# The old service is stopped too (disabled by the install; normally a no-op).
-# The marker first: the relay starts a stopped watchdog again unless this file was
-# written since the boot (relay/watchdog_guard.py, packaging/switch.py WATCHDOG_MARKER),
-# and the relay is still running until launch.py stop below.
+# Stop the installed relay and lock it across reboots:
+# 1) Write watchdog-stopped.txt (`estop <timestamp>`) so the relay never restarts the
+#    watchdog and `--restore` still recognizes `LAYOUT=pkg` after reboot.
+# 2) Set ArkRelayWatchdog StartType=Disabled and stop it (wait up to 30 s).
+# 3) Disable scheduled tasks `\ArkRelay\main` and `AUTO-MAS_AutoStart`, stop `launch.py`
+#    and end `\ArkRelay\main` if still alive.
+# The old service is stopped and disabled too (normally a no-op).
 PS_PKG_STOP="$PS_PKG
+New-Item -ItemType Directory -Force -Path 'C:\\ProgramData\\ark-relay' -EA SilentlyContinue | Out-Null
+Set-Content -Path 'C:\\ProgramData\\ark-relay\\watchdog-stopped.txt' -Value ('estop ' + (Get-Date -Format s)) -EA SilentlyContinue
 if (\$wd) {
-  Set-Content -Path 'C:\\ProgramData\\ark-relay\\watchdog-stopped.txt' -Value ('estop ' + (Get-Date -Format s)) -EA SilentlyContinue
-}
-if (\$wd -and \$wd.Status -ne 'Stopped') {
-  & sc.exe stop ArkRelayWatchdog | Out-Null
-  try { \$wd.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } catch {}
-  \$wd.Refresh()
+  Set-Service -Name ArkRelayWatchdog -StartupType Disabled -EA SilentlyContinue
+  if (\$wd.Status -ne 'Stopped') {
+    & sc.exe stop ArkRelayWatchdog | Out-Null
+    try { \$wd.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) } catch {}
+  }
+  \$wd = Get-Service ArkRelayWatchdog -EA SilentlyContinue
 }
 Write-Output ('WATCHDOG=' + \$(if (\$wd) { \$wd.Status } else { 'NOTFOUND' }))
+Write-Output ('WATCHDOG_START=' + \$(if (\$wd) { \$wd.StartType } else { 'NOTFOUND' }))
 # An update's restart helper (launch.py relaunch, pkg_layout.restart_soon) would start
 # the relay again once it has stopped: end it first.
 Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" -EA SilentlyContinue |
   Where-Object { \$_.CommandLine -like '*launch.py*relaunch*' } |
   ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -EA SilentlyContinue; Write-Output ('HELPER_ENDED=' + \$_.ProcessId) }
+if (\$legacy) {
+  Set-Service -Name ark-relay -StartupType Disabled -EA SilentlyContinue
+}
 & sc.exe stop ark-relay 2>&1 | Out-Null
 if (\$task) {
+  Disable-ScheduledTask -TaskPath '\\ArkRelay\\' -TaskName 'main' -EA SilentlyContinue | Out-Null
   \$pyw = \$task.Actions[0].Execute.Trim().Trim('\"')
   \$py = Join-Path (Split-Path \$pyw) 'python.exe'
   \$launch = \$task.Actions[0].Arguments.Trim().Trim('\"')
@@ -178,19 +190,41 @@ if (Test-Main) {
   for (\$i = 0; \$i -lt 10 -and (Test-Main); \$i++) { Start-Sleep -Seconds 1 }
   Write-Output 'ENDED'
 }
-Write-Output ('MAIN=' + \$(if (Test-Main) { 'RUNNING' } else { 'STOPPED' }))"
+\$taskAfter = Get-ScheduledTask -TaskPath '\\ArkRelay\\' -TaskName 'main' -EA SilentlyContinue
+Write-Output ('MAIN_TASK=' + \$(if (\$taskAfter) { \$taskAfter.State } else { 'NOTFOUND' }))
+Write-Output ('MAIN=' + \$(if (Test-Main) { 'RUNNING' } else { 'STOPPED' }))
+\$masTask = Get-ScheduledTask -TaskName 'AUTO-MAS_AutoStart' -EA SilentlyContinue
+if (\$masTask) {
+  Disable-ScheduledTask -TaskName 'AUTO-MAS_AutoStart' -EA SilentlyContinue | Out-Null
+  \$masTask = Get-ScheduledTask -TaskName 'AUTO-MAS_AutoStart' -EA SilentlyContinue
+}
+Write-Output ('MAS_TASK=' + \$(if (\$masTask) { \$masTask.State } else { 'NOTFOUND' }))"
 
-# Back on: watchdog, then the task right away (not waiting for the watchdog's 30 s).
+# Back on: remove the estop marker, re-enable scheduled tasks BEFORE starting services,
+# set ArkRelayWatchdog StartType=Automatic BEFORE starting it, then run `\ArkRelay\main`.
 PS_PKG_START="$PS_PKG
+Remove-Item -Path 'C:\\ProgramData\\ark-relay\\watchdog-stopped.txt' -Force -EA SilentlyContinue
+if (\$task) {
+  Enable-ScheduledTask -TaskPath '\\ArkRelay\\' -TaskName 'main' -EA SilentlyContinue | Out-Null
+}
+\$masTask = Get-ScheduledTask -TaskName 'AUTO-MAS_AutoStart' -EA SilentlyContinue
+if (\$masTask) {
+  Enable-ScheduledTask -TaskName 'AUTO-MAS_AutoStart' -EA SilentlyContinue | Out-Null
+  \$masTask = Get-ScheduledTask -TaskName 'AUTO-MAS_AutoStart' -EA SilentlyContinue
+}
+Write-Output ('MAS_TASK=' + \$(if (\$masTask) { \$masTask.State } else { 'NOTFOUND' }))
 if (\$wd) {
-  Remove-Item -Path 'C:\\ProgramData\\ark-relay\\watchdog-stopped.txt' -Force -EA SilentlyContinue
+  Set-Service -Name ArkRelayWatchdog -StartupType Automatic -EA SilentlyContinue
   & sc.exe start ArkRelayWatchdog 2>&1 | Out-Null
   try { \$wd.WaitForStatus('Running', [TimeSpan]::FromSeconds(20)) } catch {}
-  \$wd.Refresh()
+  \$wd = Get-Service ArkRelayWatchdog -EA SilentlyContinue
 }
 Write-Output ('WATCHDOG=' + \$(if (\$wd) { \$wd.Status } else { 'NOTFOUND' }))
+Write-Output ('WATCHDOG_START=' + \$(if (\$wd) { \$wd.StartType } else { 'NOTFOUND' }))
 if (\$task) { & schtasks.exe /run /tn '\\ArkRelay\\main' 2>&1 | Out-Null }
 for (\$i = 0; \$i -lt 20 -and -not (Test-Main); \$i++) { Start-Sleep -Seconds 1 }
+\$taskAfter = Get-ScheduledTask -TaskPath '\\ArkRelay\\' -TaskName 'main' -EA SilentlyContinue
+Write-Output ('MAIN_TASK=' + \$(if (\$taskAfter) { \$taskAfter.State } else { 'NOTFOUND' }))
 Write-Output ('MAIN=' + \$(if (Test-Main) { 'RUNNING' } else { 'STOPPED' }))"
 
 list_ps="$PS_TARGETS
@@ -258,14 +292,30 @@ if [[ "$MODE" == "restore" ]]; then
     # Not starting ark-relay as well: next to the installed relay that would be two relays.
     [[ "$LAYOUT" == "pkg" ]] || echo "  ⚠️ 没问到机器上是哪种中继，按安装版拉起（老服务 10-11 已退役）" >&2
     st=$(run_ps "$PS_PKG_START" | tr -d '\r')
+    wd_start=$(sed -n 's/^WATCHDOG_START=//p' <<<"$st")
+    case "$wd_start" in
+      Automatic|NOTFOUND) echo "  ✅ 看门服务开机自启已恢复（${wd_start}）" ;;
+      *) echo "  ⚠️ 看门服务开机自启未恢复为 Automatic（${wd_start:-空}）" >&2 ;;
+    esac
     grep -q '^WATCHDOG=Running' <<<"$st" \
       && echo "  ✅ 看门服务已在运行" \
       || echo "  ⚠️ 看门服务没起来（$(sed -n 's/^WATCHDOG=//p' <<<"$st")）——中继再退出就没人拉了" >&2
+    main_task=$(sed -n 's/^MAIN_TASK=//p' <<<"$st")
+    case "$main_task" in
+      Ready|Running|NOTFOUND) echo "  ✅ 中继计划任务已恢复启用（${main_task}）" ;;
+      *) echo "  ⚠️ 中继计划任务 \\ArkRelay\\main 未恢复启用（${main_task:-空}）" >&2 ;;
+    esac
+    mas_task=$(sed -n 's/^MAS_TASK=//p' <<<"$st")
+    case "$mas_task" in
+      Ready|Running|NOTFOUND) echo "  ✅ AUTO-MAS 计划任务已恢复启用（${mas_task}）" ;;
+      *) echo "  ⚠️ AUTO-MAS_AutoStart 计划任务未恢复启用（${mas_task:-空}）" >&2 ;;
+    esac
     case "$st" in
       *MAIN=RUNNING*) echo "  ✅ 中继（安装版）已在运行" ;;
       *) echo "  ❌ 中继（安装版）没起来，通知链路是断的，必须人工看一眼" >&2 ;;
     esac
   else
+    "${SSH[@]}" "$USER_AT" 'sc config ark-relay start= auto' >/dev/null 2>&1 || true
     "${SSH[@]}" "$USER_AT" 'sc start ark-relay' >/dev/null 2>&1 || true
     for _ in 1 2 3 4 5 6; do
       st=$("${SSH[@]}" "$USER_AT" 'sc query ark-relay' 2>/dev/null | tr -d '\r')
@@ -278,6 +328,7 @@ if [[ "$MODE" == "restore" ]]; then
       *RUNNING*) : ;;
       *) echo "  ❌ ark-relay 没起来，通知链路是断的，必须人工看一眼" >&2 ;;
     esac
+    "${SSH[@]}" "$USER_AT" 'schtasks /change /tn AUTO-MAS_AutoStart /enable' >/dev/null 2>&1 || true
   fi
   # 中继要等 180 秒（REVIVE_FIRST_WAIT）才会去救 AUTO-MAS，而队列 API 就住在
   # AUTO-MAS 里。2026-08-26 第一版 --restore 启动中继后立刻调 API，必然超时失败。
@@ -364,26 +415,43 @@ fi
 # 事故当天我以为是 MAS 自己复活，其实是中继救的。**不先停中继，这个红按钮是废的。**
 # 代价：停了中继就没有任何通知了（包括「机器出事」的通知），所以 --restore 必须拉回来。
 LAYOUT=$(relay_layout)
+LOCK_FAILED=0
 if [[ "$LAYOUT" != "legacy" ]]; then
   # The installed relay runs the same service code, _revive_automas included
   # (relay/app_main.py: service.ArkRelayService.main), so the same reason holds.
   # No answer about the layout lands here too: the old service is gone since 10-11, and
   # PS_PKG_STOP sends `sc stop ark-relay` as well.
   [[ "$LAYOUT" == "pkg" ]] || echo "  [中继] ⚠️ 没问到机器上是哪种中继，按安装版停（老服务 10-11 已退役，顺带也发了停老服务）" >&2
-  echo "-- ⓪ 中继（安装版：先停看门服务，再停主程序；它会把 AUTO-MAS 救活，必须第一个停）--"
+  echo "-- ⓪ 中继（安装版：禁用并停看门服务，禁用计划任务并停主程序，跨重启硬锁）--"
   st=$(run_ps "$PS_PKG_STOP" | tr -d '\r')
   case "$(sed -n 's/^WATCHDOG=//p' <<<"$st")" in
     Stopped)  echo "  [看门] 已确认停止" ;;
     NOTFOUND) echo "  [看门] 没装（只有计划任务）" ;;
-    *)        echo "  [看门] ⚠️ 没停下（$(sed -n 's/^WATCHDOG=//p' <<<"$st")）——30 秒内可能又把中继拉起来" >&2 ;;
+    *)        echo "  [看门] ⚠️ 没停下（$(sed -n 's/^WATCHDOG=//p' <<<"$st")）——30 秒内可能又把中继拉起来" >&2; LOCK_FAILED=1 ;;
+  esac
+  wd_start=$(sed -n 's/^WATCHDOG_START=//p' <<<"$st")
+  case "$wd_start" in
+    Disabled|NOTFOUND) echo "  [看门] 跨重启硬锁已就绪（StartType=${wd_start}）" ;;
+    *) echo "  [看门] ⚠️ 未能禁用开机自启（StartType=${wd_start:-空}），重启后会自启" >&2; LOCK_FAILED=1 ;;
   esac
   grep -q '^ENDED' <<<"$st" && echo "  [中继] 正常停止没停下，已直接结束计划任务"
+  main_task=$(sed -n 's/^MAIN_TASK=//p' <<<"$st")
+  case "$main_task" in
+    Disabled|NOTFOUND) echo "  [中继计划任务] \\ArkRelay\\main 已禁用（跨重启硬锁）" ;;
+    *) echo "  [中继计划任务] ⚠️ 未能禁用 \\ArkRelay\\main（状态=${main_task:-空}），重启后会自启" >&2; LOCK_FAILED=1 ;;
+  esac
+  mas_task=$(sed -n 's/^MAS_TASK=//p' <<<"$st")
+  case "$mas_task" in
+    Disabled|NOTFOUND) echo "  [AUTO-MAS 计划任务] AUTO-MAS_AutoStart 已禁用（跨重启硬锁）" ;;
+    *) echo "  [AUTO-MAS 计划任务] ⚠️ 未能禁用 AUTO-MAS_AutoStart（状态=${mas_task:-空}），重启后会自启" >&2; LOCK_FAILED=1 ;;
+  esac
   case "$st" in
     *MAIN=STOPPED*) echo "  [中继] 已确认停止" ;;
-    *) echo "  [中继] ⚠️ 没停下——它会把 AUTO-MAS 救活，下面杀完可能又回来" >&2 ;;
+    *) echo "  [中继] ⚠️ 没停下——它会把 AUTO-MAS 救活，下面杀完可能又回来" >&2; LOCK_FAILED=1 ;;
   esac
 else
-  echo "-- ⓪ ark-relay 服务（它会把 AUTO-MAS 救活，必须第一个停）--"
+  echo "-- ⓪ ark-relay 服务（它会把 AUTO-MAS 救活，必须第一个停并禁用跨重启自启）--"
+  "${SSH[@]}" "$USER_AT" 'sc config ark-relay start= disabled' >/dev/null 2>&1 || LOCK_FAILED=1
   if "${SSH[@]}" "$USER_AT" 'sc stop ark-relay' >/dev/null 2>&1; then
     echo "  [中继] 已发停止指令"
   else
@@ -396,6 +464,7 @@ else
       *)         sleep 2 ;;
     esac
   done
+  "${SSH[@]}" "$USER_AT" 'schtasks /change /tn AUTO-MAS_AutoStart /disable' >/dev/null 2>&1 || LOCK_FAILED=1
 fi
 
 echo "-- ① AUTO-MAS（编排器，杀在中继之后，否则会被救活）--"
@@ -421,7 +490,11 @@ if [[ -z "${left// /}" ]]; then
     failed)  echo "  ⚠️  队列定时**没能关掉**。现在没进程在跑所以安全，但下次 MAS 起来会照常触发。" >&2 ;;
     skipped) echo "  · 队列定时未改动（--keep-queue）" ;;
   esac
-  echo "  · 中继已停 —— 通知链路是断的，恢复用 scripts/mac/estop.sh --restore"
+  echo "  · 中继已停且已挂跨重启硬锁 —— 通知链路是断的，恢复用 scripts/mac/estop.sh --restore"
+  if [[ "$LOCK_FAILED" != "0" ]]; then
+    echo "  ❌ 跨重启硬锁未完全生效（上方有 ⚠️ 项），重启后可能自启，请排查权限" >&2
+    exit 1
+  fi
   exit 0
 fi
 echo "  ❌ 还有残留："

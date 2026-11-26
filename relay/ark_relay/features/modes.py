@@ -398,23 +398,68 @@ def debug_until(state_dir: Path) -> str:
     return str(_store(state_dir).get("modes", "debug_until") or "")
 
 
+def _parse_debug_until(until: str) -> datetime | None:
+    """Parse debug_until ('YYYY-MM-DD HH:MM' or legacy 'YYYY-MM-DD'); None if empty/malformed."""
+    if not until:
+        return None
+    try:
+        return datetime.strptime(until, "%Y-%m-%d %H:%M").replace(tzinfo=SERVER_TZ)
+    except ValueError:
+        try:                                   # legacy: a bare date
+            return (datetime.strptime(until, "%Y-%m-%d").replace(tzinfo=SERVER_TZ)
+                    + timedelta(days=1))
+        except ValueError:
+            return None
+
+
+def debug_end(state_dir: Path) -> datetime | None:
+    """Parsed expiry moment of debug mode, or None when off / unparseable."""
+    return _parse_debug_until(debug_until(state_dir))
+
+
 def debug_active(state_dir: Path, now: datetime | None = None) -> bool:
     until = debug_until(state_dir)
     if not until:
         return False
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    try:
-        end = datetime.strptime(until, "%Y-%m-%d %H:%M").replace(tzinfo=SERVER_TZ)
-    except ValueError:
-        try:                                   # legacy: a bare date
-            end = (datetime.strptime(until, "%Y-%m-%d").replace(tzinfo=SERVER_TZ)
-                   + timedelta(days=1))
-        except ValueError:
-            # Anything unparseable fails towards "debug on": the operator
-            # explicitly asked for the machine to be left alone, and the wrong
-            # failure here powers off a box someone is working on.
-            return True
-    return now < end
+    end = _parse_debug_until(until)
+    if end is None:
+        # Anything unparseable fails towards "debug on": the operator
+        # explicitly asked for the machine to be left alone, and the wrong
+        # failure here powers off a box someone is working on.
+        return True
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    return cur < end
+
+
+def expire_debug_if_due(state_dir: Path, now: datetime | None = None) -> str | None:
+    """When debug mode's deadline has arrived, clear `debug_until` and release any
+    consumed `|debug` shutdown skip so shutdown.decide() can re-evaluate.
+
+    Never clears an untagged human `skip_next_shutdown` skip or an `|alarm` skip.
+    Returns the expired `debug_until` string when expired, else None.
+    """
+    until = debug_until(state_dir)
+    if not until:
+        return None
+    end = _parse_debug_until(until)
+    if end is None:
+        return None
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    if cur < end:
+        return None
+    store = _store(state_dir)
+
+    def _mutate(sec: dict) -> str | None:
+        until2 = str(sec.get("debug_until") or "")
+        end2 = _parse_debug_until(until2)
+        if end2 is None or cur < end2:
+            return None
+        sec.pop("debug_until", None)
+        if str(sec.get("shutdown_skipped") or "").endswith(DEBUG_SKIP_TAG):
+            sec.pop("shutdown_skipped", None)
+        return until2
+
+    return store.atomic("modes", _mutate)
 
 
 def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,

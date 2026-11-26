@@ -2,11 +2,17 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import os as _os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, require, run_parts, tmpdir
+
+# Prefer the active latest Python (4x faster startup than macOS /usr/bin/python3 stub) for bash sub-scripts.
+_PY_BIN = Path(sys.executable).parent
+if (_PY_BIN / "python3").exists():
+    _os.environ["PATH"] = f"{_PY_BIN}:{_os.environ.get('PATH', '')}"
 
 _SHARED = (check, fails, require, tmpdir)
 
@@ -16,6 +22,7 @@ def _part_disk_tidy():  # noqa: C901
     import json
     import os
     import re
+    import shutil
     import subprocess
     import time
 
@@ -40,7 +47,9 @@ def _part_disk_tidy():  # noqa: C901
     OPEN = BASE / "open-paths.txt"
     PROCS = BASE / "procs.txt"
     GIT_ENV = dict(os.environ, HOME=str(HOME), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
-                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_NOSYSTEM="1")
+                   GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_NOSYSTEM="1",
+                   GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="core.logAllRefUpdates", GIT_CONFIG_VALUE_0="false",
+                   GIT_CONFIG_KEY_1="gc.auto", GIT_CONFIG_VALUE_1="0")
     SHIFT = 48 * 3600
     U = {k: f"{n}0000000-0000-4000-8000-00000000000{n}" for n, k in enumerate(
         ["dead", "live", "pred", "fresh", "reused", "journal", "transcript", "cwd"], start=1)}
@@ -85,8 +94,22 @@ def _part_disk_tidy():  # noqa: C901
     WT = REPO / ".claude" / "worktrees"
 
 
-    def add_wt(path, extra_commit=False):
+    def add_wt(path, extra_commit=False, template_wt=None, head_sha=None):
         path = Path(path)
+        if template_wt is not None and not extra_commit and head_sha:
+            name = path.name
+            path.mkdir(parents=True, exist_ok=True)
+            (REPO / ".git" / "refs" / "heads" / name).write_text(head_sha + "\n", encoding="utf-8")
+            wt_meta = REPO / ".git" / "worktrees" / name
+            wt_meta.mkdir(parents=True, exist_ok=True)
+            (wt_meta / "HEAD").write_text(f"ref: refs/heads/{name}\n", encoding="utf-8")
+            (wt_meta / "commondir").write_text("../..\n", encoding="utf-8")
+            (wt_meta / "gitdir").write_text(f"{path}/.git\n", encoding="utf-8")
+            shutil.copy2(REPO / ".git" / "worktrees" / template_wt / "index", wt_meta / "index")
+            (path / ".git").write_text(f"gitdir: {wt_meta}\n", encoding="utf-8")
+            shutil.copy2(REPO / "a.txt", path / "a.txt")
+            shutil.copy2(REPO / ".gitignore", path / ".gitignore")
+            return path
         sh("git", "-C", REPO, "worktree", "add", "-q", path, "-b", path.name, "origin/main")
         if extra_commit:
             write(path / "new.txt", "work")
@@ -113,19 +136,21 @@ def _part_disk_tidy():  # noqa: C901
         sh("git", "-C", REPO, "push", "-q", "origin", "main")
         sh("git", "-C", REPO, "fetch", "-q", "origin")
 
-        for name in ("wt-old", "wt-new", "wt-dirty", "wt-cwd", "wt-journal", "wt-named", "wt-locked",
+        head_sha = sh("git", "-C", REPO, "rev-parse", "origin/main").strip()
+        add_wt(WT / "wt-old")
+        for name in ("wt-new", "wt-dirty", "wt-cwd", "wt-journal", "wt-named", "wt-locked",
                      "wt-5h", "wt-gone"):
-            add_wt(WT / name)
+            add_wt(WT / name, template_wt="wt-old", head_sha=head_sha)
         add_wt(WT / "wt-unmerged", extra_commit=True)
         for p in (HOME / "Claude/maa-automation-sib", HOME / "Claude/maa-automation-data",
                   HOME / "Claude/other-fix", HOME / "Money/styl-work/ds-relay-tree", HOME / "Money/other-tree"):
-            add_wt(p)
+            add_wt(p, template_wt="wt-old", head_sha=head_sha)
         for name in ("wt-old", "wt-dirty", "wt-unmerged"):
             write(WT / name / ".build/out.o", "obj")
         write(WT / "wt-unmerged/.swiftpm/state", "s")
         write(WT / "wt-dirty/notes.txt", "uncommitted")
         sh("git", "-C", REPO, "worktree", "lock", WT / "wt-locked")
-        sh("rm", "-rf", WT / "wt-gone")
+        shutil.rmtree(WT / "wt-gone")
 
         # Claude sessions: tmp dirs, the session registry, transcripts, a live workflow journal.
         proj = TMP_ROOT / "-Users-x"
@@ -238,7 +263,7 @@ def _part_disk_tidy():  # noqa: C901
         write(sp / "sp-new/f.txt")
         write(sp / "sp-gitlink/.git", "gitdir: /elsewhere/.git/worktrees/x\n")    # a worktree of a repo
         age(sp / "sp-gitlink", 72)                                               # outside ~/Claude
-        add_wt(sp / "sp-wt")
+        add_wt(sp / "sp-wt", template_wt="wt-old", head_sha=head_sha)
         age_wt(sp / "sp-wt", 72)
         with open(sp / "big.bin", "wb") as fh:
             fh.truncate(getattr(dt, "BIG_FILE_BYTES", 100 << 20) + 1)            # sparse
@@ -265,16 +290,75 @@ fi
         write(PROCS, "launchd\nzsh\n")
 
 
-    def tool(*args, free=10 ** 15):
-        env = dict(GIT_ENV, PATH=f"{STUBS}:{os.environ['PATH']}", DISK_TIDY_TMP_ROOT=str(TMP_ROOT),
-                   DISK_TIDY_TMPDIR=str(TDIR), DISK_TIDY_BREW_PREFIX=str(BREW),
-                   DISK_TIDY_OPEN_PATHS=str(OPEN), DISK_TIDY_PROCS=str(PROCS), DISK_TIDY_FREE_BYTES=str(free),
-                   DISK_TIDY_NOW=str(NOW))
-        r = subprocess.run([sys.executable, str(TOOL), *args], env=env, capture_output=True, text=True,
-                           timeout=300)
-        if r.returncode not in (0, 1):
-            print(r.stdout, r.stderr)
-        return r
+    def tool(*args, free=10 ** 15, cli=False):
+        env_patch = dict(HOME=str(HOME), PATH=f"{STUBS}:{os.environ['PATH']}",
+                         DISK_TIDY_TMP_ROOT=str(TMP_ROOT), DISK_TIDY_TMPDIR=str(TDIR),
+                         DISK_TIDY_BREW_PREFIX=str(BREW), DISK_TIDY_OPEN_PATHS=str(OPEN),
+                         DISK_TIDY_PROCS=str(PROCS), DISK_TIDY_FREE_BYTES=str(free),
+                         DISK_TIDY_NOW=str(NOW), GIT_CONFIG_NOSYSTEM="1")
+        if cli:
+            env = dict(GIT_ENV, **env_patch)
+            r = subprocess.run([sys.executable, str(TOOL), *args], env=env, capture_output=True, text=True,
+                               timeout=300)
+            if r.returncode not in (0, 1):
+                print(r.stdout, r.stderr)
+            return r
+        import contextlib
+        import io
+        import types
+        saved_env = {k: os.environ.get(k) for k in env_patch}
+        saved_run = dt.run
+        stub_names = {"uv", "brew", "go", "swiftly", "xcrun"}
+
+        def fast_run(cmd_args, cwd=None, timeout=dt.GIT_TIMEOUT_S, env=None):
+            if cmd_args:
+                base_cmd = os.path.basename(str(cmd_args[0]))
+                if base_cmd == "du" and len(cmd_args) == 3 and cmd_args[1] == "-sk":
+                    p = Path(cmd_args[2])
+                    if not p.exists():
+                        return subprocess.CompletedProcess(cmd_args, 1, "", "")
+                    blocks = 0
+                    try:
+                        blocks += p.lstat().st_blocks
+                        if p.is_dir() and not p.is_symlink():
+                            for dp, dns, fns in os.walk(p):
+                                for n in dns + fns:
+                                    try:
+                                        blocks += os.lstat(os.path.join(dp, n)).st_blocks
+                                    except OSError:
+                                        pass
+                    except OSError:
+                        return subprocess.CompletedProcess(cmd_args, 1, "", "")
+                    kb = max(1, (blocks + 1) // 2) if blocks else 0
+                    return subprocess.CompletedProcess(cmd_args, 0, f"{kb}\t{cmd_args[2]}\n", "")
+                if base_cmd in stub_names:
+                    with open(CALLS, "a", encoding="utf-8") as fh:
+                        fh.write(" ".join([base_cmd, *[str(x) for x in cmd_args[1:]]]) + "\n")
+                    out_s = ""
+                    if base_cmd == "swiftly" and len(cmd_args) >= 3 and cmd_args[1] == "uninstall":
+                        shutil.rmtree(HOME / f"Library/Developer/Toolchains/swift-{cmd_args[2]}-RELEASE.xctoolchain",
+                                      ignore_errors=True)
+                    elif base_cmd == "xcrun" and len(cmd_args) >= 4 and cmd_args[3] == "-j":
+                        out_s = '{"devices": {"rt": [{"name": "old", "udid": "U1"}]}}\n'
+                    return subprocess.CompletedProcess(cmd_args, 0, out_s, "")
+            return saved_run(cmd_args, cwd=cwd, timeout=timeout, env=env)
+
+        os.environ.update(env_patch)
+        dt.run = fast_run
+        out_buf, err_buf = io.StringIO(), io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+                rc = dt.main(list(args))
+        except SystemExit as exc:
+            rc = exc.code if isinstance(exc.code, int) else 1
+        finally:
+            dt.run = saved_run
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        return types.SimpleNamespace(returncode=rc, stdout=out_buf.getvalue(), stderr=err_buf.getvalue())
 
 
     LINE = re.compile(r"^(keep|would-remove|removed|FAILED)\s+(\S+)\s+(?:\S+\s+)?(/\S*|\d+ unavailable \S+)"
@@ -486,6 +570,7 @@ fi
     finally:
         sleeper.kill()
         sleeper.wait()
+        os.environ["DISK_TIDY_OPEN_PATHS"] = str(OPEN)
     ctx.in_use = saved
 
     print("[chrome clones: while Chrome runs, the clone it runs from must show open]")
@@ -530,7 +615,9 @@ fi
                        ("scratchpad/ itself", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad"),
                        ("an f-string entry", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-{{name}}")):
         write(HOME / ".claude/hooks/h2.py", f"P = f'{ref}'\n")
-        got = {i.path: i.keep or "" for i in dt.rule_live_session_scratch(env, dt.snapshot(env))}
+        ctx.ref_ids, ctx.ref_whole, ctx.ref_entries, ctx.ref_dd_names, ctx.ref_paths = dt.references(
+            env, ctx.repos, repo_files=ctx.repo_files)
+        got = {i.path: i.keep or "" for i in dt.rule_live_session_scratch(env, ctx)}
         check(f"a tool naming {label} keeps the whole scratchpad",
               (list(got), "names this session" in got.get(str(SP), "")), ([str(SP)], True))
     write(HOME / ".claude/hooks/h2.py", "\n")
@@ -541,14 +628,16 @@ fi
     rule_tf = getattr(dt, "rule_gradle_transforms", lambda e, c: [])
     write(PROCS, "launchd\n/usr/bin/java -Xmx2g -cp gradle-daemon-main-9.8.1.jar "
              "org.gradle.launcher.daemon.bootstrap.GradleDaemon 9.8.1\n")
-    got = {i.path: i.keep for i in rule_tf(env, dt.snapshot(env))}.get(str(tf), "-")
+    ctx.gradle_running = dt.gradle_running()
+    got = {i.path: i.keep for i in rule_tf(env, ctx)}.get(str(tf), "-")
     check("gradle transforms kept while a Gradle daemon runs", "Gradle" in (got or ""), True)
     write(PROCS, "launchd\n")
-    got = {i.path: i.keep for i in rule_tf(env, dt.snapshot(env))}.get(str(tf), "-")
+    ctx.gradle_running = dt.gradle_running()
+    got = {i.path: i.keep for i in rule_tf(env, ctx)}.get(str(tf), "-")
     check("gradle transforms go when no Gradle runs", got, None)
     write(tf / "t/g")
     age(tf / "t/g", 1, NOW)
-    got = {i.path: i.keep for i in rule_tf(env, dt.snapshot(env))}.get(str(tf), "-")
+    got = {i.path: i.keep for i in rule_tf(env, ctx)}.get(str(tf), "-")
     check("gradle transforms changed 1 h ago are kept", "changed" in (got or ""), True)
 
     print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
@@ -914,28 +1003,28 @@ def _part_wingui_guards():
     # ssh: the state read answers from state.json (none = unreachable), the result read
     # from gui.txt (none = not written yet), anything else is the scheduled task.
     (FAKE / "bin" / "ssh").write_text(
-        "#!/bin/bash\n"
+        "#!/bin/sh\n"
         f"F='{FAKE}'\n"
-        'printf "%s\\n" "ssh $*" >>"$F/calls"\n'
         'case "$*" in\n'
-        '  *state.json*) [ -f "$F/state.json" ] || exit 255; cat "$F/state.json" ;;\n'
-        '  *ark-gui.txt*) [ -f "$F/gui.txt" ] && cat "$F/gui.txt"; exit 0 ;;\n'
-        '  *) echo STARTED ;;\n'
+        '  *"type C:"*ark-gui.txt*) [ -f "$F/gui.txt" ] && cat "$F/gui.txt"; exit 0 ;;\n'
+        '  *state.json*) printf "%s\\n" "ssh $*" >>"$F/calls"; [ -f "$F/state.json" ] || exit 255; cat "$F/state.json" ;;\n'
+        '  *) printf "%s\\n" "ssh $*" >>"$F/calls"; echo STARTED ;;\n'
         'esac\n', encoding="utf-8")
     # scp: an upload is kept as pushed-<name>, a download writes a stand-in picture.
     (FAKE / "bin" / "scp").write_text(
-        "#!/bin/bash\n"
+        "#!/bin/sh\n"
         f"F='{FAKE}'\n"
         'printf "%s\\n" "scp $*" >>"$F/calls"\n'
         'src=""; dst=""; for a in "$@"; do src="$dst"; dst="$a"; done\n'
         'case "$dst" in *:*) cp "$src" "$F/pushed-${dst##*/}" ;; *) printf PNG >"$dst" ;; esac\n',
         encoding="utf-8")
-    (FAKE / "bin" / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")   # the wait loop, instantly
-    for f in (FAKE / "bin").iterdir():
+    os.symlink("/usr/bin/true", FAKE / "bin" / "sleep")   # the wait loop, instantly
+    for f in (FAKE / "bin" / "ssh", FAKE / "bin" / "scp"):
         f.chmod(0o755)
     LOG = FAKE / "actions.log"
     FARM = {"queues": {"echo_farm": {"boss": 2, "name": "千傀重楼", "weekly": True,
                                      "until": "2099-11-19 21:15", "started": "2099-11-19 16:13"}}}
+    PY_DIR = str(Path(sys.executable).parent)
 
     def run(*args: str, state: "dict | None", gui: "str | None", **extra: str):
         for name in ("calls", "state.json", "gui.txt"):
@@ -950,7 +1039,7 @@ def _part_wingui_guards():
             (FAKE / "gui.txt").write_text(gui, encoding="utf-8")
         # The action log only where a check reads it (log=True): writing it starts python3 for the redaction, and
         # thirty-odd calls of that kept this file over the deploy's 10 s a file (2026-11-20).
-        env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{os.environ['PATH']}", "ARK_HOST": "test-host",
+        env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{PY_DIR}:{os.environ['PATH']}", "ARK_HOST": "test-host",
                "ARK_ACTION_LOG": str(LOG) if extra.pop("log", None) else os.devnull, "TMPDIR": str(FAKE / "tmp"), **extra}
         env.pop("ARK_GUI_WAIT", None)
         if "ARK_GUI_DURING_FARM" not in extra:
@@ -1045,7 +1134,7 @@ def _part_wingui_guards():
         (FAKE / name).unlink(missing_ok=True)
     (FAKE / "state.json").write_text("{not json", encoding="utf-8")
     env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{os.environ['PATH']}", "ARK_HOST": "test-host",
-           "ARK_ACTION_LOG": str(LOG), "TMPDIR": str(FAKE / "tmp")}
+           "ARK_ACTION_LOG": os.devnull, "TMPDIR": str(FAKE / "tmp")}
     env.pop("ARK_GUI_DURING_FARM", None)
     r = subprocess.run(["bash", str(WINGUI), "key", "esc"], capture_output=True, env=env, timeout=60)
     check("broken state.json: refused", r.returncode, 7)

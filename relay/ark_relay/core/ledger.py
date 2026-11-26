@@ -1446,7 +1446,7 @@ class State:
         if not p.exists():
             return []
         out = []
-        torn = []
+        bad_lines: list[tuple[str, str]] = []
         for ln in p.read_text(encoding="utf-8").splitlines():
             ln = ln.strip()
             if not ln:
@@ -1454,31 +1454,29 @@ class State:
             try:
                 entry = json.loads(ln)
             except json.JSONDecodeError:
-                torn.append(ln)
+                bad_lines.append((ln, "账目里有一行不是完整的 JSON，已跳过: %.120s"))
                 continue  # tolerate one torn line rather than lose the day
             if not isinstance(entry, dict):
                 continue
             if missing := [k for k in self._LEDGER_REQUIRED if k not in entry]:
                 # A line can be valid JSON yet incomplete (power cut mid-write).
-                log.warning("账目里有一条残缺记录（缺 %s），已跳过: %.120s",
-                            "、".join(missing), ln)
+                bad_lines.append((ln, f"账目里有一条残缺记录（缺 {'、'.join(missing)}），已跳过: %.120s"))
                 continue
             # started/finished go through fromisoformat in the daily report and
             # the shutdown decision; an unparseable one is skipped like a missing key.
             bad = [k for k in ("started", "finished")
                    if not _is_iso(entry.get(k))]
             if bad:
-                log.warning("账目里有一条时间不合法的记录（%s），已跳过: %.120s",
-                            "、".join(bad), ln)
+                bad_lines.append((ln, f"账目里有一条时间不合法的记录（{'、'.join(bad)}），已跳过: %.120s"))
                 continue
             out.append(entry)
         said = _LEDGER_TORN_SAID.get(str(p), frozenset())
-        for ln in torn:
-            if ln not in said:
-                # Said once, so a run lost to a torn write does not vanish silently.
-                log.warning("账目里有一行不是完整的 JSON（多半是断电写了一半），已跳过: %.120s", ln)
-        if torn:
-            _LEDGER_TORN_SAID[str(p)] = frozenset(torn)
+        for line_text, fmt in bad_lines:
+            # one fault, one push: one broken ledger line by line_text
+            if line_text not in said:
+                log.warning(fmt, line_text)
+        if bad_lines:
+            _LEDGER_TORN_SAID[str(p)] = frozenset(line_text for line_text, _ in bad_lines)
         else:
             _LEDGER_TORN_SAID.pop(str(p), None)
         return out

@@ -43,7 +43,7 @@ def _part_stop_push_slow_network():
     check("Mailbox notice: 20 s an operation", mailbox.Mailbox.POST_TIMEOUT, 20)
     check("Mailbox: two tries", mailbox.Mailbox.ATTEMPTS, 2)
     check("official sites: 20 s, two tries", (maintenance.GET_TIMEOUT, maintenance.GET_ATTEMPTS), (20, 2))
-    check("Skland: 20 s", skland._TIMEOUT, 20)
+    check("Skland: 20 s, two tries", (skland._TIMEOUT, skland._ATTEMPTS), (20, 2))
 
     # ---------------------------------------------------------------- the faked wire
 
@@ -51,6 +51,21 @@ def _part_stop_push_slow_network():
     waited: list[float] = []      # the unscaled seconds each faked operation waited, this run
     cos_hangs = [False]
     cos_release = threading.Event()
+
+
+    def scaled_sleep(s: float) -> None:
+        waited.append(s)
+        time.sleep(s * SCALE)
+
+
+    skland._sleep = scaled_sleep
+    real_mb_init = mailbox.Mailbox.__init__
+
+    def _mb_init(self, *a, **k):
+        real_mb_init(self, *a, **k)
+        self._sleep = scaled_sleep
+
+    mailbox.Mailbox.__init__ = _mb_init
 
 
     def mas_post(path, body=None, timeout=20):
@@ -142,6 +157,7 @@ def _part_stop_push_slow_network():
     check("marker left for the relay-side skip", marker, True)
     check("AUTO-MAS not called at all (the backend is gone)", calls["mas"], 0)
     check("ntfy tried once", calls["ntfy"], 1)
+    check("Skland tried once (no retry under stop-push limits)", calls["other"], 1)
     check("stored on COS once", calls["cos"], 1)
     check("the timing line names COS and the end", ("存腾讯云到" in new and "发完到" in new), True)
     check("the notice's miss is said, as delivered through COS",
@@ -163,9 +179,9 @@ def _part_stop_push_slow_network():
     print("[4. the limits are stop-push's alone]")
     check("a new Mailbox still has 20 s and two tries",
           (mailbox.Mailbox("t", "p", DATA / "state").POST_TIMEOUT, mailbox.Mailbox.ATTEMPTS), (20, 2))
-    check("stop-push's own: sites 4 s one try, Skland 4 s",
-          (maintenance.GET_TIMEOUT, maintenance.GET_ATTEMPTS, skland._TIMEOUT),
-          (app_main.STOP_PUSH_SITE_S, 1, app_main.STOP_PUSH_SKLAND_S))
+    check("stop-push's own: sites 4 s one try, Skland 4 s one try",
+          (maintenance.GET_TIMEOUT, maintenance.GET_ATTEMPTS, skland._TIMEOUT, skland._ATTEMPTS),
+          (app_main.STOP_PUSH_SITE_S, 1, app_main.STOP_PUSH_SKLAND_S, 1))
     worst = app_main.STOP_PUSH_SKLAND_S + app_main.STOP_PUSH_SITE_S * 3 + mailbox.Mailbox.COS_TIMEOUT + app_main.STOP_PUSH_NOTICE_S
     check(f"one hung op per step still fits: {worst} s < {app_main.STOP_PUSH_WAIT_S} s", worst < app_main.STOP_PUSH_WAIT_S, True)
 
