@@ -1510,6 +1510,11 @@ def _check_partial_queues(eng, now: datetime, day: str,
         if now < _partial_deadline(due, eng.cfg.partial_grace, matched):
             continue  # still legitimately in progress or handing off to the next script
         ran = {e["script"] for e in matched}
+        # Key and alert mark live on the queue's own due date (same as runwatch.check_config_skips),
+        # not `day` (today): a 21:30 queue stays in partial_window past 00:00 and would otherwise
+        # re-alert at 00:01 under the new date.
+        due_local = due.astimezone(SERVER_TZ) if due.tzinfo else due
+        due_day = due_local.strftime("%Y-%m-%d")
         for kind in q["kinds"]:
             if kind in ran:
                 continue
@@ -1521,9 +1526,9 @@ def _check_partial_queues(eng, now: datetime, day: str,
             # queue says nothing about whether this one ever ran.
             if eng._script_running(kind):
                 continue
-            key = f"{day}/{q['name']}/{due:%H:%M}/{kind}"
+            key = f"{due_day}/{q['name']}/{due_local:%H:%M}/{kind}"
             # one fault, one push: one script missing from one queue run (its due time), checked every tick
-            if _settled(eng, day, key):
+            if _settled(eng, due_day, key):
                 continue
             # Was the machine awake when this queue was due? Same test,
             # and the same reason, as in _check_missed_runs: uptime rather
@@ -1532,13 +1537,13 @@ def _check_partial_queues(eng, now: datetime, day: str,
             # never started.
             watching_since = eng._boot_time(now) or eng._started_at
             if watching_since > due:
-                _settle(eng, day, key)
+                _settle(eng, due_day, key)
                 continue
             late = int((now - due).total_seconds() // 60)
             title, body = core.format_missing(texts.not_run_in(kind, q['name']), due,
                                               texts.missed_item_body(list(ran), kind, late))
             if not (errs := eng.notifier.send(title, body, alert=True)):
-                _settle(eng, day, key)
+                _settle(eng, due_day, key)
                 _log_missed.warning("🔌 %s 缺项：%s 没跑，已告警", q["name"], kind,
                             extra=errwatch.group_pushed(title, errs, eng.notifier))
 
@@ -1832,12 +1837,29 @@ def machinecheck(eng, ctx: dict) -> None:
 
 
 def retry_unsent(eng) -> None:
-    """Push again what `send` could not deliver (the 「没干完」 path holds no record)."""
-    left = []
-    for day, kind, run_id, title, body in getattr(eng, "_unsent_unresolved", []):
-        if not send(eng, day, kind, run_id, title, body):
-            left.append((day, kind, run_id, title, body))
-    eng._unsent_unresolved = left
+    """Push again what `send` could not deliver (the 「没干完」 path holds no record).
+
+    Persists `pending.json` whenever at least one item goes out, so callers that return
+    early on empty `_pending`/`_recovered` (_flush_pending) do not leave stale unsent
+    entries on disk."""
+    pending = list(getattr(eng, "_unsent_unresolved", []) or [])
+    if not pending:
+        return
+    left: list = []
+    pos = 0
+    changed = False
+    try:
+        for item in pending:
+            day, kind, run_id, title, body = item
+            if send(eng, day, kind, run_id, title, body):
+                changed = True
+            else:
+                left.append(item)
+            pos += 1
+    finally:
+        eng._unsent_unresolved = left + pending[pos:]
+        if changed and hasattr(eng, "_persist_pending"):
+            eng._persist_pending()
 
 
 # This module's public names plus every name re-exported from the modules above
@@ -2198,6 +2220,15 @@ def _say_annihilation_short(eng, rec: RunRecord, short: dict) -> None:
              "没推出去，下一轮再推" if errs else "已报群")
 
 
+def _heal_held(eng, rec: RunRecord, key: tuple, held: "RunRecord | None") -> None:
+    """Move a held failure of the same job to `_recovered`, or log a job mismatch."""
+    if _same_job(held, rec):
+        _retry_healed(eng, rec, key)
+    elif held is not None:
+        log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不算它自己好了，照旧等着报",
+                 rec.script, rec.run_id, core.maa_mode(_job(rec)), held.run_id, core.maa_mode(_job(held)))
+
+
 def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     """Everything to do after AUTO-MAS reports that this round exited normally.
 
@@ -2212,11 +2243,15 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     held = eng._pending.get(key)
     after_done = (held is not None and bool((held.raw or {}).get("maaend_update_restart"))
                   and rec.started < held.started and _same_shift(eng, held, rec))
-    if not after_done and _same_job(held, rec):
-        _retry_healed(eng, rec, key)
-    elif held is not None and not after_done:
-        log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不算它自己好了，照旧等着报",
-                 rec.script, rec.run_id, core.maa_mode(_job(rec)), held.run_id, core.maa_mode(_job(held)))
+    wait_makeup = False
+    if held is not None and not after_done and rec.script in ("MAA", "MaaEnd"):
+        from ark_relay.features import makeup  # noqa: PLC0415
+        # A make-up booked provisionally OK by makeup.on_record only heals the held
+        # failure once _verify_outcome passes; if work is undone, the held failure stays
+        # in _pending for _flush_pending -> after_makeup (which sees makeup.FAILED).
+        wait_makeup = makeup.is_pending_ok(eng.cfg.state_dir, rec)
+    if not after_done and not wait_makeup:
+        _heal_held(eng, rec, key, held)
     _weekly_gates(eng, rec)
     _annihilation_verdicts(eng, rec)
     # AUTO-MAS saying 「这个脚本正常退出了」 does not mean it got the work done.
@@ -2227,7 +2262,7 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     msg = eng._verify_outcome(rec)
     if rec.script in ("MAA", "MaaEnd"):
         # A make-up booked OK (makeup.on_record) is tied to the failures it made up for
-        # only now, on this check's word.
+        # only now, on this check's word (and reverted to FAILED when undone).
         try:
             from ark_relay.features import makeup  # noqa: PLC0415
             makeup.after_outcome(eng, rec, msg)
@@ -2254,6 +2289,8 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         log.warning("⚠️ %s %s 有项目没干成：\n%s", rec.script, rec.run_id, msg,
                     extra=ew.alarm(title, full) if errs else ew.group_pushed(title, errs, eng.notifier))
         return
+    if wait_makeup:
+        _heal_held(eng, rec, key, held)
     if after_done:
         eng._pending.pop(key, None)
         eng._persist_pending()

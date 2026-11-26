@@ -6254,5 +6254,182 @@ def _part_tick_isolation():
     sys.exit(1 if fails else 0)
 
 
+def _part_yesterday_report_midnight_wait():
+    """Cross-midnight yesterday report waits while scripts, queues, make-ups, or activity top-ups are still active."""
+    import json
+    import types
+    from datetime import datetime
+
+    from ark_relay.core import plan as _plan
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.ledger import State
+    from ark_relay.features import activity, banners, makeup, report
+
+    YDAY, TODAY = "2026-11-25", "2026-11-26"
+    at_0005 = datetime(2026, 11, 26, 0, 5, tzinfo=SERVER_TZ)
+    at_0900 = datetime(2026, 11, 26, 9, 0, tzinfo=SERVER_TZ)
+
+    def make_eng():
+        sd = tmpdir() / "state"
+        sd.mkdir()
+        st = State(sd)
+        y_row = {
+            "run_id": f"{YDAY}/ark/01", "script": "MAA", "user": "ark",
+            "started": f"{YDAY}T21:35:00+08:00", "finished": f"{YDAY}T21:55:00+08:00",
+            "ok": True, "failed_tasks": [], "raw": {},
+        }
+        t_row = {
+            "run_id": f"{TODAY}/endfield/01", "script": "MaaEnd", "user": "endfield",
+            "started": f"{TODAY}T00:01:00+08:00", "finished": f"{TODAY}T00:04:00+08:00",
+            "ok": True, "failed_tasks": [], "raw": {},
+        }
+        st.ledger_path(YDAY).write_text(json.dumps(y_row, ensure_ascii=False) + "\n", encoding="utf-8")
+        st.ledger_path(TODAY).write_text(json.dumps(t_row, ensure_ascii=False) + "\n", encoding="utf-8")
+        sent: list = []
+        seen_entries: list = []
+
+        class Notes:
+            def send(self, title, body, *, alert=False, daily=False):
+                sent.append((title, body, daily))
+                return []
+
+        eng = types.SimpleNamespace(
+            cfg=types.SimpleNamespace(
+                automas_dir=None, history_dir=None, okww_dir=None, skland_token="",
+                state_dir=sd, last_run_after="21:30", interim_report=False,
+            ),
+            state=st,
+            notifier=Notes(),
+            running=False,
+            unfinished=[],
+        )
+        eng._report_cutoff = lambda now: report._report_cutoff(eng, now)
+        eng._scripts_running = lambda: eng.running
+        eng._unfinished_queues = lambda now, entries: (seen_entries.append([e["run_id"] for e in entries]), list(eng.unfinished))[1]
+        eng._compose_daily = lambda day, entries: (f"📋 {day[5:]} · 全绿", "ok")
+        eng._announce_banners = lambda now, nxt: None
+        return eng, sent, seen_entries
+
+    saved_collect, saved_sched = banners.collect, _plan.schedule
+    banners.collect = lambda *a, **k: ([], {})
+    _plan.schedule = lambda *a, **k: []
+    try:
+        # 1. Script still running past 00:00
+        e, sent, seen = make_eng()
+        e.running = True
+        report._maybe_daily_report(e, at_0005)
+        check("跨零点脚本在跑：不补发昨日日报且不落记号", (sent, e.state.report_sent(YDAY)), ([], False))
+
+        # 2. Unfinished queue past 00:00 (and checks both today + yday ledger rows)
+        e.running = False
+        e.unfinished = ["队列「晚班」还差 MaaEnd"]
+        report._maybe_daily_report(e, at_0005)
+        check("跨零点队列未完：不补发昨日日报且不落记号", (sent, e.state.report_sent(YDAY)), ([], False))
+        check("未完队列检查合并了今日与昨日账本",
+              sorted(seen[-1]), sorted([f"{TODAY}/endfield/01", f"{YDAY}/ark/01"]))
+
+        # 3. Make-up dispatched at 23:55 still in flight at 00:05
+        e.unfinished = []
+        makeup._write_marker(e.cfg.state_dir, YDAY, {
+            "MAA": {"dispatched_at": f"{YDAY}T23:55:00+08:00", "result": makeup.DISPATCHED, "tries": 1},
+        })
+        report._maybe_daily_report(e, at_0005)
+        check("跨零点补跑在途：不补发昨日日报且不落记号", (sent, e.state.report_sent(YDAY)), ([], False))
+
+        # 4. Activity top-up dispatched at 23:55 (un-alarmed, within STALE) still waiting at 00:05
+        makeup._write_marker(e.cfg.state_dir, YDAY, {
+            "MAA": {"dispatched_at": f"{YDAY}T23:55:00+08:00", "result": makeup.OK, "tries": 1},
+        })
+        activity._write(e.cfg.state_dir, YDAY, {
+            "booked": f"{YDAY}T09:30:00+08:00", "due": f"{YDAY}T21:30:00+08:00",
+            "dispatched_at": f"{YDAY}T23:55:00+08:00", "result": "dispatched", "tries": 1,
+        })
+        report._maybe_daily_report(e, at_0005)
+        check("跨零点活跃晚班补在途：不补发昨日日报且不落记号", (sent, e.state.report_sent(YDAY)), ([], False))
+
+        # 5. All clear -> sends yesterday report with （补发） and marks report:yday
+        activity._write(e.cfg.state_dir, YDAY, {
+            "booked": f"{YDAY}T09:30:00+08:00", "due": f"{YDAY}T21:30:00+08:00",
+            "dispatched_at": f"{YDAY}T23:55:00+08:00", "result": "landed", "tries": 1,
+        })
+        report._maybe_daily_report(e, at_0005)
+        check("全部结束后补发昨日日报并落记号",
+              ([t for t, _, _ in sent], e.state.report_sent(YDAY)),
+              ([f"📋 {YDAY[5:]} · 全绿（补发）"], True))
+
+        # 6. Stale 'booked' activity top-up from yesterday (evening never came) does NOT block next morning
+        e2, sent2, _ = make_eng()
+        activity._write(e2.cfg.state_dir, YDAY, {
+            "booked": f"{YDAY}T09:30:00+08:00", "due": f"{YDAY}T21:30:00+08:00",
+            "result": "booked", "tries": 0,
+        })
+        report._maybe_daily_report(e2, at_0900)
+        check("昨日未派出的 booked 活跃补不卡住次日早间补发", e2.state.report_sent(YDAY), True)
+    finally:
+        banners.collect, _plan.schedule = saved_collect, saved_sched
+
+
+def _part_flush_unsent_persist():
+    """handle._flush_pending and handle.retry_unsent persist pending state after clearing _unsent_unresolved."""
+    from ark_relay.core.config import Config
+    from ark_relay.core.engine import Engine
+    from ark_relay.core.ledger import State
+    from ark_relay.features import handle
+
+    sd = tmpdir()
+    cfg = Config()
+    cfg.state_dir = sd
+    cfg.automas_dir = None
+
+    class Notes:
+        def __init__(self):
+            self.broken = True
+            self.sent: list = []
+
+        def send(self, title, body, *, alert=False, daily=False):
+            if self.broken:
+                return ["down"]
+            self.sent.append((title, body, alert))
+            return []
+
+    notes = Notes()
+    e = Engine(cfg, source=None, state=State(sd), notifier=notes)
+    e._scripts_running = lambda: False
+    e._script_running = lambda name: False
+
+    # Queue one unsent alert while _pending and _recovered are both empty
+    errs = handle._push_now(e, "2026-11-26", "没干完", "2026-11-26/ark/r1", "⚠️ 标题", "正文")
+    check("推送失败时入队并落盘",
+          (bool(errs), len(e._unsent_unresolved), len(State(sd).load_pending().get("unsent", []))),
+          (True, 1, 1))
+
+    # Direct handle._flush_pending(e) clears _unsent_unresolved AND cleans persisted pending even when _pending/_recovered empty
+    notes.broken = False
+    handle._flush_pending(e)
+    on_disk = State(sd).load_pending()
+    check("直调 handle._flush_pending 清空内存并清理盘上待重发队列",
+          (e._unsent_unresolved, on_disk.get("unsent")), ([], []))
+    e_re = Engine(cfg, source=None, state=State(sd), notifier=notes)
+    check("重启后不再读回已送达的 unsent 残留", e_re._unsent_unresolved, [])
+
+    # Partial success in direct handle.retry_unsent: item 1 sent, item 2 fails -> persists only item 2
+    notes.broken = True
+    handle._push_now(e, "2026-11-26", "没干完", "2026-11-26/ark/r2", "⚠️ 第二条", "正文2")
+    handle._push_now(e, "2026-11-26", "没干完", "2026-11-26/ark/r3", "⚠️ 第三条", "正文3")
+
+    def fail_third(title, body, *, alert=False, daily=False):
+        if "第三条" in title:
+            return ["still down"]
+        notes.sent.append((title, body, alert))
+        return []
+
+    notes.send = fail_third
+    handle.retry_unsent(e)
+    on_disk2 = State(sd).load_pending()
+    check("部分送达时仅保留未送达项并同步落盘",
+          ([x[2] for x in e._unsent_unresolved], [x[2] for x in on_disk2.get("unsent", [])]),
+          (["2026-11-26/ark/r3"], ["2026-11-26/ark/r3"]))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation]))
+    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation, _part_yesterday_report_midnight_wait, _part_flush_unsent_persist]))
