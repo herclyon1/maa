@@ -95,42 +95,65 @@ def _windows(path: str, wake: threading.Event) -> bool:
 
 
 def _kqueue(path: str, wake: threading.Event) -> bool:
-    fd = os.open(path, os.O_RDONLY)
-    kq = select.kqueue()
-    ev = select.kevent(
-        fd, filter=select.KQ_FILTER_VNODE,
-        flags=select.KQ_EV_ADD | select.KQ_EV_CLEAR,
-        fflags=select.KQ_NOTE_WRITE | select.KQ_NOTE_EXTEND)
-    kq.control([ev], 0, 0)
+    def _open():
+        new_fd = os.open(path, os.O_RDONLY)
+        new_kq = None
+        try:
+            new_kq = select.kqueue()
+            ev = select.kevent(
+                new_fd, filter=select.KQ_FILTER_VNODE,
+                flags=select.KQ_EV_ADD | select.KQ_EV_CLEAR,
+                fflags=select.KQ_NOTE_WRITE | select.KQ_NOTE_EXTEND)
+            new_kq.control([ev], 0, 0)
+        except Exception:
+            if new_kq is not None:
+                try:
+                    new_kq.close()
+                except OSError:
+                    pass
+            try:
+                os.close(new_fd)
+            except OSError:
+                pass
+            raise
+        return new_fd, new_kq
+
+    fd: int | None
+    fd, kq = _open()
+
+    def _close() -> None:
+        nonlocal fd, kq
+        cur_kq, kq = kq, None
+        cur_fd, fd = fd, None
+        if cur_kq is not None:
+            try:
+                cur_kq.close()
+            except OSError:
+                pass
+        if cur_fd is not None:
+            try:
+                os.close(cur_fd)
+            except OSError:
+                pass
 
     def run() -> None:
         # Same as above: rebuild when it drops, do not just return.
         nonlocal fd, kq
         delay = 5.0
         while True:
-            try:
-                while True:
-                    if kq.control(None, 1, None):
-                        wake.set()
-            except OSError:
-                pass
-            wake.set()
-            log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
-            # The lambda is called inside this same iteration, before fd is rebound below,
-            # so it closes the current fd; it never outlives the loop.
-            for closer in (kq.close, lambda: os.close(fd)):  # noqa: B023
+            if kq is not None:
                 try:
-                    closer()
+                    while True:
+                        if kq.control(None, 1, None):
+                            wake.set()
                 except OSError:
                     pass
+                _close()
+            wake.set()
+            log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
             time.sleep(delay)
             try:
-                fd = os.open(path, os.O_RDONLY)
-                kq = select.kqueue()
-                kq.control([select.kevent(
-                    fd, filter=select.KQ_FILTER_VNODE,
-                    flags=select.KQ_EV_ADD | select.KQ_EV_CLEAR,
-                    fflags=select.KQ_NOTE_WRITE | select.KQ_NOTE_EXTEND)], 0, 0)
+                fd, kq = _open()
                 log.info("目录监听已重建")
                 delay = 5.0
             except OSError:

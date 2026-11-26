@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -81,15 +82,23 @@ CHECKS: dict[str, Check] = {}
 # Items that cannot be automated: id -> (what, why).
 CANNOT: dict[str, tuple[str, str]] = {}
 _LOADED = [False]
+# Guards one-time module import + CHECKS/CANNOT registration so concurrent callers
+# never observe a half-populated dict or hit "dictionary changed size during iteration".
+_LOAD_LOCK = threading.RLock()
+# Guards read-modify-write of machinecheck.json (and _last_error) across threads.
+_STATE_LOCK = threading.RLock()
 
 
 def load() -> None:
     """Import ark_relay.features.machinechecks once to register all checks."""
     if _LOADED[0]:
         return
-    _LOADED[0] = True
-    import importlib  # noqa: PLC0415
-    importlib.import_module("ark_relay.features.machinechecks")
+    with _LOAD_LOCK:
+        if _LOADED[0]:
+            return
+        import importlib  # noqa: PLC0415
+        importlib.import_module("ark_relay.features.machinechecks")
+        _LOADED[0] = True
 
 
 def check(id: str, what: str, kind: str, *triggers: str):
@@ -101,16 +110,18 @@ def check(id: str, what: str, kind: str, *triggers: str):
         raise ValueError(f"{id}: unknown or no triggers {bad}")
 
     def wrap(fn):
-        if id in CHECKS:
-            raise ValueError(f"{id} registered twice")
-        CHECKS[id] = Check(id, what, kind, tuple(triggers), fn)
+        with _LOAD_LOCK:
+            if id in CHECKS:
+                raise ValueError(f"{id} registered twice")
+            CHECKS[id] = Check(id, what, kind, tuple(triggers), fn)
         return fn
     return wrap
 
 
 def cannot(id: str, what: str, why: str) -> None:
     """Record an item that cannot be automated, with the exact reason."""
-    CANNOT[id] = (what, why)
+    with _LOAD_LOCK:
+        CANNOT[id] = (what, why)
 
 
 # ------------------------------------------------------------------ state
@@ -128,21 +139,22 @@ def _read_state(state_dir) -> "dict | None":
     """The state file's rows; {} when there is none yet, None when it exists but
     cannot be read - then judge must not write, or this event's verdicts would
     replace every other check's history."""
-    f = _file(state_dir)
-    try:
-        d = json.loads(f.read_text(encoding="utf-8"))
-        why = "" if isinstance(d, dict) else f"不是一张表（{type(d).__name__}）"
-    except FileNotFoundError:
-        d, why = {}, ""
-    except (OSError, ValueError) as exc:
-        why = f"{type(exc).__name__}: {exc}"
-    if why:
-        if _last_error.get("state") != why:
-            log.warning("上机核对的记录 %s 读不到（%s），这期间的结论不写进去，日报那一段可能是旧的", f, why)
-            _last_error["state"] = why
-        return None
-    _last_error.pop("state", None)
-    return d
+    with _STATE_LOCK:
+        f = _file(state_dir)
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            why = "" if isinstance(d, dict) else f"不是一张表（{type(d).__name__}）"
+        except FileNotFoundError:
+            d, why = {}, ""
+        except (OSError, ValueError) as exc:
+            why = f"{type(exc).__name__}: {exc}"
+        if why:
+            if _last_error.get("state") != why:
+                log.warning("上机核对的记录 %s 读不到（%s），这期间的结论不写进去，日报那一段可能是旧的", f, why)
+                _last_error["state"] = why
+            return None
+        _last_error.pop("state", None)
+        return d
 
 
 def read(state_dir) -> dict:
@@ -183,7 +195,8 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
     load()
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     out: list[tuple[str, Result]] = []
-    for c in CHECKS.values():
+    matched: dict[str, Check] = {}
+    for c in list(CHECKS.values()):
         if event not in c.triggers:
             continue
         try:
@@ -198,33 +211,36 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
             log.error("上机核对 %s 给了认不出的结论 %r", c.id, r.status)
             continue
         out.append((c.id, r))
+        matched[c.id] = c
     if not out:
         return out
-    data = _read_state(state_dir) if state_dir else {}
-    if data is not None:
-        for cid, r in out:
-            row = dict(data.get(cid) or {})
-            stamp = now.strftime("%Y-%m-%d %H:%M:%S")
-            row.update(status=r.status, evidence=r.evidence[:300], at=stamp, version=version, event=event)
-            # A made-up-for failure stays in the day's section after a plain PASS of
-            # the same day replaces the verdict (daily_section); a new day drops it.
-            if r.healed:
-                row.update(healed_at=stamp, healed_evidence=r.evidence[:300])
-            elif str(row.get("healed_at") or "")[:10] != stamp[:10]:
-                row.pop("healed_at", None)
-                row.pop("healed_evidence", None)
-            key = "passes" if r.status == PASS else "fails"
-            row[key] = int(row.get(key) or 0) + 1
-            data[cid] = row
-        try:
-            _write(state_dir, data)
-        except OSError as exc:
-            # The verdicts stand and every FAIL below is still pushed; only the
-            # daily section misses this judging.
-            log.error("上机核对的结论没写进 %s（%s: %s），这次的 %s 照常推送，日报那一段可能是旧的",
-                      STATE_FILE, type(exc).__name__, exc, "、".join(cid for cid, _ in out))
+    if state_dir:
+        with _STATE_LOCK:
+            data = _read_state(state_dir)
+            if data is not None:
+                stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+                for cid, r in out:
+                    row = dict(data.get(cid) or {})
+                    row.update(status=r.status, evidence=r.evidence[:300], at=stamp, version=version, event=event)
+                    # A made-up-for failure stays in the day's section after a plain PASS of
+                    # the same day replaces the verdict (daily_section); a new day drops it.
+                    if r.healed:
+                        row.update(healed_at=stamp, healed_evidence=r.evidence[:300])
+                    elif str(row.get("healed_at") or "")[:10] != stamp[:10]:
+                        row.pop("healed_at", None)
+                        row.pop("healed_evidence", None)
+                    key = "passes" if r.status == PASS else "fails"
+                    row[key] = int(row.get(key) or 0) + 1
+                    data[cid] = row
+                try:
+                    _write(state_dir, data)
+                except OSError as exc:
+                    # The verdicts stand and every FAIL below is still pushed; only the
+                    # daily section misses this judging.
+                    log.error("上机核对的结论没写进 %s（%s: %s），这次的 %s 照常推送，日报那一段可能是旧的",
+                              STATE_FILE, type(exc).__name__, exc, "、".join(cid for cid, _ in out))
     for cid, r in out:
-        c = CHECKS[cid]
+        c = matched[cid]
         if r.status == FAIL and r.pushed_with:
             log.info("上机核对 %s 没过，已写在「%s」那条报警里进群，不另发：%s", cid, r.pushed_with, r.evidence[:120])
         elif r.status == FAIL and r.deferred:
@@ -255,31 +271,36 @@ def restate(state_dir, cid: str, was: str, evidence: str, *, healed: bool = Fals
     made up for, so it becomes a PASS marked healed (as judge records Result.healed),
     or, when a later PASS replaced it, that PASS carries the mark, so daily_section
     says failed and made up for. True when something was written."""
-    data = _read_state(state_dir) if state_dir else None
-    row = (data or {}).get(cid)
-    if not isinstance(row, dict):
+    if not state_dir:
         return False
-    if row.get("evidence") == was[:300]:
-        row["evidence"] = evidence[:300]
+    with _STATE_LOCK:
+        data = _read_state(state_dir)
+        row = (data or {}).get(cid)
+        if not isinstance(row, dict):
+            return False
+        if row.get("evidence") == was[:300]:
+            row["evidence"] = evidence[:300]
+            if healed:
+                row["status"] = PASS
+        elif not (healed and row.get("status") == PASS):
+            return False
         if healed:
-            row["status"] = PASS
-    elif not (healed and row.get("status") == PASS):
-        return False
-    if healed:
-        row.update(healed_at=str(row.get("at") or ""), healed_evidence=evidence[:300])
-    _write(state_dir, data)
-    return True
+            row.update(healed_at=str(row.get("at") or ""), healed_evidence=evidence[:300])
+        _write(state_dir, data)
+        return True
 
 
 def daily_section(state_dir) -> str:
     """The daily report's 「上机核对」 lines: every check's latest verdict, or that it still waits."""
     from ark_relay.core import texts  # noqa: PLC0415
     load()
-    if not CHECKS and not CANNOT:
+    checks = list(CHECKS.items())
+    cannot_items = list(CANNOT.items())
+    if not checks and not cannot_items:
         return ""
     data = read(state_dir)
     rows = []
-    for cid, c in sorted(CHECKS.items(), key=lambda kv: _num(kv[0])):
+    for cid, c in sorted(checks, key=lambda kv: _num(kv[0])):
         r = data.get(cid) or {}
         status, evidence, at = str(r.get("status") or ""), str(r.get("evidence") or ""), str(r.get("at") or "")
         healed_at = str(r.get("healed_at") or "")
@@ -287,7 +308,7 @@ def daily_section(state_dir) -> str:
             # Failed once today and made up for by another run: said so, not 「过了」.
             status, evidence, at = HEALED, str(r.get("healed_evidence") or ""), healed_at
         rows.append((cid, c.what, c.kind, status, evidence, at))
-    return texts.machinecheck_section(rows, sorted(CANNOT.items(), key=lambda kv: _num(kv[0])))
+    return texts.machinecheck_section(rows, sorted(cannot_items, key=lambda kv: _num(kv[0])))
 
 
 def _num(cid: str) -> int:

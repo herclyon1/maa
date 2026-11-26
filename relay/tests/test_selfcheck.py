@@ -3362,5 +3362,160 @@ def _part_replay():
         sys.exit(main())
 
 
+def _part_machinecheck_concurrency():
+    """Concurrent load(), judge() and restate() must not hit dict-size-changed,
+    miss checks during import, or lose verdicts to racing file writes."""
+    import importlib
+    import threading
+    import time
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import machinecheck as mc
+
+    mc.load()
+    saved_checks, saved_cannot, saved_loaded = dict(mc.CHECKS), dict(mc.CANNOT), mc._LOADED[0]
+    real_import = importlib.import_module
+    real_write = mc._write
+    now = datetime(2026, 11, 26, 10, 0, tzinfo=SERVER_TZ)
+    try:
+        print("[并发 load()：导入期间阻塞其他线程，不抛 dict changed size、不漏检]")
+        mc.CHECKS.clear()
+        mc.CANNOT.clear()
+        mc._LOADED[0] = False
+        import_calls = [0]
+
+        def slow_import(name, *a, **k):
+            if name != "ark_relay.features.machinechecks":
+                return real_import(name, *a, **k)
+            import_calls[0] += 1
+            for i in range(20):
+                cid = f"#95{i:02d}"
+                mc.check(cid, f"并发样例 {i}", "A", "run")(
+                    lambda ctx, cid=cid: mc.Result(mc.PASS, f"ok-{cid}"))
+                time.sleep(0.002)
+            return None
+
+        importlib.import_module = slow_import
+        d1 = tmpdir()
+        barrier = threading.Barrier(8)
+        results: list[list[str]] = []
+        errors: list[BaseException] = []
+        lock = threading.Lock()
+
+        def worker_load():
+            try:
+                barrier.wait(5.0)
+                got = mc.judge(d1, "run", {}, now=now)
+                with lock:
+                    results.append([cid for cid, _ in got])
+            except BaseException as exc:  # noqa: BLE001
+                with lock:
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=worker_load) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(10.0)
+        importlib.import_module = real_import
+        check("no RuntimeError or crash during concurrent load", errors, [])
+        check("import_module ran exactly once", import_calls[0], 1)
+        check("every thread saw all 20 checks", [len(r) for r in results], [20] * 8)
+
+        print("[导入失败一次后 _LOADED 保持 False，下次重试能成功]")
+        mc.CHECKS.clear()
+        mc._LOADED[0] = False
+        fail_once = [True]
+
+        def flaky_import(name, *a, **k):
+            if name != "ark_relay.features.machinechecks":
+                return real_import(name, *a, **k)
+            if fail_once[0]:
+                fail_once[0] = False
+                raise RuntimeError("transient import failure")
+            mc.check("#999", "恢复样例", "A", "run")(lambda ctx: mc.Result(mc.PASS, "ok"))
+            return None
+
+        importlib.import_module = flaky_import
+        try:
+            try:
+                mc.load()
+                check("first load raised", False, True)
+            except RuntimeError:
+                check("first load raised and left _LOADED False", mc._LOADED[0], False)
+            mc.load()
+            check("second load succeeded", (mc._LOADED[0], "#999" in mc.CHECKS), (True, True))
+        finally:
+            importlib.import_module = real_import
+
+        print("[并发 judge() 与 restate()：互斥读写 machinecheck.json，互不覆盖]")
+        mc.CHECKS.clear()
+        mc.CANNOT.clear()
+        mc._LOADED[0] = True
+        events = ("boot", "run", "banners", "phone_state", "phone_cmd", "estop", "gameupdate", "makeup")
+        for i, ev in enumerate(events):
+            cid = f"#98{i}"
+            mc.check(cid, f"并发写 {ev}", "A", ev)(
+                lambda ctx, ev=ev: mc.Result(mc.PASS, f"ev-{ev}"))
+        mc.check("#970", "并发 restate 项", "A", "watchdog")(
+            lambda ctx: mc.Result(mc.FAIL, "before-restate"))
+
+        d2 = tmpdir()
+        mc.judge(d2, "watchdog", {}, now=now)
+
+        def slow_write(state_dir, data):
+            time.sleep(0.01)
+            return real_write(state_dir, data)
+
+        mc._write = slow_write
+        b2 = threading.Barrier(len(events) + 1)
+        errs2: list[BaseException] = []
+        restated_ok = [False]
+
+        def run_ev(ev):
+            try:
+                b2.wait(5.0)
+                mc.judge(d2, ev, {}, version="v-conc", now=now)
+            except BaseException as exc:  # noqa: BLE001
+                with lock:
+                    errs2.append(exc)
+
+        def run_restate():
+            try:
+                b2.wait(5.0)
+                restated_ok[0] = mc.restate(d2, "#970", "before-restate", "after-restate", healed=True)
+            except BaseException as exc:  # noqa: BLE001
+                with lock:
+                    errs2.append(exc)
+
+        ts = [threading.Thread(target=run_ev, args=(ev,)) for ev in events]
+        ts.append(threading.Thread(target=run_restate))
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(10.0)
+        mc._write = real_write
+
+        saved = mc.read(d2)
+        check("no errors during concurrent judge/restate", errs2, [])
+        check("restate succeeded", restated_ok[0], True)
+        check("all 8 concurrent event verdicts preserved",
+              [f"#98{i}" in saved and saved[f"#98{i}"]["status"] == mc.PASS for i in range(len(events))],
+              [True] * len(events))
+        check("restated verdict preserved",
+              (saved.get("#970", {}).get("status"), saved.get("#970", {}).get("evidence")),
+              (mc.PASS, "after-restate"))
+    finally:
+        importlib.import_module = real_import
+        mc._write = real_write
+        mc.CHECKS.clear()
+        mc.CHECKS.update(saved_checks)
+        mc.CANNOT.clear()
+        mc.CANNOT.update(saved_cannot)
+        mc._LOADED[0] = saved_loaded
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mc_phone_banners, _part_mc_runs, _part_mc_runs_state_read_fails, _part_mc_system, _part_mc_system_fixes, _part_selfcheck_main, _part_selfcheck_one_push, _part_machinecheck_main, _part_machinecheck_wait, _part_replay]))
+    sys.exit(run_parts([_part_mc_phone_banners, _part_mc_runs, _part_mc_runs_state_read_fails, _part_mc_system, _part_mc_system_fixes, _part_selfcheck_main, _part_selfcheck_one_push, _part_machinecheck_main, _part_machinecheck_wait, _part_replay, _part_machinecheck_concurrency]))

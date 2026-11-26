@@ -562,6 +562,7 @@ Two of the four things that can wake the loop live here: the backend dying,
     hold_said = None
     api_since = None     # monotonic time a held backend's API was first found silent
     api_warned = False
+    next_check = 0.0
 
     def __init__(self, log, notifier):
         self.log, self.notifier = log, notifier
@@ -608,10 +609,10 @@ Two of the four things that can wake the loop live here: the backend dying,
         with one held whose API has not answered yet, wake to ask again."""
         if self.handle:
             return min(wait_s, API_RECHECK_SECONDS) if self.api_since is not None else wait_s
-        if self.wmi_alive["ok"] and self.revive_deadline is not None:
-            return min(wait_s, max(1.0, self.revive_deadline - time.monotonic()))
+        if self.revive_deadline is not None:
+            wait_s = min(wait_s, max(1.0, self.revive_deadline - time.monotonic()))
         if not self.wmi_alive["ok"]:
-            return min(wait_s, procwatch.AUTOMAS_CHECK_SECONDS)
+            wait_s = min(wait_s, procwatch.AUTOMAS_CHECK_SECONDS)
         return wait_s
 
     def _adopted(self) -> None:
@@ -705,10 +706,16 @@ Two of the four things that can wake the loop live here: the backend dying,
             return
         due_check = (
             self.handle is None
-            and ((self.wmi_alive["ok"] and self.revive_deadline is not None
-                  and now >= self.revive_deadline)
-                 or (not self.wmi_alive["ok"] and now >= self.next_check)))
+            and ((self.revive_deadline is not None and now >= self.revive_deadline)
+                 or (self.revive_deadline is None and not self.wmi_alive["ok"]
+                     and now >= self.next_check)))
         if not (died or due_check):
+            # WMI is down so on_process_started() cannot fire: keep polling on the
+            # liveness beat to adopt a backend that came up on its own, without
+            # reviving before revive_deadline (backoff stays 180s -> 360s -> ... -> 1800s).
+            if self.handle is None and not self.wmi_alive["ok"] and now >= self.next_check:
+                self.next_check = now + procwatch.AUTOMAS_CHECK_SECONDS
+                self.on_process_started()
             return
         self.next_check = now + procwatch.AUTOMAS_CHECK_SECONDS
         running = _automas_running()

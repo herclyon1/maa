@@ -351,7 +351,10 @@ def _take_note(path: Path) -> dict | None:
         note = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         note = None
-    path.unlink(missing_ok=True)
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        log.warning("删不掉状态记录 %s，下次启动可能再读一次", path.name, exc_info=True)
     return note if isinstance(note, dict) else None
 
 
@@ -377,7 +380,10 @@ def _record_failure(root: Path, reason: str, remote: int, local: int,
 
 
 def _clear_failure(root: Path) -> None:
-    _failure_path(root).unlink(missing_ok=True)
+    try:
+        _failure_path(root).unlink(missing_ok=True)
+    except OSError:
+        log.warning("删不掉旧的更新失败记录，下次启动可能再报一次", exc_info=True)
 
 
 def _announce_path(root: Path) -> Path:
@@ -752,6 +758,33 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
     return [rel for rel, _target, _data in staged] + parked
 
 
+def _clear_pycache(root: Path) -> None:
+    """Remove compiled bytecode under `root` so the restart cannot run stale .pyc files.
+
+    A locked or unreadable .pyc is skipped rather than aborting a round whose new
+    files have already landed (on Windows an antivirus scan or the running process
+    can hold a .pyc open briefly)."""
+    skipped: list[str] = []
+    try:
+        caches = list(root.rglob("__pycache__"))
+    except OSError:
+        log.info("扫描旧编译缓存目录时出错，跳过清理", exc_info=True)
+        return
+    for cache in caches:
+        try:
+            pycs = list(cache.glob("*.pyc"))
+        except OSError:
+            continue
+        for pyc in pycs:
+            try:
+                pyc.unlink(missing_ok=True)
+            except OSError:
+                skipped.append(pyc.name)
+    if skipped:
+        log.info("有 %d 个旧编译缓存文件删不掉，跳过：%s",
+                 len(skipped), "、".join(skipped[:5]))
+
+
 def check(root: Path, base_url: str = "",
           budget_s: float = BUDGET_SECONDS) -> list[str]:
     """Fetch and apply any changed files. Returns the manifest paths that landed, then
@@ -830,9 +863,7 @@ def check(root: Path, base_url: str = "",
 
     if updated:
         # Remove compiled bytecode so the restart cannot run stale .pyc files.
-        for cache in root.rglob("__pycache__"):
-            for pyc in cache.glob("*.pyc"):
-                pyc.unlink(missing_ok=True)
+        _clear_pycache(root)
         log.info("代码已更新 %d 个文件: %s", len(updated), "、".join(updated))
     # Reached only when the whole manifest is in place (including when nothing
     # needed changing), so the version is recorded; a failed round returned above.

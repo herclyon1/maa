@@ -2545,5 +2545,120 @@ def _part_manifest_covers_tree():
     sys.exit(1 if fails else 0)
 
 
+def _part_selfupdate_pyc_locked():
+    """A locked .pyc under __pycache__ must not abort a landed selfupdate in either
+    in-place mode (skipping version/announcement) or packaged mode (dropping the new version)."""
+    import hashlib
+    import json
+    import os
+    import zipfile
+    from io import BytesIO
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import pkg_layout
+    from ark_relay.features import selfupdate as su
+
+    body = b"# new code v20261126000002\nX = 2\n"
+    rel = "ark_relay/sample.py"
+    ver = 20261126000002
+    manifest = {
+        "version": ver,
+        "files": {rel: hashlib.sha1(body).hexdigest()},
+        "sha256": {rel: hashlib.sha256(body).hexdigest()},
+    }
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr(rel, body)
+    bundle_bytes = buf.getvalue()
+
+    class _FakeCos:
+        prefix = "relay"
+        host = "cos.local"
+
+        def authorization(self, _m, _k):
+            return "auth"
+
+    def fake_cos_get(_cos, key, timeout=20):
+        if key == su.COS_LATEST:
+            return json.dumps({"version": ver}).encode()
+        if key == f"{ver}/{su.MANIFEST}":
+            return json.dumps(manifest).encode()
+        if key == f"{ver}/{su.COS_BUNDLE}":
+            return bundle_bytes
+        return None
+
+    real_cos, real_get, real_unlink = su._cos, su._cos_get, Path.unlink
+    su._cos = lambda: _FakeCos()
+    su._cos_get = fake_cos_get
+    try:
+        print("[就地模式：某个 .pyc 被占用抛 PermissionError，不影响版本落盘、清失败记录与通知]")
+        root = tmpdir()
+        (root / "state").mkdir()
+        (root / "ark_relay" / "__pycache__").mkdir(parents=True)
+        (root / rel).write_bytes(b"# old\nX = 1\n")
+        locked_pyc = root / "ark_relay" / "__pycache__" / "locked.cpython-314.pyc"
+        other_pyc = root / "ark_relay" / "__pycache__" / "other.cpython-314.pyc"
+        locked_pyc.write_bytes(b"pyc-locked")
+        other_pyc.write_bytes(b"pyc-other")
+        (root / "state" / "update-failed.json").write_text('{"reason": "old"}', encoding="utf-8")
+
+        def unlink_locked(self, missing_ok=False):
+            if self.name == "locked.cpython-314.pyc":
+                raise PermissionError(32, "being used by another process")
+            return real_unlink(self, missing_ok=missing_ok)
+
+        Path.unlink = unlink_locked
+        try:
+            got = su.check(root)
+        finally:
+            Path.unlink = real_unlink
+        check("updated list returned", got, [rel])
+        check("new file landed", (root / rel).read_bytes(), body)
+        check("other .pyc still removed", other_pyc.exists(), False)
+        check("locked .pyc skipped cleanly", locked_pyc.exists(), True)
+        check("version recorded on disk", su._applied_version(root), ver)
+        check("stale failure cleared", su.take_failure(root), None)
+        ann = su.take_announcement(root) or {}
+        check("announcement recorded", (ann.get("version"), ann.get("files")), (ver, [rel]))
+
+        print("[打包模式：暂存目录清理 .pyc 遇 PermissionError，新版目录照常切入不被删]")
+        app = tmpdir()
+        data = tmpdir()
+        (data / "state").mkdir()
+        here = app / "versions" / "20261126000001"
+        (here / "ark_relay").mkdir(parents=True)
+        (here / rel).write_bytes(b"# old\nX = 1\n")
+        (app / "current.txt").write_text("20261126000001\n", encoding="utf-8")
+        orig_home = os.environ.get("ARK_HOME")
+        os.environ["ARK_HOME"] = str(data)
+        pkg_layout.link_state(here, pkg_layout.state_dir(data))
+        pkg_layout.record_running_version(here)
+        real_write_staged = su._write_staged
+
+        def write_and_plant_pyc(st_root, *args, **kwargs):
+            res = real_write_staged(st_root, *args, **kwargs)
+            cache = st_root / "ark_relay" / "__pycache__"
+            cache.mkdir(parents=True, exist_ok=True)
+            (cache / "locked.cpython-314.pyc").write_bytes(b"pyc")
+            return res
+
+        su._write_staged = write_and_plant_pyc
+        Path.unlink = unlink_locked
+        try:
+            changed = pkg_layout.update(here, su.check)
+        finally:
+            Path.unlink = real_unlink
+            su._write_staged = real_write_staged
+            if orig_home is None:
+                os.environ.pop("ARK_HOME", None)
+            else:
+                os.environ["ARK_HOME"] = orig_home
+        check("packaged update returned changed", changed, [rel])
+        check("current.txt switched to new version", (app / "current.txt").read_text(encoding="utf-8").strip(), str(ver))
+        check("new version folder kept on disk", (app / "versions" / str(ver) / rel).read_bytes(), body)
+    finally:
+        su._cos, su._cos_get = real_cos, real_get
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_pkg_appfiles_update, _part_pkg_install_messages, _part_pkg_layout_names, _part_pkg_pin_whole_write, _part_pkg_runtime_update, _part_pkg_stale_package_dirs, _part_pkg_state_dir, _part_pkg_switch_failed_announce, _part_pkg_switch_flushed, _part_pkg_update_nothing_changed, _part_pkg_watchdog_update, _part_stop_denied, _part_stop_event_manual_reset, _part_stop_push_errwatch_budget, _part_switch_resume, _part_switch_run_encoding, _part_switch_stop, _part_switch_uninstall, _part_manifest_covers_tree]))
+    sys.exit(run_parts([_part_pkg_appfiles_update, _part_pkg_install_messages, _part_pkg_layout_names, _part_pkg_pin_whole_write, _part_pkg_runtime_update, _part_pkg_stale_package_dirs, _part_pkg_state_dir, _part_pkg_switch_failed_announce, _part_pkg_switch_flushed, _part_pkg_update_nothing_changed, _part_pkg_watchdog_update, _part_stop_denied, _part_stop_event_manual_reset, _part_stop_push_errwatch_budget, _part_switch_resume, _part_switch_run_encoding, _part_switch_stop, _part_switch_uninstall, _part_manifest_covers_tree, _part_selfupdate_pyc_locked]))
