@@ -159,6 +159,21 @@ AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 ACTIVITY_TOPUP = "🔁 鸣潮早班活跃没满，晚班补"
 ACTIVITY_TOPUP_WAIT = "鸣潮活跃晚班补还没完"
+AK_ACTIVITY_OPEN = "🎉 明日方舟活动开启"
+
+
+def ak_activity_open_body(name: str, kind_zh: str, start_txt: str,
+                          end_txt: str = "", rerun: bool = False,
+                          opening_today: bool = False) -> str:
+    tag = f"{kind_zh}（复刻）" if rerun else kind_zh
+    verb = "今日开启" if opening_today else "已开启"
+    lines = [f"明日方舟{tag}「{name}」{verb}。"]
+    if end_txt:
+        lines.append(f"时间：{start_txt} 至 {end_txt}")
+    else:
+        lines.append(f"开启：{start_txt}")
+    lines.append("请留意调整刷图关卡与理智安排。")
+    return "\n".join(lines)
 
 
 def activity_topup_body(points, due) -> str:
@@ -899,7 +914,7 @@ _RELAY_PARTS = {
     "ark.runs": "按每趟记录做的机器上核对", "ark.system": "中继自身的机器上核对",
     "ark.macpush": "报警直送", "ark.phone_banners": "手机通道和卡池核对", "ark.shiftcheck": "收工体检",
     "ark.stagegate": "关卡能不能去的检查", "ark.techlog": "技术日志", "ark.weekgate": "鸣潮周常开关",
-    "ark.procwatch": "关机防护",
+    "ark.procwatch": "关机防护", "ark.ak_activity": "明日方舟活动提醒", "ark.friend_events": "好友微信提醒",
 }
 
 
@@ -1477,7 +1492,11 @@ def samples() -> list[str]:
         SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ESSENCE_FILLER_FAILED, essence_filler_failed("写进去之后读出来和写的不一样"),
         essence_filler_on(["玉中身", "唤月"]), essence_filler_on([]), ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
         CONFIG_CHANGED, CONFIG_FAILED, INBOX_APPLIED, SELFUPDATE_FAILED, WATCH_LOST,
-        AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
+        AUTOMAS_DOWN, ROUND_INCOMPLETE, AK_ACTIVITY_OPEN,
+        ak_activity_open_body("雪山降临1101", "支线活动", "11-22 04:00（东京 05:00）",
+                              "12-02 03:59（东京 04:59）", rerun=True),
+        ak_activity_open_body("昨日海", "支线活动", "10-09 12:00（东京 13:00）", opening_today=True),
+        SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),
         CLAIM_LINES_RUN, CLAIM_LINES_FW, claim_lines_fw_none("框架日志的文件夹不在"), claim_lines_head("基质刷取"),
         claim_lines_skipped(12),

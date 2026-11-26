@@ -32,6 +32,8 @@ _TESTS_DIR = Path(__file__).resolve().parent
 # Config.alert_push_url defaults to the real Mac (macpush.py): a test alarm must
 # never be POSTed there. A test that exercises the push sets its own URL.
 os.environ.setdefault("ARK_ALERT_PUSH_URL", "")
+os.environ.setdefault("ARK_FRIEND_NOTIFY_URL", "")
+os.environ.setdefault("ARK_AK_ACTIVITY_NO_NET", "1")
 # The Mac scripts a test runs (winps.sh, estop.sh ...) log each call to
 # ~/.cache/ark-relay/mac_actions.log (scripts/mac/lib/mac-action-log.sh), the file read to
 # find out who touched the game PC. Test calls go nowhere; a test of the log sets its own.

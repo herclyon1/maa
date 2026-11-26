@@ -283,6 +283,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "interim:*": "某天临时日报覆盖到第几条记录",
         "techlog:*": "某天日报的技术部分哪几段已写进技术日志（值=标题列表；report.write_daily_techlog）",
         "banner:*": "某个卡池的开服播报已发（键=游戏+开始时刻）",
+        "ak_activity:*": "某个明日方舟活动开启提醒已发（键=活动唯一标识）",
         "alerted:*": "某天已经告警过的事（键=日期，值=告警标识列表）",
         "noted:*": "某天已经记进日报的不关机原因（10-10 23:22 起不再写，旧的留着无害）",
         "handled_boot": "这次开机里中继看到运行记录落账：{boot, at}（重启后同一次开机接着判关机；shutdown.note_handled）",

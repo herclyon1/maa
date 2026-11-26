@@ -568,6 +568,7 @@ class Engine:
             ("推送积压告警", self._flush_pending),
             ("周常门", self._weekly_gates),
             ("月卡提醒", self._monthcard_notice),
+            ("明日方舟活动提醒", self._ak_activity_notice),
             ("需求表", self._need_table),
             # Before the missed-run check and the shutdown decision: both read what
             # the stage gate pulled (stagegate.excused / recent_pulled).
@@ -617,10 +618,27 @@ class Engine:
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""
-        from ark_relay.features import phone as monthcard  # noqa: PLC0415
+        from ark_relay.features import friend_events, phone as monthcard  # noqa: PLC0415
+        items = monthcard.due_items(self.state.dir)
         due = monthcard.due_notice(self.state.dir)
         if due and not self.notifier.send(*due):
             monthcard.mark_sent(self.state.dir)
+            try:
+                for it in items:
+                    friend_events.emit_monthcard_expiring(
+                        self.cfg,
+                        game=it["game"],
+                        days_left=it["days_left"],
+                        last_date=it["last"],
+                        text=it["line"],
+                    )
+            except Exception:
+                log.warning("月卡到期好友提醒入队失败", exc_info=True)
+
+    def _ak_activity_notice(self) -> None:
+        """Notify once when a new or rerun Arknights activity opens (ak_activity.py)."""
+        from ark_relay.features import ak_activity  # noqa: PLC0415
+        ak_activity.step(self)
 
     def _need_table(self) -> None:
         """Once a server day, on a thread of its own: the App's need table rebuilt and put on COS (needtable.py)."""
