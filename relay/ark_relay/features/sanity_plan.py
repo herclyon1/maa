@@ -344,6 +344,48 @@ def _write_options(ov: dict, want_task: str, tab: str, line: str,
     return None
 
 
+def _unlink_quietly(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _commit_master(f: Path, original: str, data: dict) -> "tuple[Path | None, str]":
+    """Back up `f` and atomically write `data`. Returns `(backup, "")` or `(None, error)`."""
+    stamp = datetime.now(tz=SERVER_TZ)
+    backup = f.with_suffix(f".json.bak-{stamp:%Y%m%d-%H%M%S}")
+    had_backup = False
+    try:
+        had_backup = backup.exists()
+        shutil.copy2(f, backup)
+    except OSError as exc:
+        if not had_backup:
+            _unlink_quietly(backup)
+        return None, f"备份母本失败，原文件未改动: {exc}"
+    try:
+        atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=2))
+    except OSError as exc:
+        # atomic_write_text writes a temp file and calls os.replace, so when it
+        # fails (e.g. PermissionError on a locked file) the original is usually
+        # untouched. Do not blindly overwrite a locked file; only roll back if
+        # needed, and guard rollback itself so a phone command batch never aborts.
+        try:
+            intact = f.read_text(encoding="utf-8") == original
+        except OSError:
+            intact = False
+        if intact:
+            if not had_backup:
+                _unlink_quietly(backup)
+            return None, f"写入失败，原文件未改动: {exc}"
+        try:
+            shutil.copy2(backup, f)
+        except OSError as rb_exc:
+            return None, f"写入失败，未能回滚（备份在 {backup.name}）: {exc}；回滚失败: {rb_exc}"
+        return None, f"写入失败，已回滚: {exc}"
+    return backup, ""
+
+
 def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
              rewards_set: str = "", location: str = "",
              maaend_dir: "Path | None" = None) -> tuple[bool, str]:
@@ -395,14 +437,9 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
     if not changes:
         return True, "已经是这个方案，无需改动"
 
-    stamp = datetime.now(tz=SERVER_TZ)
-    backup = f.with_suffix(f".json.bak-{stamp:%Y%m%d-%H%M%S}")
-    shutil.copy2(f, backup)
-    try:
-        atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=2))
-    except OSError as exc:
-        shutil.copy2(backup, f)
-        return False, f"写入失败，已回滚: {exc}"
+    backup, err = _commit_master(f, original, data)
+    if backup is None:
+        return False, err
     log.info("理智方案改动: %s", "；".join(changes))
     return True, (f"{before_label or '(未知)'}\n改成 {read(automas_dir).get('label', '?')}"
                   f"\n（备份 {backup.name}）")

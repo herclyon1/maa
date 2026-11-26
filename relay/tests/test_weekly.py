@@ -2387,5 +2387,121 @@ def _part_boss_table_matches():
     sys.exit(1 if fails else 0)
 
 
+def _part_sanity_plan_write_rollback():
+    """sanity_plan.set_plan handles backup/write/rollback PermissionError without crashing phone batches."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features import phone as inbox
+    from ark_relay.features import sanity_plan
+
+    def make_master(name: str) -> tuple[Path, Path, str]:
+        root = tmpdir() / name / "automas"
+        d = root / "data" / "59da8762" / "Default" / "ConfigFile"
+        d.mkdir(parents=True)
+        mf = d / "mxu-MaaEnd.json"
+        raw = json.dumps({
+            "instances": [{
+                "id": "automas", "name": "AUTO-MAS",
+                "tasks": [
+                    {"id": "a2", "taskName": "ProtocolSpace", "enabled": True,
+                     "optionValues": {
+                         "ProtocolSpaceTab": {"type": "select", "caseName": "OperatorProgression"},
+                         "OperatorProgression": {"type": "select", "caseName": "Promotions"},
+                     }},
+                    {"id": "a3", "taskName": "AutoEssence", "enabled": False,
+                     "optionValues": {
+                         "AutoEssenceChooseLocation": {"type": "checkbox", "caseNames": ["VFTheHub"]},
+                     }},
+                ],
+            }],
+        }, ensure_ascii=False)
+        mf.write_text(raw, encoding="utf-8")
+        return root, mf, raw
+
+    saved_write = sanity_plan.atomic_write_text
+    saved_copy2 = sanity_plan.shutil.copy2
+
+    try:
+        print("[1. 目标文件被锁：atomic_write_text 报 PermissionError 且原文件未坏 → 不覆写、不抛异常、批处理不中断]")
+        am, mf, before = make_master("locked-intact")
+        copy_calls = []
+
+        def lock_copy2(src, dst, *a, **kw):
+            copy_calls.append((Path(src), Path(dst)))
+            if Path(dst) == mf:
+                raise PermissionError(13, "target file locked", str(dst))
+            return saved_copy2(src, dst, *a, **kw)
+
+        def lock_write(path, text, newline=None):
+            raise PermissionError(13, "file locked by MaaEnd", str(path))
+
+        sanity_plan.shutil.copy2 = lock_copy2
+        sanity_plan.atomic_write_text = lock_write
+        ok, msg = sanity_plan.set_plan(am, "Essence")
+        check("返回失败而非未捕获 PermissionError", ok, False)
+        check("说明原文件未改动", "写入失败，原文件未改动" in msg, True)
+        check("没有往锁住的原文件写回", [dst for _, dst in copy_calls if dst == mf], [])
+        check("原文件内容一字未动", mf.read_text(encoding="utf-8"), before)
+        check("未留多余的空跑备份文件", list(mf.parent.glob("*.bak-*")), [])
+
+        print("\n[1b. 手机指令批处理：sanity_plan 遇文件锁后继续执行后续指令并保留完整回执]")
+        box = inbox.Inbox(tmpdir() / "state", automas_dir=am)
+        saved_ac = inbox.apply_command
+        inbox.apply_command = lambda cmd: (True, f"后续指令完成:{cmd.get('action')}")
+        try:
+            out = box._apply([
+                {"action": "sanity_plan", "tab": "Essence"},
+                {"action": "skip_today", "queue": "早班"},
+            ])
+        finally:
+            inbox.apply_command = saved_ac
+        check("两条指令都返回了回执", len(out), 2)
+        check("第一条是理智方案失败回执", out[0].startswith("✗ 理智方案：写入失败"), True)
+        check("第二条后续指令照常执行并拿回执", out[1], "✅ 后续指令完成:skip_today")
+
+        print("\n[2. 写入中途损坏原文件且目标可写 → 正常从备份回滚]")
+        am2, mf2, before2 = make_master("corrupt-rollback")
+        sanity_plan.shutil.copy2 = saved_copy2
+
+        def corrupt_then_fail(path, text, newline=None):
+            Path(path).write_text("{corrupt", encoding="utf-8")
+            raise OSError("disk full")
+
+        sanity_plan.atomic_write_text = corrupt_then_fail
+        ok, msg = sanity_plan.set_plan(am2, "Essence")
+        check("返回失败并说明已回滚", (ok, "写入失败，已回滚" in msg), (False, True))
+        check("原文件已恢复成备份内容", mf2.read_text(encoding="utf-8"), before2)
+
+        print("\n[3. 原文件损坏/不可读且回滚也报 PermissionError → 不抛异常并保留备份名]")
+        am3, mf3, _before3 = make_master("rollback-fail")
+
+        def fail_rollback_copy2(src, dst, *a, **kw):
+            if Path(dst) == mf3:
+                raise PermissionError(13, "rollback denied", str(dst))
+            return saved_copy2(src, dst, *a, **kw)
+
+        sanity_plan.shutil.copy2 = fail_rollback_copy2
+        sanity_plan.atomic_write_text = corrupt_then_fail
+        ok, msg = sanity_plan.set_plan(am3, "Essence")
+        baks3 = list(mf3.parent.glob("*.bak-*"))
+        check("回滚失败也不抛异常", ok, False)
+        check("回执说明未能回滚并点出备份名",
+              ("未能回滚" in msg, bool(baks3) and baks3[0].name in msg), (True, True))
+
+        print("\n[4. 备份阶段自身报 PermissionError → 不抛异常、原文件未动]")
+        am4, mf4, before4 = make_master("backup-fail")
+
+        def fail_backup_copy2(src, dst, *a, **kw):
+            raise PermissionError(13, "dir read-only", str(dst))
+
+        sanity_plan.shutil.copy2 = fail_backup_copy2
+        sanity_plan.atomic_write_text = saved_write
+        ok, msg = sanity_plan.set_plan(am4, "Essence")
+        check("备份失败返回失败不抛异常", (ok, "备份母本失败" in msg), (False, True))
+        check("原文件未动", mf4.read_text(encoding="utf-8"), before4)
+    finally:
+        sanity_plan.atomic_write_text = saved_write
+        sanity_plan.shutil.copy2 = saved_copy2
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_annihilation_no_progress, _part_annihilation_not_healed_by_routine, _part_annihilation_status, _part_annihilation_unreadable_none, _part_annihilation_skipped_checked_on_skland, _part_annihilation_day_rechecked, _part_sanity_plan_both_on, _part_sanity_plan_master, _part_sanity_plan_reward_names, _part_sanity_plan_weekday, _part_sanity_span, _part_weeklyboss_count, _part_weeklyboss_cycle, _part_weeklyboss_reopen, _part_garden_gate, _part_garden_rollover_after_tick, _part_garden_unified, _part_nest_patch_visible, _part_nest_source_pristine, _part_nest_strings_pinned, _part_wuwa_bulletin, _part_wuwa_middot, _part_wuwa_update_close, _part_boss_table_matches]))
+    sys.exit(run_parts([_part_annihilation_no_progress, _part_annihilation_not_healed_by_routine, _part_annihilation_status, _part_annihilation_unreadable_none, _part_annihilation_skipped_checked_on_skland, _part_annihilation_day_rechecked, _part_sanity_plan_both_on, _part_sanity_plan_master, _part_sanity_plan_reward_names, _part_sanity_plan_weekday, _part_sanity_span, _part_weeklyboss_count, _part_weeklyboss_cycle, _part_weeklyboss_reopen, _part_garden_gate, _part_garden_rollover_after_tick, _part_garden_unified, _part_nest_patch_visible, _part_nest_source_pristine, _part_nest_strings_pinned, _part_wuwa_bulletin, _part_wuwa_middot, _part_wuwa_update_close, _part_boss_table_matches, _part_sanity_plan_write_rollback]))

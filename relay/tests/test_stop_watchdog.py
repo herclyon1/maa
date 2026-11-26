@@ -843,5 +843,128 @@ def _part_publish_cos_notes():
         pc.urllib.request.urlopen, pc.time.sleep = real_urlopen, real_sleep
 
 
+def _part_maaend_watchdog_startup_lines():
+    """Startup log lines within the first 0-30 s before a new MaaEnd PID is checked
+    must count as progress (stall kill after 10 min), not as a blind/unreadable log."""
+    import os
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.features import maaend_watchdog
+
+    RUNNING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
+    WAITING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "等待"}]}]}
+    PID1, PID2 = 21260, 21360
+
+    def procs_for(pid):
+        base = [("System", 4), ("Endfield.exe", 18800), ("go-service.exe", 21932), ("cpp-algo.exe", 21940)]
+        return base if pid is None else [*base, ("MaaEnd.exe", pid)]
+
+    class _Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body, kw.get("alert", False)))
+            return []
+
+    class _Rig:
+        def __init__(self, *, snap=WAITING, pid=None):
+            self.t = 1000.0
+            self.snap = snap
+            self.procs = procs_for(pid)
+            self.lines = 0
+            self.stamp = "2026-11-26 09:00:05"
+            self.killed = []
+            self.notes = _Notes()
+            self.debug = tmpdir() / "debug"
+            self.debug.mkdir()
+            (self.debug / "go-service.stderr.log").write_text("", encoding="utf-8")
+            agent = str(self.debug.parent / "agent")
+            paths = {21932: os.path.join(agent, "go-service.exe"),
+                     21940: os.path.join(agent, "cpp-algo.exe")}
+            self.dog = maaend_watchdog.Watchdog(
+                self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: self.snap,
+                processes=lambda: self.procs,
+                kill=lambda p, img: self.killed.append(p) or (True, ""),
+                plugin_paths=lambda: paths, active=True)
+
+        def step(self, dt, *, new_lines=0):
+            self.t += dt
+            self.lines += new_lines
+            return self.dog.tick(self.lines, self.stamp)
+
+        def stall(self, minutes=11):
+            for _ in range(minutes):
+                self.step(60)
+
+    print("[WAITING -> 0-30s 内新进程打完启动日志即卡死：10 分钟后真杀，不误报读不到日志]")
+    r = _Rig(snap=WAITING, pid=None)
+    r.step(60)                                  # t=1060: 30 s check sees WAITING, lines=0
+    r.snap, r.procs = RUNNING, procs_for(PID1)
+    r.step(2, new_lines=15)                     # t=1062 (<30s): startup burst 1, early return
+    r.step(3, new_lines=25)                     # t=1065 (<30s): startup burst 2, then hangs forever
+    r.step(30)                                  # t=1095 (>=30s): first sight of PID1
+    r.stall()
+    check("结束后杀掉了卡死进程和插件", r.killed, [PID1, 21932, 21940])
+    check("发的是卡死报警，不是读不到日志", [t for t, _, _ in r.notes.sent], [texts.MAAEND_STUCK_KILLED])
+
+    print("\n[上一趟结束（pid=None，已有 500 行）-> 新进程 0-30s 启动日志后卡死：仍真杀]")
+    r = _Rig(snap=RUNNING, pid=None)
+    r.lines = 500
+    r.step(60)                                  # pid is None -> _checked_lines=500
+    r.procs = procs_for(PID1)
+    r.step(5, new_lines=30)                     # <30s: new PID writes 30 lines then hangs
+    r.step(30)                                  # first sight of PID1
+    r.stall()
+    check("真杀新 PID", r.killed[:1], [PID1])
+    check("报卡死而非盲报警", [t for t, _, _ in r.notes.sent], [texts.MAAEND_STUCK_KILLED])
+
+    print("\n[旧 PID 换新 PID 在同一 30s 窗内：新 PID 启动日志后卡死仍真杀]")
+    r = _Rig(snap=RUNNING, pid=PID1)
+    r.step(60, new_lines=10)                    # PID1 running, _checked_lines=10
+    r.procs = procs_for(PID2)
+    r.step(5, new_lines=20)                     # <30s: PID2 writes startup lines then hangs
+    r.step(30)                                  # first sight of PID2
+    r.stall()
+    check("真杀 PID2", r.killed[:1], [PID2])
+    check("报卡死而非盲报警", [t for t, _, _ in r.notes.sent], [texts.MAAEND_STUCK_KILLED])
+
+    print("\n[新 PID 启动后首个 30s 检查遇 snapshot/processes 暂时 None：不冲掉启动前基线]")
+    for kind in ("snap", "procs"):
+        r = _Rig(snap=WAITING, pid=None)
+        r.step(60)                              # baseline = 0
+        r.snap, r.procs = RUNNING, procs_for(PID1)
+        r.step(5, new_lines=40)                 # <30s startup lines then hang
+        if kind == "snap":
+            r.snap = None
+        else:
+            r.procs = None
+        r.step(30)                              # transient None check must not advance baseline
+        r.snap, r.procs = RUNNING, procs_for(PID1)
+        r.step(35)                              # recovered: first sight of PID1
+        r.stall()
+        check(f"{kind}=None 恢复后仍真杀", (r.killed[:1], [t for t, _, _ in r.notes.sent]),
+              ([PID1], [texts.MAAEND_STUCK_KILLED]))
+
+    print("\n[刚开机首跳已读到启动日志随后卡死：10 分钟后真杀]")
+    r = _Rig(snap=RUNNING, pid=PID1)
+    r.step(60, new_lines=40)                    # Watcher started at 0, read 40 lines before first tick
+    r.stall()
+    check("首跳带启动行后卡死仍真杀", (r.killed[:1], [t for t, _, _ in r.notes.sent]),
+          ([PID1], [texts.MAAEND_STUCK_KILLED]))
+
+    print("\n[对照：新 PID 确实一行未读到（日志真读不到）→ 照旧报盲报警不杀]")
+    r = _Rig(snap=WAITING, pid=None)
+    r.lines = 50
+    r.step(60)                                  # WAITING, baseline=50
+    r.snap, r.procs = RUNNING, procs_for(PID1)
+    r.step(5)                                   # 0 new lines
+    r.step(30)                                  # first sight of PID1, still 50
+    r.stall(minutes=12)
+    check("真读不到日志：不杀", r.killed, [])
+    check("真读不到日志：报盲报警", [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND])
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_stop_push_watchdog, _part_deploy_watch, _part_publish_cos_args, _part_publish_cos_notes]))
+    sys.exit(run_parts([_part_stop_push_watchdog, _part_deploy_watch, _part_publish_cos_args, _part_publish_cos_notes, _part_maaend_watchdog_startup_lines]))
