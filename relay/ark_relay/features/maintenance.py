@@ -49,12 +49,26 @@ def update_hint(now: datetime | None = None, fetch=None, strict: bool = False) -
     try:
         if fetch is None:
             req = urllib.request.Request(_URL, headers={"User-Agent": _EF_UA})
-            got = {}
+            got: dict = {}
+            tried_ips: set[str] = set()
+            pin = [""]
 
             def once(left):
-                with urllib.request.urlopen(req, timeout=left) as r:
-                    got["resp"] = r
-                    return r.read()
+                peer_ip = ""
+                try:
+                    with netretry.open_pinned(req, left, pin[0], opener=urllib.request.urlopen) as r:
+                        peer_ip = netretry.response_peer_ip(r)
+                        got["resp"] = r
+                        return r.read()
+                except Exception as exc:
+                    if netretry.transient(exc):
+                        alt = netretry.next_cdn_ip(req.full_url, tried_ips, peer_ip, pin[0],
+                                                   opener=urllib.request.urlopen)
+                        pin[0] = alt
+                        if alt:
+                            log.info("终末地官方公告读取失败（%s: %s），下次重试换地址 %s",
+                                     type(exc).__name__, exc, alt)
+                    raise
             # The 8 s this read always had, now shared by its tries (netretry.call).
             raw = netretry.call(once, "读终末地官方公告", 8, detail=_URL)
             tape.answer("web", _URL, body=raw, resp=got.get("resp"))     # the day's tape (selfcheck/tape.py)

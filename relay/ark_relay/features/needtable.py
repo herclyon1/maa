@@ -65,6 +65,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from pathlib import Path
+from ark_relay.core import notify as netretry
 from ark_relay.core import statestore as techlog
 from ark_relay.features import errwatch
 from ark_relay.features.phone import cos_put, state_cos, state_key, Mailbox
@@ -276,11 +277,25 @@ class RulesSource:
             self._memo[name] = self._load(name)
             return self._memo[name]
         url = f"{ZONAI}{path}" + (f"?{query}" if query else "")
+        tried_ips: set[str] = set()
+        pin = [""]
 
         def once():
             req = urllib.request.Request(url, headers=self.skland.sign_headers(self.cred, url))
-            with urllib.request.urlopen(req, timeout=30) as r:
-                raw = r.read()
+            peer_ip = ""
+            try:
+                with netretry.open_pinned(req, 30, pin[0], opener=urllib.request.urlopen) as r:
+                    peer_ip = netretry.response_peer_ip(r)
+                    raw = r.read()
+            except Exception as exc:
+                if netretry.transient(exc):
+                    alt = netretry.next_cdn_ip(url, tried_ips, peer_ip, pin[0],
+                                               opener=urllib.request.urlopen)
+                    pin[0] = alt
+                    if alt:
+                        log.info("需求表读 %s 失败（%s: %s），下次重试换地址 %s",
+                                 path, type(exc).__name__, exc, alt)
+                raise
             if raw[:2] == b"\x1f\x8b":
                 raw = gzip.decompress(raw)
             return json.loads(raw.decode("utf-8"))
@@ -854,13 +869,14 @@ def by_name_to_ids(counts: Counter, mat: dict[str, dict]) -> Counter:
 def _is_released(entry: dict, today: str) -> bool:
     """True once release day is here and the official wiki no longer marks her as preview.
 
-    Endfield banners open at 12:00 UTC+8 on release day; before noon the wiki already has
-    `onlineDate == today` while still keeping `dotType == "label_type_preview"` and holding
-    back calculator / material-card data (#197, 2026-11-25 小刻)."""
+    Endfield banners open at 12:00 UTC+8 on release day; before noon (or past midnight
+    when the wiki has not cleared the preview tag yet) the entry keeps
+    `dotType == "label_type_preview"` while holding back calculator / material-card
+    data (#197, 2026-11-25 小刻)."""
     d = entry.get("onlineDate") or ""
     if not d or d > today:
         return False
-    return not (d == today and entry.get("dotType") == "label_type_preview")
+    return entry.get("dotType") != "label_type_preview"
 
 
 def pick_standards(ranked: list[dict], today: str, rarity: str, char_name: str = "") -> list[tuple[str, str, str, str]]:
@@ -877,6 +893,22 @@ def pick_standards(ranked: list[dict], today: str, rarity: str, char_name: str =
     if upcoming:
         picks.append((upcoming[-1]["name"], "next", f"下一位{star}星", f"百科里已公布、上线日期最近的未上线{star}星"))
     return picks
+
+
+def _fallback_current(src: RulesSource, ctx: dict, ops: list[dict], released: list[dict],
+                      role: str, label: str, chosen_by: str, weapon_name: str,
+                      first_who: str, first_exc: Exception) -> tuple[dict, str]:
+    """Walk older released operators when the newest one has no data yet (unpublished=True)."""
+    errs = [f"{first_who}：{type(first_exc).__name__}: {first_exc}"]
+    for cand in released[1:]:
+        fb = cand["name"]
+        try:
+            return build_standard(src, ctx, ops, fb, role, label, chosen_by, weapon_name), "；".join(errs)
+        except Exception as exc:
+            if not getattr(exc, "unpublished", False):
+                raise
+            errs.append(f"{fb}：{type(exc).__name__}: {exc}")
+    raise first_exc
 
 
 def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", weapon_name: str = "",
@@ -904,10 +936,10 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
             standards.append(build_standard(src, ctx, ops, who, role, label, chosen_by, weapon_name if i == 0 else ""))
         except Exception as exc:  # the next one is optional; current falls back only when unpublished
             if i == 0:
-                if not char_name and getattr(exc, "unpublished", False) and len(released) >= 2:
-                    fb = released[1]["name"]
-                    standards.append(build_standard(src, ctx, ops, fb, role, label, chosen_by, weapon_name))
-                    next_error = f"{who}：{type(exc).__name__}: {exc}"
+                if not char_name and role == "current" and getattr(exc, "unpublished", False) and len(released) >= 2:
+                    std, next_error = _fallback_current(src, ctx, ops, released, role, label, chosen_by,
+                                                        weapon_name, who, exc)
+                    standards.append(std)
                     continue
                 raise
             if not next_error:
@@ -1245,10 +1277,14 @@ def next_moment(state_dir, now: datetime) -> "tuple[datetime, str] | None":
     either: the loop looks again SECOND_TRY_AFTER later at the latest. None when no second
     try is due today, or its moment has passed (the tick that comes first starts it)."""
     today = now.strftime("%Y-%m-%d")
-    t = _running.get("thread")
+    with _lock:
+        t = _running.get("thread")
+        running_day = _running.get("day")
+        running_count = _num(_running, "count")
+        ended = _running.get("ended")
     if t is not None and t.is_alive():
         return (now + SECOND_TRY_AFTER, "看终末地需求表重算完没有")
-    if _running.get("day") == today and _num(_running, "count") >= BUILDS_A_DAY:
+    if running_day == today and running_count >= BUILDS_A_DAY:
         return None
     m = _read_mark(state_dir)
     if m.get("day") != today or m.get("ok") or m.get("skip") or _num(m, "tries") >= BUILDS_A_DAY:
@@ -1259,8 +1295,7 @@ def next_moment(state_dir, now: datetime) -> "tuple[datetime, str] | None":
         return None
     if at.tzinfo is None:
         return None
-    ended = _running.get("ended")
-    if _running.get("day") == today and isinstance(ended, datetime) and ended.tzinfo is not None:
+    if running_day == today and isinstance(ended, datetime) and ended.tzinfo is not None:
         at = max(at, ended + SECOND_TRY_AFTER)
     return (at, "终末地需求表当天第二次重算") if at > now else None
 
@@ -1308,7 +1343,9 @@ def _run(cfg, now) -> None:
     try:
         refresh(cfg, now)
     finally:
-        _running["ended"] = now or datetime.now(SERVER_TZ)
+        ended = now or datetime.now(SERVER_TZ)
+        with _lock:
+            _running["ended"] = ended
 
 
 def step(cfg, now: "datetime | None" = None, *, start=None) -> bool:
@@ -1330,9 +1367,9 @@ def step(cfg, now: "datetime | None" = None, *, start=None) -> bool:
             return False
         _running["count"] += 1
         _running["ended"] = None
-        if start is not None:
-            start(lambda: _run(cfg, now))
+        if start is None:
+            t = _running["thread"] = threading.Thread(target=_run, args=(cfg, now), name="need-table", daemon=True)
+            t.start()
             return True
-        t = _running["thread"] = threading.Thread(target=_run, args=(cfg, now), name="need-table", daemon=True)
-        t.start()
+    start(lambda: _run(cfg, now))
     return True
