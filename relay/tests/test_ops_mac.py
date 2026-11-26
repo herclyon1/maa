@@ -657,11 +657,13 @@ def _part_order_now_confirmed():
     from ark_relay.features.commands import MUTATING
 
 
+    py_dir = str(Path(sys.executable).parent)
+
     def run(body: dict, home: str) -> tuple[int, str, bool]:
         """(exit code, output, whether the fake curl was called)."""
         sent = Path(home) / "curl-called"
         sent.unlink(missing_ok=True)
-        env = {**os.environ, "HOME": home, "PATH": f"{home}/bin:{os.environ['PATH']}"}
+        env = {**os.environ, "HOME": home, "PATH": f"{home}/bin:{py_dir}:{os.environ['PATH']}"}
         r = subprocess.run(["bash", str(SCRIPT), json.dumps(body, ensure_ascii=False)],
                            capture_output=True, env=env, timeout=30)
         return r.returncode, (r.stderr + r.stdout).decode("utf-8", "replace"), sent.exists()
@@ -737,8 +739,10 @@ def _part_order_push_main():
         return origin, work
 
 
+    py_dir = str(Path(sys.executable).parent)
+
     def run(work, tmp, *args):
-        env = dict(os.environ, HOME=str(tmp / "home"))
+        env = dict(os.environ, HOME=str(tmp / "home"), PATH=f"{py_dir}:{os.environ['PATH']}")
         (tmp / "home").mkdir(exist_ok=True)
         return subprocess.run(["bash", str(work / "scripts" / "mac" / "order.sh"), *args],
                               capture_output=True, text=True, env=env, timeout=60)
@@ -1042,6 +1046,8 @@ def _part_wingui_guards():
         env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{PY_DIR}:{os.environ['PATH']}", "ARK_HOST": "test-host",
                "ARK_ACTION_LOG": str(LOG) if extra.pop("log", None) else os.devnull, "TMPDIR": str(FAKE / "tmp"), **extra}
         env.pop("ARK_GUI_WAIT", None)
+        if "ARK_GUI_POLL" not in extra:
+            env.pop("ARK_GUI_POLL", None)
         if "ARK_GUI_DURING_FARM" not in extra:
             env.pop("ARK_GUI_DURING_FARM", None)
         r = subprocess.run(["bash", str(WINGUI), *args], capture_output=True, env=env, timeout=60)
@@ -1088,7 +1094,7 @@ def _part_wingui_guards():
     check("no resume order for a past end", '"action": "echo_farm"' in out, False)
 
     print("\n[launch: the wait covers the machine's own wait for the game window]")
-    code, out, calls = run("launch", state={"queues": {}}, gui=None)
+    code, out, calls = run("launch", state={"queues": {}}, gui=None, ARK_GUI_POLL="999")
     waited = re.search(r"等了 (\d+) 秒", out)
     ps1 = pushed_ps1()
     check("no result: exit 3", code, 3)
@@ -1099,7 +1105,7 @@ def _part_wingui_guards():
     check("no placeholder left in what was pushed", re.search(r"__[A-Z_]+__", ps1), None)
     check("launch wuwa passes a quality pack", "$extra = @(\"-krqlv=$pkg\") + $extra" in ps1, True)
     check("Client-Win64-Shipping.exe is refused", "别直接起 Client-Win64-Shipping.exe" in ps1, True)
-    code, out, _ = run("key", "esc", state={"queues": {}}, gui=None)
+    code, out, _ = run("key", "esc", state={"queues": {}}, gui=None, ARK_GUI_POLL="999")
     check("other actions keep their budget (35 s for one key)", re.search(r"等了 (\d+) 秒", out).group(1), "35")
 
     print("\n[ERR from the machine is a failure, the screenshot still comes back]")
@@ -1133,7 +1139,7 @@ def _part_wingui_guards():
     for name in ("calls", "gui.txt"):
         (FAKE / name).unlink(missing_ok=True)
     (FAKE / "state.json").write_text("{not json", encoding="utf-8")
-    env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{os.environ['PATH']}", "ARK_HOST": "test-host",
+    env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{PY_DIR}:{os.environ['PATH']}", "ARK_HOST": "test-host",
            "ARK_ACTION_LOG": os.devnull, "TMPDIR": str(FAKE / "tmp")}
     env.pop("ARK_GUI_DURING_FARM", None)
     r = subprocess.run(["bash", str(WINGUI), "key", "esc"], capture_output=True, env=env, timeout=60)
@@ -1168,7 +1174,8 @@ def _part_wingui_guards():
     ALOG.chmod(0o644)
 
     def drive(*args, env_extra=None, drop=()):
-        e = {**os.environ, "ARK_ACTION_LOG": str(ALOG), "LC_CTYPE": "UTF-8", **(env_extra or {})}
+        e = {**os.environ, "PATH": f"{PY_DIR}:{os.environ['PATH']}", "ARK_ACTION_LOG": str(ALOG),
+             "LC_CTYPE": "UTF-8", **(env_extra or {})}
         for k in drop:
             e.pop(k, None)
         r = subprocess.run(["/bin/bash", str(driver), *args], capture_output=True, env=e, timeout=30)

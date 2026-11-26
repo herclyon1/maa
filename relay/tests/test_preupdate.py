@@ -3791,6 +3791,103 @@ the relay reads before the game machine installs it.
         check("f\"If{task}\" becomes the pattern If*", ("Task", "If*") in beta3["MaaEndUserConfig"])
         check("legacy_group is read", beta3["MaaUserConfig"][("Stage", "Stage")], ("Info", "Stage"))
 
+        print("\n[v5.8+/v5.10 Pydantic multi-file parsing, cross-file inheritance, SPLIT_USER_KEYS, and 404 fallback]")
+        pyd_shared = '''\
+from typing import Annotated, Literal
+from pydantic import Field
+
+class AccountNameFields(ConfigGroup):
+    Name: str = Field(default="新账号", description="账号名称")
+    Status: bool = Field(default=True, description="是否启用")
+    RemainedDay: int = Field(default=-1, description="剩余天数")
+
+class OkwwTaskFields(ConfigGroup):
+    WhichToFarm: Literal["Tacet Suppression", "Forgery Challenge"] = Field(default="Tacet Suppression")
+    WhichTacetSuppressionToFarm: int = Field(default=1)
+    WhichForgeryChallengeToFarm: int = Field(default=1)
+    MaterialSelection: str = Field(default="Shell Credit")
+    FarmNightmareNestForDailyEcho: bool = Field(default=True)
+    AdditionalTasks: list[str] = Field(default_factory=list)
+'''
+        pyd_script = '''\
+from typing import Annotated
+from pydantic import Field
+
+class MaaUserConfig(DomainEntry):
+    class InfoFields(AccountNameFields):
+        pass
+    Info: InfoFields = Field(default_factory=InfoFields)
+    class StageFields(ConfigGroup):
+        Stage: Annotated[str, legacy(group="Info", name="Stage")] = Field(default="-")
+    Stage: StageFields = Field(default_factory=StageFields)
+    class TaskFields(ConfigGroup):
+        IfFight: bool = Field(default=True)
+    Task: TaskFields = Field(default_factory=TaskFields)
+
+class MaaEndUserConfig(DomainEntry):
+    class TaskFields(ConfigGroup):
+        IfProtocolSpace: Annotated[bool, legacy(group="Task", name="IfSanity")] = Field(default=True)
+        IfAutoEssence: bool = Field(default=False)
+        IfAutoUseSpMedication: bool = Field(default=True)
+        SanityTaskType: str = Field(default="OperatorProgression")
+        AutoEssenceSpecifiedLocation: str = Field(default="")
+    Task: TaskFields = Field(default_factory=TaskFields)
+
+class OkwwUserConfig(DomainEntry):
+    class InfoFields(AccountNameFields):
+        IfQuickConfig: bool = Field(default=True)
+    Info: InfoFields = Field(default_factory=InfoFields)
+    class TaskFields(OkwwTaskFields):
+        IfCustomArguments: bool = Field(default=False)
+    Task: TaskFields = Field(default_factory=TaskFields)
+'''
+        pyd = w.parse({"shared.py": pyd_shared, "script.py": pyd_script})
+        check("Pydantic cross-file inheritance resolves OkwwUserConfig Task.WhichToFarm & Info.Status",
+              (("Task", "WhichToFarm") in pyd["OkwwUserConfig"],
+               ("Task", "AdditionalTasks") in pyd["OkwwUserConfig"],
+               ("Info", "Status") in pyd["OkwwUserConfig"]),
+              (True, True, True))
+        check("Pydantic Annotated legacy() records moved origin on MaaUserConfig Stage.Stage",
+              pyd["MaaUserConfig"][("Stage", "Stage")], ("Info", "Stage"))
+        check("Pydantic MaaEndUserConfig defines IfProtocolSpace & IfAutoEssence",
+              (("Task", "IfProtocolSpace") in pyd["MaaEndUserConfig"],
+               ("Task", "IfAutoEssence") in pyd["MaaEndUserConfig"]),
+              (True, True))
+        # SPLIT_USER_KEYS: pre-v5.8 explicit IfSanity (without If* wildcard) satisfies both split keys,
+        # while a partial v5.8 schema (IfProtocolSpace only, missing IfAutoEssence) must be flagged.
+        end_items = [i for i in mascontract.CONTRACT if i.kind == "MaaEnd" and i.level == "user"]
+        pre58_explicit = {"MaaEndUserConfig": {
+            ("Task", "IfSanity"): None, ("Task", "IfAutoUseSpMedication"): None,
+            ("Task", "SanityTaskType"): None, ("Task", "AutoEssenceSpecifiedLocation"): None,
+        }}
+        partial_split = {"MaaEndUserConfig": {
+            ("Task", "IfProtocolSpace"): ("Task", "IfSanity"), ("Task", "IfAutoUseSpMedication"): None,
+            ("Task", "SanityTaskType"): None, ("Task", "AutoEssenceSpecifiedLocation"): None,
+        }}
+        check("SPLIT_USER_KEYS accepts pre-v5.8 explicit Task.IfSanity",
+              w.compare(pre58_explicit, end_items, masuser.MOVED, version="v5.7.0",
+                        split_keys=masuser.SPLIT_USER_KEYS), [])
+        check("SPLIT_USER_KEYS flags missing Task.IfAutoEssence when Task.IfProtocolSpace exists",
+              named(w.compare(partial_split, end_items, masuser.MOVED, version="v5.8.0",
+                              split_keys=masuser.SPLIT_USER_KEYS)),
+              ["MaaEndUserConfig Task.IfAutoEssence"])
+        # Legacy pre-v5.8 tag: 404 on app/models/config dir falls back cleanly to app/models/config.py.
+        real_gh, real_http2 = w._gh, w._http
+        try:
+            w._gh = lambda path: None
+            def fake_legacy_http(url):
+                if "/contents/app/models/config?" in url:
+                    raise w.urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+                if url.endswith("/v5.7.0-beta.4/app/models/config.py"):
+                    return BETA4.read_text(encoding="utf-8")
+                raise AssertionError(url)
+            w._http = fake_legacy_http
+            got_legacy = w.fetch_config("v5.7.0-beta.4")
+            check("fetch_config falls back to app/models/config.py on 404 for pre-v5.8 tags",
+                  list(got_legacy.keys()), [f"{w.REPO}:{w.CONFIG_PATH}"])
+        finally:
+            w._gh, w._http = real_gh, real_http2
+
         print("\n[exit codes]")
         code, text = run_main("--file", str(BETA4))
         check("nothing changed: exit 0", code, 0)
@@ -3803,6 +3900,7 @@ the relay reads before the game machine installs it.
         check("something changed: exit 2", code, 2)
         check("and it is printed", "Info.Stage: moved to Stage.Stage" in text)
         real_http = w._http
+        real_gh2 = w._gh
         w._gh = lambda path: None
 
         def offline(url):
@@ -3812,6 +3910,7 @@ the relay reads before the game machine installs it.
             code, text = run_main()
         finally:
             w._http = real_http
+            w._gh = real_gh2
         check("GitHub cannot be read: exit 3", code, 3)
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
@@ -5404,42 +5503,253 @@ data:
            phone.receipt_target({"action": "set_config", "script": "MaaEnd", "path": "Task.IfAutoEssence"})),
           ("MaaEnd:Task.IfProtocolSpace", "MaaEnd:Task.IfAutoEssence"))
 
-    pkg_root = tmpdir("v58-models-")
+    pkg_root = tmpdir("v58-pydantic-models-")
     mod_cfg = pkg_root / "app" / "models" / "config"
     mod_cfg.mkdir(parents=True)
+    # Real AUTO-MAS v5.8+/v5.10 Pydantic multi-file structure (shared.py + script.py),
+    # covering cross-file inheritance (OkwwTaskFields, AccountNameFields, AccountRunStatusFields),
+    # type aliases (ProxyStatus), Annotated[..., legacy(...)], Field(description=...), and Literal[...].
     (mod_cfg / "shared.py").write_text('''\
-def init_maaend_task_config(config) -> None:
-    ## 理智任务类型
-    config.Task_SanityTaskType = ConfigItem("Task", "SanityTaskType", "OperatorProgression")
-    ## 基质刷取地点
-    config.Task_AutoEssenceSpecifiedLocation = ConfigItem("Task", "AutoEssenceSpecifiedLocation", "VFTheHub")
-    ## 自动使用应急理智加强剂
-    config.Task_IfAutoUseSpMedication = ConfigItem("Task", "IfAutoUseSpMedication", True)
+from typing import Annotated, Literal
+from pydantic import Field
+
+ProxyStatus = Literal["未知", "成功", "失败", "维护中", "运行中"]
+
+
+class AccountNameFields(ConfigGroup):
+    Name: str = Field(default_factory=lambda: "新账号", description="账号名称")
+    Notes: str = Field(default_factory=lambda: "无", description="备注")
+    Status: bool = Field(default_factory=lambda: True, description="是否启用")
+
+
+class AccountRunStatusFields(ConfigGroup):
+    LastProxyStatus: ProxyStatus = Field(default_factory=lambda: "未知", description="上次代理状态")
+
+
+class OkwwTaskFields(ConfigGroup):
+    AdditionalTasks: list[
+        Literal[
+            "Check Weekly Garden",
+            "Auto Farm all Nightmare Nest",
+            "Merge Echo If discarded > 1000",
+            "Teleport and Farm 4C Echo",
+        ]
+    ] = Field(
+        default_factory=lambda: ["Check Weekly Garden"],
+        description="每日任务后运行的附加任务",
+    )
+    FarmNightmareNestForDailyEcho: bool = Field(
+        default_factory=lambda: True, description="使用梦魇巢穴完成日常声骸"
+    )
+    MaterialSelection: Literal["Resonator EXP", "Weapon EXP", "Shell Credit"] = Field(
+        default_factory=lambda: "Shell Credit", description="模拟领域材料"
+    )
+    WhichForgeryChallengeToFarm: Annotated[int, Field(ge=1, le=99)] = Field(
+        default_factory=lambda: 1, description="凝素领域序号"
+    )
+    WhichTacetSuppressionToFarm: Annotated[int, Field(ge=1, le=99)] = Field(
+        default_factory=lambda: 1, description="无音区序号"
+    )
+    WhichToFarm: Literal[
+        "Tacet Suppression", "Forgery Challenge", "Simulation Challenge"
+    ] = Field(
+        default_factory=lambda: "Tacet Suppression",
+        description="每日任务体力用途（日常任务按账号覆写或绑定计划生效）",
+    )
 ''', encoding="utf-8")
     (mod_cfg / "script.py").write_text('''\
-class MaaEndUserConfig(ConfigBase):
-    def __init__(self):
-        ## 协议空间开关
-        self.Task_IfProtocolSpace = ConfigItem("Task", "IfProtocolSpace", False)
-        ## 自动刷基质开关
-        self.Task_IfAutoEssence = ConfigItem("Task", "IfAutoEssence", True)
-        init_maaend_task_config(self)
+from typing import Annotated, Literal
+from pydantic import Field
+from .shared import AccountNameFields, AccountRunStatusFields, OkwwTaskFields
+
+
+class MaaUserConfig(DomainEntry):
+    class InfoFields(AccountNameFields):
+        Server: Literal["Official", "Bilibili"] = Field(default="Official", description="游戏服务器")
+
+    Info: InfoFields = Field(default_factory=InfoFields)
+
+    class StageFields(ConfigGroup):
+        MedicineNumb: Annotated[int, Field(ge=0, le=9999), legacy(group="Info", name="MedicineNumb")] = Field(
+            default_factory=lambda: 0, description="理智药数量"
+        )
+        SeriesNumb: Annotated[
+            Literal["0", "6", "5", "4", "3", "2", "1", "-1"],
+            legacy(group="Info", name="SeriesNumb"),
+        ] = Field(default_factory=lambda: "0", description="连战次数")
+        Stage: Annotated[str, legacy(group="Info", name="Stage")] = Field(
+            default_factory=lambda: "-", description="主关卡"
+        )
+        StageMode: Annotated[str, legacy(group="Info", name="StageMode")] = Field(
+            default_factory=lambda: "Fixed", description="关卡模式（Fixed 或关卡计划表 UUID）"
+        )
+
+    Stage: StageFields = Field(default_factory=StageFields)
+
+    class TaskFields(ConfigGroup):
+        ActivityMedicineNumb: Annotated[int, Field(ge=0, le=9999)] = Field(
+            default_factory=lambda: 0, description="活动关优先任务吃理智药数量"
+        )
+        ActivityStageIndex: Annotated[int, Field(ge=1, le=9999)] = Field(
+            default_factory=lambda: 1, description="优先刷取的活动关卡序号"
+        )
+        Annihilation: Annotated[
+            Literal[
+                "Close",
+                "Annihilation",
+                "Chernobog@Annihilation",
+                "LungmenOutskirts@Annihilation",
+                "LungmenDowntown@Annihilation",
+            ],
+            legacy(group="Info", name="Annihilation"),
+        ] = Field(default_factory=lambda: "Annihilation", description="剿灭模式")
+        IfActivityFirst: bool = Field(default_factory=lambda: False, description="活动期间是否优先刷活动关")
+        IfFight: bool = Field(default_factory=lambda: True, description="是否理智作战")
+
+    Task: TaskFields = Field(default_factory=TaskFields)
+
+
+class MaaEndUserConfig(DomainEntry):
+    class DataFields(AccountRunStatusFields):
+        PeriodTaskRecords: str = Field(default="{}", description="MaaEnd 每日任务完成记录")
+
+    Data: DataFields = Field(default_factory=DataFields)
+
+    class InfoFields(AccountNameFields):
+        IfQuickConfig: bool = Field(default=True, description="是否启用覆写常规配置")
+
+    Info: InfoFields = Field(default_factory=InfoFields)
+
+    class TaskFields(ConfigGroup):
+        AutoEssenceSpecifiedLocation: str = Field(
+            description="基质刷取指定地点", default_factory=lambda: ""
+        )
+        IfAutoEssence: bool = Field(default=False, description="基质刷取")
+        IfAutoUseSpMedication: bool = Field(
+            description="应急理智加强剂", default_factory=lambda: True
+        )
+        IfProtocolSpace: Annotated[bool, legacy(group="Task", name="IfSanity")] = Field(
+            default=True, description="协议空间（库存保持）"
+        )
+        SanityTaskType: Literal[
+            "OperatorProgression", "WeaponProgression", "CrisisDrills", "Essence"
+        ] = Field(description="理智任务类型", default_factory=lambda: "OperatorProgression")
+
+    Task: TaskFields = Field(default_factory=TaskFields)
+
+
+class OkwwUserConfig(DomainEntry):
+    class InfoFields(AccountNameFields):
+        IfQuickConfig: bool = Field(default=True, description="是否启用 MAS 覆写常规配置覆盖高频任务字段")
+
+    Info: InfoFields = Field(default_factory=InfoFields)
+
+    class TaskFields(OkwwTaskFields):
+        IfCustomArguments: bool = Field(default=False, description="启用自定义启动参数")
+
+    Task: TaskFields = Field(default_factory=TaskFields)
 ''', encoding="utf-8")
+    raw_lbls = phone._mas_labels(pkg_root)
+    check("phone._mas_labels extracts MaaEnd Pydantic labels & Literal options",
+          (raw_lbls["MaaEnd"]["Task.IfProtocolSpace"]["label"],
+           raw_lbls["MaaEnd"]["Task.IfAutoEssence"]["label"],
+           raw_lbls["MaaEnd"]["Task.IfAutoUseSpMedication"]["label"],
+           raw_lbls["MaaEnd"]["Task.SanityTaskType"],
+           raw_lbls["MaaEnd"]["Task.AutoEssenceSpecifiedLocation"]["label"],
+           raw_lbls["MaaEnd"]["Info.Name"]["label"],
+           raw_lbls["MaaEnd"]["Data.LastProxyStatus"]),
+          ("协议空间（库存保持）",
+           "基质刷取",
+           "应急理智加强剂",
+           {"label": "理智任务类型", "options": ["OperatorProgression", "WeaponProgression", "CrisisDrills", "Essence"]},
+           "基质刷取指定地点",
+           "账号名称",
+           {"label": "上次代理状态", "options": ["未知", "成功", "失败", "维护中", "运行中"]}))
+    check("phone._mas_labels extracts MAA Pydantic labels & Annotated Literal options",
+          (raw_lbls["MAA"]["Stage.Stage"]["label"],
+           raw_lbls["MAA"]["Stage.MedicineNumb"]["label"],
+           raw_lbls["MAA"]["Stage.SeriesNumb"],
+           raw_lbls["MAA"]["Task.Annihilation"],
+           raw_lbls["MAA"]["Task.IfFight"]["label"],
+           raw_lbls["MAA"]["Info.Name"]["label"]),
+          ("主关卡",
+           "理智药数量",
+           {"label": "连战次数", "options": ["0", "6", "5", "4", "3", "2", "1", "-1"]},
+           {"label": "剿灭模式", "options": ["Close", "Annihilation", "Chernobog@Annihilation", "LungmenOutskirts@Annihilation", "LungmenDowntown@Annihilation"]},
+           "是否理智作战",
+           "账号名称"))
+    check("phone._mas_labels extracts OK-WW cross-file inherited OkwwTaskFields labels & options",
+          (raw_lbls["OK-WW"]["Task.WhichToFarm"],
+           raw_lbls["OK-WW"]["Task.WhichTacetSuppressionToFarm"]["label"],
+           raw_lbls["OK-WW"]["Task.WhichForgeryChallengeToFarm"]["label"],
+           raw_lbls["OK-WW"]["Task.MaterialSelection"],
+           raw_lbls["OK-WW"]["Task.FarmNightmareNestForDailyEcho"]["label"],
+           raw_lbls["OK-WW"]["Task.AdditionalTasks"]["options"][:2],
+           raw_lbls["OK-WW"]["Task.IfCustomArguments"]["label"],
+           raw_lbls["OK-WW"]["Info.Name"]["label"]),
+          ({"label": "每日任务体力用途（日常任务按账号覆写或绑定计划生效）",
+            "options": ["Tacet Suppression", "Forgery Challenge", "Simulation Challenge"]},
+           "无音区序号",
+           "凝素领域序号",
+           {"label": "模拟领域材料", "options": ["Resonator EXP", "Weapon EXP", "Shell Credit"]},
+           "使用梦魇巢穴完成日常声骸",
+           ["Check Weekly Garden", "Auto Farm all Nightmare Nest"],
+           "启用自定义启动参数",
+           "账号名称"))
     opts = phone._options(types.SimpleNamespace(automas_dir=pkg_root))
     lbls = opts.get("_labels") or {}
-    check("phone._options extracts v5.8 split labels across app/models/config/{script,shared}.py",
+    check("phone._options exposes SHOWN labels for MAA, MaaEnd, and OK-WW from Pydantic models",
           {k: lbls.get(k) for k in (
               "MaaEnd|Task.IfProtocolSpace", "MaaEnd|Task.IfAutoEssence",
               "MaaEnd|Task.IfAutoUseSpMedication", "MaaEnd|Task.SanityTaskType",
               "MaaEnd|Task.AutoEssenceSpecifiedLocation",
+              "MAA|Stage.Stage", "MAA|Stage.SeriesNumb", "MAA|Task.Annihilation", "MAA|Task.IfFight",
+              "OK-WW|Task.WhichToFarm", "OK-WW|Task.MaterialSelection",
+              "OK-WW|Task.FarmNightmareNestForDailyEcho",
           )},
           {
-              "MaaEnd|Task.IfProtocolSpace": "协议空间开关",
-              "MaaEnd|Task.IfAutoEssence": "自动刷基质开关",
-              "MaaEnd|Task.IfAutoUseSpMedication": "自动使用应急理智加强剂",
+              "MaaEnd|Task.IfProtocolSpace": "协议空间（库存保持）",
+              "MaaEnd|Task.IfAutoEssence": "基质刷取",
+              "MaaEnd|Task.IfAutoUseSpMedication": "应急理智加强剂",
               "MaaEnd|Task.SanityTaskType": "理智任务类型",
-              "MaaEnd|Task.AutoEssenceSpecifiedLocation": "基质刷取地点",
+              "MaaEnd|Task.AutoEssenceSpecifiedLocation": "基质刷取指定地点",
+              "MAA|Stage.Stage": "主关卡",
+              "MAA|Stage.SeriesNumb": "连战次数",
+              "MAA|Task.Annihilation": "剿灭模式",
+              "MAA|Task.IfFight": "是否理智作战",
+              "OK-WW|Task.WhichToFarm": "每日任务体力用途（日常任务按账号覆写或绑定计划生效）",
+              "OK-WW|Task.MaterialSelection": "模拟领域材料",
+              "OK-WW|Task.FarmNightmareNestForDailyEcho": "使用梦魇巢穴完成日常声骸",
           })
+
+    # v5.10 layout: repo/app/models/config + plugins/pypi/site-packages/maa_adapter/config
+    # with a stale pre-v5.8 root app/models/config.py that must NOT shadow repo/.
+    v510_root = tmpdir("v510-plugin-models-")
+    (v510_root / "app" / "models").mkdir(parents=True)
+    (v510_root / "app" / "models" / "config.py").write_text(
+        'class MaaEndUserConfig:\n    def __init__(self):\n        ## 过期旧标签\n        self.Task_SanityTaskType = ConfigItem("Task", "SanityTaskType", "x")\n',
+        encoding="utf-8",
+    )
+    (v510_root / "repo" / "app" / "models" / "config").mkdir(parents=True)
+    (v510_root / "repo" / "app" / "models" / "config" / "shared.py").write_text(
+        (mod_cfg / "shared.py").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    (v510_root / "repo" / "app" / "models" / "config" / "script.py").write_text(
+        (mod_cfg / "script.py").read_text(encoding="utf-8").split("class MaaEndUserConfig")[1].replace("", "class MaaEndUserConfig", 1),
+        encoding="utf-8",
+    )
+    (v510_root / "plugins" / "pypi" / "site-packages" / "maa_adapter" / "config").mkdir(parents=True)
+    (v510_root / "plugins" / "pypi" / "site-packages" / "maa_adapter" / "config" / "user.py").write_text(
+        (mod_cfg / "script.py").read_text(encoding="utf-8").split("class MaaEndUserConfig")[0],
+        encoding="utf-8",
+    )
+    v510_lbls = phone._mas_labels(v510_root)
+    check("phone._mas_labels reads v5.10 repo/ + maa_adapter plugin and ignores stale root app/models/config.py",
+          (v510_lbls["MAA"]["Stage.Stage"]["label"],
+           v510_lbls["MaaEnd"]["Task.IfProtocolSpace"]["label"],
+           v510_lbls["MaaEnd"]["Task.SanityTaskType"]["label"],
+           v510_lbls["OK-WW"]["Task.WhichToFarm"]["label"]),
+          ("主关卡", "协议空间（库存保持）", "理智任务类型", "每日任务体力用途（日常任务按账号覆写或绑定计划生效）"))
 
     live_user = {
         "Info": {"Name": "endfield", "IfQuickConfig": True},

@@ -192,18 +192,26 @@ def _part_engine_steps_named():
 def _part_selfcheck_while_locked():
     import json
     import logging
+    import os
     import types
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features import hardlock as H, selfcheck as SC
+    from ark_relay.features import commands, hardlock as H, selfcheck as SC
+
+    check("MAS_CONTRACT_CHECK is NOT exempt under hardlock",
+          texts.MAS_CONTRACT_CHECK in SC.LOCK_NOT_JUDGED, False)
+    check("queue timer check stays exempt under hardlock",
+          "队列的排期读得到、至少一条开着定时" in SC.LOCK_NOT_JUDGED, True)
 
     d = tmpdir()
     (d / H.LOCK_FILE).write_text(json.dumps({"locked_at": "x"}), encoding="utf-8")
-    fake = [SC.Check("队列的排期读得到、至少一条开着定时", False, "没有一条开着定时的队列"),
-            SC.Check(texts.MAS_CONTRACT_CHECK, False, "读不到"),
-            SC.Check("状态目录能写", True, "")]
+    fake_ok_contract = [
+        SC.Check("队列的排期读得到、至少一条开着定时", False, "没有一条开着定时的队列"),
+        SC.Check(texts.MAS_CONTRACT_CHECK, True, ""),
+        SC.Check("状态目录能写", True, ""),
+    ]
     real_run = SC.run
-    SC.run = lambda cfg, **k: list(fake)
+    SC.run = lambda cfg, **k: list(fake_ok_contract)
     sent = []
     notifier = types.SimpleNamespace(send=lambda *a, **k: sent.append(a) or [], channels=[])
     lines = []
@@ -218,10 +226,95 @@ def _part_selfcheck_while_locked():
         got = SC.report(types.SimpleNamespace(state_dir=d), notifier, log_=lg)
     finally:
         SC.run = real_run
-    check("locked: the two shift lines are not judged (no ✗)", [c.ok for c in got], [True, True, True])
-    check("locked: what they found stays on the line", "没有一条开着定时的队列" in got[0].name, True)
-    check("locked: no self-check alarm pushed", sent, [])
+    check("locked: only the queue-timer line is skipped when contract passes", [c.ok for c in got], [True, True, True])
+    check("locked: what the queue-timer check found stays on the line", "没有一条开着定时的队列" in got[0].name, True)
+    check("locked: no self-check alarm pushed when only queue timer is off", sent, [])
     check("locked: the all-pass line the deploy watch waits for", any("项全部成立" in ln for ln in lines), True)
+
+    # Read-only MAS_CONTRACT_CHECK must STILL fail with ✗ and alarm while hard-locked.
+    fake_bad_contract = [
+        SC.Check("队列的排期读得到、至少一条开着定时", False, "没有一条开着定时的队列"),
+        SC.Check(texts.MAS_CONTRACT_CHECK, False, "终末地的理智用途和基质设置少字段"),
+        SC.Check("状态目录能写", True, ""),
+    ]
+    sent.clear()
+    lines.clear()
+    SC.run = lambda cfg, **k: list(fake_bad_contract)
+    try:
+        got = SC.report(types.SimpleNamespace(state_dir=d), notifier, log_=lg)
+    finally:
+        SC.run = real_run
+    check("locked: MAS_CONTRACT_CHECK failure is still judged False (no fake green)",
+          [c.ok for c in got], [True, False, True])
+    check("locked: MAS_CONTRACT_CHECK failure logs ✗",
+          any(f"开机自检 ✗ {texts.MAS_CONTRACT_CHECK}" in ln for ln in lines), True)
+    check("locked: MAS_CONTRACT_CHECK failure pushes SELFCHECK_FAILED alarm",
+          (len(sent), sent[0][0] if sent else ""), (1, texts.SELFCHECK_FAILED))
+
+    # End-to-end: real selfcheck.report() under hardlock against a v5.8 automas_dir missing IfAutoEssence.
+    am = tmpdir("locked-bad-contract-")
+    (am / "config").mkdir()
+    (am / "log").mkdir()
+    (am / "config" / "scripts.yaml").write_text(
+        "order:\n  - uid: s-end\n    type: MaaEndConfig\n"
+        "data:\n  s-end:\n    Info:\n      Name: MaaEnd\n      Path: D:\\ark\\maaend\n"
+        "    Game:\n      WaitTime: 60\n      Path: D:\\g\\Endfield.exe\n"
+        "      LaunchMode: Launcher\n      LauncherPath: D:\\g\\Launcher.exe\n"
+        "      ControllerType: Win32\n      SetResolution: false\n      CloseOnFinish: true\n"
+        "      RestoreDisplayType: Window\n      RestoreResolution: Off\n"
+        "    Update:\n      TakeoverEnabled: true\n      Channel: beta\n"
+        "    UserData:\n      order:\n        - uid: u-end\n          type: MaaEndUserConfig\n"
+        "      data:\n        u-end:\n          Info:\n            Name: ef\n"
+        "          Task:\n            IfProtocolSpace: false\n"
+        "            IfAutoUseSpMedication: true\n"
+        "            SanityTaskType: OperatorProgression\n"
+        "            AutoEssenceSpecifiedLocation: VFTheHub\n",
+        encoding="utf-8",
+    )
+    (am / "config" / "queues.yaml").write_text("order: []\ndata: {}\n", encoding="utf-8")
+    (am / "config" / "plans.yaml").write_text("order: []\ndata: {}\n", encoding="utf-8")
+    saved_log = os.environ.get("ARK_LOG_FILE")
+    os.environ["ARK_LOG_FILE"] = str(am / "log" / "relay.log")
+    orig_mas = commands._mas
+    orig_live_ver = SC._live_automas_version
+    orig_run = SC.run
+    sent.clear()
+    lines.clear()
+    try:
+        commands._mas = lambda *a, **k: {"data": {}}
+        SC._live_automas_version = lambda: "v5.8.0"
+        SC.run = lambda cfg, **k: orig_run(
+            cfg,
+            procs=lambda: [(1, r"D:\ark\automas\repo\main.py")],
+            mas_up=lambda: True,
+            schedule=lambda: [],
+            channels=lambda: ["群"],
+            run_ok=lambda cmd: (True, ""),
+            has_module=lambda m: True,
+            virt=lambda: "VBS=0 HV=False",
+        )
+        got_e2e = SC.report(
+            types.SimpleNamespace(automas_dir=str(am), state_dir=d, history_dir=str(am),
+                                  phone_topic="t", phone_pin="1234"),
+            notifier, log_=lg,
+        )
+    finally:
+        SC.run = orig_run
+        commands._mas = orig_mas
+        SC._live_automas_version = orig_live_ver
+        if saved_log is None:
+            os.environ.pop("ARK_LOG_FILE", None)
+        else:
+            os.environ["ARK_LOG_FILE"] = saved_log
+    c_map = {c.name: c for c in got_e2e}
+    check("locked e2e: missing IfAutoEssence reports MAS_CONTRACT_CHECK as False (✗)",
+          (c_map[texts.MAS_CONTRACT_CHECK].ok, "终末地的理智用途和基质设置" in c_map[texts.MAS_CONTRACT_CHECK].detail),
+          (False, True))
+    check("locked e2e: queue timer off stays skipped (✓)",
+          any(c.name.startswith("队列的排期读得到、至少一条开着定时（硬锁中不判") and c.ok for c in got_e2e), True)
+    check("locked e2e: pushes SELFCHECK_FAILED alarm for the broken contract",
+          (len(sent), sent[0][0] if sent else ""), (1, texts.SELFCHECK_FAILED))
+
     other = [SC.Check("调度程序有应答", False, "没应答")]
     SC.run = lambda cfg, **k: list(other)
     try:

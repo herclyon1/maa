@@ -1011,22 +1011,32 @@ def _part_winps_shutdown_guard():
     empty_pending = tmp / "pending.json"
     empty_pending.write_text("[]\n", encoding="utf-8")
 
+    py_dir = str(Path(sys.executable).parent)
     fake = tmp / "ssh"
-    fake.write_text("""#!/usr/bin/env python3
-import base64, os, re, sys
-here = os.path.dirname(os.path.abspath(__file__))
-cmd = sys.argv[-1]
-if "current.txt" in cmd:
-    print(open(os.path.join(here, "cur.txt"), encoding="utf-8").read().strip())
-    sys.exit(0)
-m = re.search(r"-EncodedCommand (\\S+)", cmd)
-if not m:
-    sys.exit(0)
-ps = base64.b64decode(m.group(1)).decode("utf-16-le")
-open(os.path.join(here, "sent.ps1"), "w", encoding="utf-8").write(ps)
-busy = open(os.path.join(here, "busy.txt"), encoding="utf-8").read().strip()
-out = ("WINPS_REFUSED: " + busy) if busy and "WINPS_REFUSED" in ps else "ran"
-print("WINPS_B64=" + base64.b64encode(out.encode()).decode())
+    fake.write_text(f"""#!/bin/sh
+here='{tmp}'
+for cmd in "$@"; do :; done
+case "$cmd" in
+  *current.txt*) cat "$here/cur.txt"; exit 0 ;;
+esac
+case "$cmd" in
+  *-EncodedCommand*)
+    rest="${{cmd#*-EncodedCommand }}"
+    b64="${{rest%% *}}"
+    ps=$(printf '%s' "$b64" | (base64 -d 2>/dev/null || base64 -D) | iconv -f UTF-16LE -t UTF-8)
+    printf '%s' "$ps" > "$here/sent.ps1"
+    busy=$(cat "$here/busy.txt")
+    if [ -n "$busy" ]; then
+      case "$ps" in
+        *WINPS_REFUSED*) out="WINPS_REFUSED: $busy" ;;
+        *) out="ran" ;;
+      esac
+    else
+      out="ran"
+    fi
+    printf 'WINPS_B64=%s\\n' "$(printf '%s' "$out" | base64 | tr -d '\\n')"
+    ;;
+esac
 """, encoding="utf-8")
     fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
     (tmp / "cur.txt").write_text("20261124000000\n", encoding="utf-8")
@@ -1036,7 +1046,7 @@ print("WINPS_B64=" + base64.b64encode(out.encode()).decode())
         (tmp / "busy.txt").write_text(busy, encoding="utf-8")
         env = dict(
             os.environ,
-            PATH=f"{tmp}:{os.environ['PATH']}",
+            PATH=f"{tmp}:{py_dir}:{os.environ['PATH']}",
             ARK_HOST="127.0.0.1",
             ARK_LEDGER=str(ledger or empty_ledger),
             ARK_PENDING_DEPLOY=str(pending or empty_pending),
@@ -1119,44 +1129,57 @@ def _part_estop_layout():
     SCRIPT = Path(os.environ["ESTOP_SH"]) if os.environ.get("ESTOP_SH") else stage_mac_script(ROOT, "estop.sh")
 
 
-    FAKE_SSH = r'''#!PYTHON
-import base64, os, sys
-cmd = sys.argv[-1]
-log = os.environ["FAKE_LOG"]
-if cmd.startswith("pwsh ") and "-EncodedCommand" in cmd:
-    body = base64.b64decode(cmd.split()[-1]).decode("utf-16-le")
-    kind = "PS"
-else:
-    body = cmd
-    kind = "RAW"
-with open(log, "a", encoding="utf-8") as f:
-    f.write(f"=== {kind}\n{body}\n")
-out = ""
-if kind == "PS":
-    if "'LAYOUT=pkg'" in body:
-        ans = os.environ["FAKE_LAYOUT"]
-        if ans == "timeout":
-            sys.stderr.write("ssh: connect to host 127.0.0.1 port 22: Operation timed out\n")
-            sys.exit(255)
-        out = {"pkg": "LAYOUT=pkg", "legacy": "LAYOUT=legacy",
-               "garbage": "pwsh : The term 'pwsh' is not recognized"}[ans]
-    elif "sc.exe stop ArkRelayWatchdog" in body:
-        fail_lock = os.environ.get("FAKE_LOCK_FAIL", "")
-        wd_start = "Automatic" if fail_lock == "wd" else "Disabled"
-        main_task = "Ready" if fail_lock == "main" else "Disabled"
-        mas_task = "Ready" if fail_lock == "mas" else "Disabled"
-        out = (f"WATCHDOG=Stopped\r\nWATCHDOG_START={wd_start}\r\nSTOP_RC=0\r\n"
-               f"MAIN_TASK={main_task}\r\nMAIN=STOPPED\r\nMAS_TASK={mas_task}")
-    elif "sc.exe start ArkRelayWatchdog" in body:
-        out = "MAS_TASK=Ready\r\nWATCHDOG=Running\r\nWATCHDOG_START=Automatic\r\nMAIN_TASK=Ready\r\nMAIN=RUNNING"
-    elif "Write-Output 'NONE'" in body:          # a kill tier
-        out = "NONE\r\nGONE"
-else:
-    if cmd == "sc query ark-relay":
-        started = "sc start ark-relay" in open(log, encoding="utf-8").read()
-        out = "        STATE              : " + ("4  RUNNING" if started else "1  STOPPED")
-if out:
-    print(out)
+    FAKE_SSH = r'''#!/bin/sh
+for cmd in "$@"; do :; done
+log="$FAKE_LOG"
+case "$cmd" in
+  pwsh*-EncodedCommand*)
+    b64="${cmd##* }"
+    body=$(printf '%s' "$b64" | (base64 -d 2>/dev/null || base64 -D) | iconv -f UTF-16LE -t UTF-8)
+    kind="PS"
+    ;;
+  *)
+    body="$cmd"
+    kind="RAW"
+    ;;
+esac
+printf '=== %s\n%s\n' "$kind" "$body" >> "$log"
+if [ "$kind" = "PS" ]; then
+  case "$body" in
+    *"'LAYOUT=pkg'"*)
+      case "$FAKE_LAYOUT" in
+        timeout) printf 'ssh: connect to host 127.0.0.1 port 22: Operation timed out\n' >&2; exit 255 ;;
+        pkg) printf 'LAYOUT=pkg\n' ;;
+        legacy) printf 'LAYOUT=legacy\n' ;;
+        garbage) printf "pwsh : The term 'pwsh' is not recognized\n" ;;
+      esac
+      ;;
+    *"sc.exe stop ArkRelayWatchdog"*)
+      wd_start="Disabled"; main_task="Disabled"; mas_task="Disabled"
+      case "${FAKE_LOCK_FAIL:-}" in
+        wd) wd_start="Automatic" ;;
+        main) main_task="Ready" ;;
+        mas) mas_task="Ready" ;;
+      esac
+      printf 'WATCHDOG=Stopped\r\nWATCHDOG_START=%s\r\nSTOP_RC=0\r\nMAIN_TASK=%s\r\nMAIN=STOPPED\r\nMAS_TASK=%s\n' \
+        "$wd_start" "$main_task" "$mas_task"
+      ;;
+    *"sc.exe start ArkRelayWatchdog"*)
+      printf 'MAS_TASK=Ready\r\nWATCHDOG=Running\r\nWATCHDOG_START=Automatic\r\nMAIN_TASK=Ready\r\nMAIN=RUNNING\n'
+      ;;
+    *"Write-Output 'NONE'"*)
+      printf 'NONE\r\nGONE\n'
+      ;;
+  esac
+else
+  if [ "$cmd" = "sc query ark-relay" ]; then
+    if grep -q 'sc start ark-relay' "$log" 2>/dev/null; then
+      printf '        STATE              : 4  RUNNING\n'
+    else
+      printf '        STATE              : 1  STOPPED\n'
+    fi
+  fi
+fi
 '''
 
 
@@ -1164,12 +1187,14 @@ if out:
         b = d / "bin"
         b.mkdir()
         ssh = b / "ssh"
-        ssh.write_text(FAKE_SSH.replace("PYTHON", f"{sys.executable} -S", 1), encoding="utf-8")
+        ssh.write_text(FAKE_SSH, encoding="utf-8")
         ssh.chmod(0o755)
         curl = b / "curl"
         curl.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
         curl.chmod(0o755)
-        return {**os.environ, "PATH": f"{b}:{os.environ['PATH']}", "ARK_HOST": "127.0.0.1",
+        os.symlink("/usr/bin/true", b / "sleep")
+        py_dir = str(Path(sys.executable).parent)
+        return {**os.environ, "PATH": f"{b}:{py_dir}:{os.environ['PATH']}", "ARK_HOST": "127.0.0.1",
                 "ARK_ACTION_LOG": os.devnull}
 
 
@@ -1397,17 +1422,15 @@ def _part_mac_one_at_a_time_main():
             state = os.path.join(d, "n")
             open(state, "w").write("0")
             seq = " ".join(str(x) for x in pri_seq)
-            with open(os.path.join(d, "ps"), "w") as fh:
-                fh.write(f"""#!/bin/bash
-n=$(cat {state}); set -- {seq}; shift $n 2>/dev/null; echo "${{1:-31}}"; echo $((n+1)) > {state}
-""")
-            with open(os.path.join(d, "uname"), "w") as fh:
-                fh.write(f"#!/bin/bash\necho {uname}\n")
-            for x in ("ps", "uname"):
-                os.chmod(os.path.join(d, x), 0o755)
-            env = {**os.environ, "PATH": d + ":" + os.environ["PATH"], "WAIT_BG_POLL_S": "0"}
-            r = subprocess.run(["bash", "-c", src + "\nwait_not_background; echo done"], capture_output=True,
-                               text=True, env=env, timeout=20)
+            shim = (
+                f'uname() {{ echo {uname}; }}\n'
+                f'ps() {{ local n; read -r n < "{state}"; set -- {seq}; shift "$n" 2>/dev/null; '
+                f'echo "${{1:-31}}"; echo $((n+1)) > "{state}"; }}\n'
+                f'sleep() {{ [ "$1" = 0 ] || command sleep "$1"; }}\n'
+            )
+            env = {**os.environ, "WAIT_BG_POLL_S": "0"}
+            r = subprocess.run(["bash", "-c", shim + src + "\nwait_not_background; echo done"],
+                               capture_output=True, text=True, env=env, timeout=20)
             calls = int(open(state).read())
             return r.stdout.strip(), ("waiting" in r.stderr), calls
 

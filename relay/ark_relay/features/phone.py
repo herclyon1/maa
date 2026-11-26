@@ -6,6 +6,7 @@ re-exports every name here); the design notes are in phone.py's module docstring
 """
 from __future__ import annotations
 
+import ast
 import base64
 import gzip
 import hashlib
@@ -512,45 +513,297 @@ _CLASS_OF = {"MaaUserConfig": "MAA", "MaaEndUserConfig": "MaaEnd",
              "OkwwUserConfig": "OK-WW"}
 
 
+def _mas_model_files(automas_dir) -> tuple[list[Path], bool]:
+    """Locate AUTO-MAS model source files across v5.7 single-file, v5.8/v5.9 config package,
+    and v5.10 repo/ + plugins/pypi/site-packages adapter layouts."""
+    root = Path(automas_dir)
+    roots: list[Path] = []
+    # Prefer v5.8+ config package (repo/app/models/config on v5.10 installs where a stale
+    # root app/models/config.py may remain on disk from earlier installs).
+    for cand in (root / "repo" / "app" / "models" / "config",
+                 root / "app" / "models" / "config"):
+        if cand.is_dir():
+            roots.append(cand)
+            break
+    else:
+        for cand in (root / "repo" / "app" / "models",
+                     root / "app" / "models"):
+            if cand.is_dir():
+                roots.append(cand)
+                break
+    if not roots:
+        return [], False
+    # AUTO-MAS v5.10+ moved script adapters (e.g. MAA -> maa_adapter) into plugins/pypi/site-packages.
+    sp_candidates = [root / "plugins" / "pypi" / "site-packages"]
+    if root.name == "repo":
+        sp_candidates.append(root.parent / "plugins" / "pypi" / "site-packages")
+    for sp in sp_candidates:
+        if sp.is_dir():
+            for pkg in sorted(sp.iterdir()):
+                if not pkg.is_dir() or pkg.name.startswith(".") or pkg.name.endswith((".dist-info", ".egg-info")):
+                    continue
+                cfg_dir = pkg / "config"
+                if cfg_dir.is_dir():
+                    roots.append(cfg_dir)
+            break
+    files: list[Path] = []
+    for base in roots:
+        for f in sorted(base.rglob("*.py")):
+            rel = f.relative_to(base).parts
+            if any(p.startswith(".") or p in ("__pycache__", "legacy_config") for p in rel):
+                continue
+            files.append(f)
+    return files, True
+
+
+def _ast_dotted(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        left = _ast_dotted(node.value)
+        return f"{left}.{node.attr}" if left else node.attr
+    return None
+
+
+def _ast_str(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left, right = _ast_str(node.left), _ast_str(node.right)
+        if left is not None and right is not None:
+            return left + right
+    return None
+
+
+def _ast_literal_options(expr: ast.AST, aliases: dict[str, list[str]]) -> list[str] | None:
+    if isinstance(expr, ast.Name):
+        return list(aliases[expr.id]) if expr.id in aliases else None
+    if isinstance(expr, ast.BinOp) and isinstance(expr.op, ast.BitOr):
+        if isinstance(expr.right, ast.Constant) and expr.right.value is None:
+            return _ast_literal_options(expr.left, aliases)
+        if isinstance(expr.left, ast.Constant) and expr.left.value is None:
+            return _ast_literal_options(expr.right, aliases)
+        return None
+    if isinstance(expr, ast.Subscript):
+        name = _ast_dotted(expr.value)
+        tail = name.rsplit(".", 1)[-1] if name else ""
+        if tail == "Literal":
+            elts = expr.slice.elts if isinstance(expr.slice, ast.Tuple) else [expr.slice]
+            vals = [e.value for e in elts if isinstance(e, ast.Constant) and isinstance(e.value, str)]
+            return vals if vals and len(vals) == len(elts) else None
+        if tail == "Annotated":
+            if isinstance(expr.slice, ast.Tuple) and expr.slice.elts:
+                return _ast_literal_options(expr.slice.elts[0], aliases)
+        if tail in ("list", "List", "set", "Set", "tuple", "Tuple", "Optional"):
+            inner = expr.slice.elts[0] if isinstance(expr.slice, ast.Tuple) and expr.slice.elts else expr.slice
+            return _ast_literal_options(inner, aliases)
+    return None
+
+
+def _ast_group_type(expr: ast.AST) -> str | None:
+    if isinstance(expr, ast.Subscript):
+        name = _ast_dotted(expr.value)
+        tail = name.rsplit(".", 1)[-1] if name else ""
+        if tail == "Annotated" and isinstance(expr.slice, ast.Tuple) and expr.slice.elts:
+            return _ast_group_type(expr.slice.elts[0])
+        return None
+    return _ast_dotted(expr)
+
+
+def _ast_field_desc(value: ast.AST | None) -> str | None:
+    if not isinstance(value, ast.Call):
+        return None
+    fn = _ast_dotted(value.func)
+    if not fn or fn.rsplit(".", 1)[-1] != "Field":
+        return None
+    for kw in value.keywords:
+        if kw.arg == "description":
+            text = _ast_str(kw.value)
+            if text is not None and text.strip():
+                return text.strip()
+    return None
+
+
+def _is_skipped_annotation(expr: ast.AST) -> bool:
+    name = _ast_dotted(expr.value) if isinstance(expr, ast.Subscript) else _ast_dotted(expr)
+    tail = name.rsplit(".", 1)[-1] if name else ""
+    return tail in ("ClassVar", "ConfigCollection")
+
+
+class _PydanticModelIndex:
+    """AST index over AUTO-MAS v5.8+/v5.10 Pydantic ConfigGroup / DomainEntry files."""
+
+    def __init__(self, texts: list[str]) -> None:
+        self.file_classes: list[dict[str, ast.ClassDef]] = []
+        self.top_classes: dict[str, tuple[int, ast.ClassDef]] = {}
+        self.literal_aliases: dict[str, list[str]] = {}
+        self.tuple_aliases: dict[str, list[str]] = {}
+        for idx, text in enumerate(texts):
+            self._index_file(idx, text)
+
+    def _index_file(self, idx: int, text: str) -> None:
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            self.file_classes.append({})
+            return
+        local_cls: dict[str, ast.ClassDef] = {}
+        for stmt in tree.body:
+            if isinstance(stmt, ast.ClassDef):
+                local_cls[stmt.name] = stmt
+                self.top_classes.setdefault(stmt.name, (idx, stmt))
+            elif isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+                self._index_alias(stmt.targets[0].id, stmt.value)
+            elif hasattr(ast, "TypeAlias") and isinstance(stmt, ast.TypeAlias) and isinstance(stmt.name, ast.Name):
+                opts = _ast_literal_options(stmt.value, self.literal_aliases)
+                if opts:
+                    self.literal_aliases[stmt.name.id] = opts
+        self.file_classes.append(local_cls)
+
+    def _index_alias(self, name: str, value: ast.AST) -> None:
+        opts = _ast_literal_options(value, self.literal_aliases)
+        if opts:
+            self.literal_aliases[name] = opts
+        elif isinstance(value, (ast.Tuple, ast.List)):
+            names = [n for e in value.elts if (n := _ast_dotted(e))]
+            if names and len(names) == len(value.elts):
+                self.tuple_aliases[name] = names
+
+    def lookup(self, name: str, file_idx: int,
+               outer_nested: dict[str, ast.ClassDef]) -> tuple[int, ast.ClassDef] | None:
+        if name in outer_nested:
+            return file_idx, outer_nested[name]
+        if "." in name:
+            owner, sub = name.split(".", 1)
+            local = self.file_classes[file_idx]
+            hit = (file_idx, local[owner]) if owner in local else self.top_classes.get(owner)
+            if hit:
+                h_idx, o_cls = hit
+                for s in o_cls.body:
+                    if isinstance(s, ast.ClassDef) and s.name == sub:
+                        return h_idx, s
+            return None
+        if name in self.file_classes[file_idx]:
+            return file_idx, self.file_classes[file_idx][name]
+        return self.top_classes.get(name)
+
+    def expand_bases(self, cls_node: ast.ClassDef) -> list[str]:
+        names: list[str] = []
+        for b in cls_node.bases:
+            if isinstance(b, ast.Starred):
+                sn = _ast_dotted(b.value)
+                if sn and sn in self.tuple_aliases:
+                    names.extend(self.tuple_aliases[sn])
+            elif (bn := _ast_dotted(b)):
+                names.append(bn)
+        return names
+
+    def group_fields(self, file_idx: int, cls_node: ast.ClassDef,
+                     outer_nested: dict[str, ast.ClassDef], seen: set[int]) -> dict[str, dict]:
+        if id(cls_node) in seen:
+            return {}
+        seen = seen | {id(cls_node)}
+        fields: dict[str, dict] = {}
+        for stmt in cls_node.body:
+            if not (isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)):
+                continue
+            key = stmt.target.id
+            if key.startswith("_") or _is_skipped_annotation(stmt.annotation):
+                continue
+            desc = _ast_field_desc(stmt.value)
+            if desc:
+                fields[key] = {
+                    "label": desc,
+                    "options": _ast_literal_options(stmt.annotation, self.literal_aliases),
+                }
+        for bn in self.expand_bases(cls_node):
+            hit = self.lookup(bn, file_idx, outer_nested)
+            if hit:
+                for k, v in self.group_fields(hit[0], hit[1], outer_nested, seen).items():
+                    fields.setdefault(k, v)
+        return fields
+
+    def entry_labels(self, file_idx: int, cls_node: ast.ClassDef, seen: set[int]) -> dict[str, dict]:
+        if id(cls_node) in seen:
+            return {}
+        seen = seen | {id(cls_node)}
+        nested = {s.name: s for s in cls_node.body if isinstance(s, ast.ClassDef)}
+        found: dict[str, dict] = {}
+        for stmt in cls_node.body:
+            if not (isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)):
+                continue
+            grp = stmt.target.id
+            if grp.startswith("_") or _is_skipped_annotation(stmt.annotation):
+                continue
+            gtype = _ast_group_type(stmt.annotation)
+            hit = self.lookup(gtype, file_idx, nested) if gtype else None
+            if hit:
+                for key, info in self.group_fields(hit[0], hit[1], nested, set()).items():
+                    found[f"{grp}.{key}"] = info
+        for bn in self.expand_bases(cls_node):
+            hit = self.lookup(bn, file_idx, {})
+            if hit:
+                for path, info in self.entry_labels(hit[0], hit[1], seen).items():
+                    found.setdefault(path, info)
+        return found
+
+
+def _pydantic_labels(texts: list[str]) -> dict[str, dict[str, dict]]:
+    """Extract {game: {"Group.Key": {"label": ..., "options": ...}}} from AUTO-MAS v5.8+/v5.10
+    Pydantic ConfigGroup / DomainEntry models via AST, including cross-file inheritance."""
+    out: dict[str, dict[str, dict]] = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
+    index = _PydanticModelIndex(texts)
+    for file_idx, local_cls in enumerate(index.file_classes):
+        for name, cls_node in local_cls.items():
+            game = _CLASS_OF.get(name)
+            if game:
+                out[game].update(index.entry_labels(file_idx, cls_node, set()))
+    return out
+
+
 def _mas_labels(automas_dir) -> dict:
     """Chinese labels and legal values per script. `{"MAA": {"Info.Stage": {...}}}`"""
     out: dict = {"MAA": {}, "MaaEnd": {}, "OK-WW": {}}
     if not automas_dir:
         return out
-    models = Path(automas_dir) / "app" / "models"
-    if not models.is_dir():
+    model_files, found_dir = _mas_model_files(automas_dir)
+    if not found_dir:
         log.warning("找不到 AUTO-MAS 的 models 目录，手机上只能显示英文字段名")
         return out
-    # AUTO-MAS v5.8 split app/models/config.py into app/models/config/{script,shared,...}.py,
-    # so scan recursively and resolve cross-file helper calls (e.g. init_maaend_task_config).
-    files: list[tuple[str, dict[str, str]]] = []
-    all_helpers: dict[str, str] = {}
-    for f in sorted(models.rglob("*.py")):
-        if any(p.startswith(".") or p == "__pycache__" for p in f.relative_to(models).parts):
-            continue
+    texts: list[str] = []
+    for f in model_files:
         try:
-            text = f.read_text(encoding="utf-8", errors="replace")
+            texts.append(f.read_text(encoding="utf-8", errors="replace"))
         except OSError:
             continue
-        helpers = _helpers(text)
-        files.append((text, helpers))
-        for name, src in helpers.items():
-            all_helpers.setdefault(name, src)
-    for text, helpers in files:
-        marks = list(_CLASS.finditer(text))
-        for i, cm in enumerate(marks):
-            game = _CLASS_OF.get(cm.group(1))
-            if not game:
-                continue
-            end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
-            body = text[cm.end():end]
-            found = _items(body)
-            # Module-level helpers the class calls with itself declare fields too.
-            for name in dict.fromkeys(re.findall(r"\b(\w+)\(self\)", body)):
-                src = helpers.get(name) or all_helpers.get(name, "")
-                for path, info in _items(src).items():
-                    found.setdefault(path, info)
-            out[game].update(found)
+    # Legacy ConfigItem fallback for pre-v5.8 AUTO-MAS (app/models/config.py).
+    if any("ConfigItem(" in t for t in texts):
+        files: list[tuple[str, dict[str, str]]] = []
+        all_helpers: dict[str, str] = {}
+        for text in texts:
+            helpers = _helpers(text)
+            files.append((text, helpers))
+            for name, src in helpers.items():
+                all_helpers.setdefault(name, src)
+        for text, helpers in files:
+            marks = list(_CLASS.finditer(text))
+            for i, cm in enumerate(marks):
+                game = _CLASS_OF.get(cm.group(1))
+                if not game:
+                    continue
+                end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+                body = text[cm.end():end]
+                found = _items(body)
+                # Module-level helpers the class calls with itself declare fields too.
+                for name in dict.fromkeys(re.findall(r"\b(\w+)\(self\)", body)):
+                    src = helpers.get(name) or all_helpers.get(name, "")
+                    for path, info in _items(src).items():
+                        found.setdefault(path, info)
+                out[game].update(found)
+    # AUTO-MAS v5.8+/v5.10 Pydantic ConfigGroup models (wins over any legacy fallback).
+    for game, items in _pydantic_labels(texts).items():
+        if items:
+            out[game].update(items)
     return out
 
 

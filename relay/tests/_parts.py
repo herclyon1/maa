@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -38,6 +39,31 @@ os.environ.setdefault("ARK_AK_ACTIVITY_NO_NET", "1")
 # ~/.cache/ark-relay/mac_actions.log (scripts/mac/lib/mac-action-log.sh), the file read to
 # find out who touched the game PC. Test calls go nowhere; a test of the log sets its own.
 os.environ["ARK_ACTION_LOG"] = os.devnull
+
+
+def _fast_darwin_path() -> None:
+    """Bypass macOS /usr/bin/{git,python3} xcrun trampolines in test subprocesses without
+    altering any tested behavior (real Xcode/CLT git and active Homebrew python3)."""
+    if sys.platform != "darwin":
+        return
+    parts = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p]
+    add: list[str] = []
+    py_dir = str(Path(sys.executable).parent)
+    if py_dir and py_dir not in parts:
+        add.append(py_dir)
+    if shutil.which("git") == "/usr/bin/git":
+        try:
+            r = subprocess.run(["xcrun", "-f", "git"], capture_output=True, text=True, timeout=5)
+            git_dir = str(Path(r.stdout.strip()).parent) if r.returncode == 0 and r.stdout.strip() else ""
+        except (OSError, subprocess.SubprocessError):
+            git_dir = ""
+        if git_dir and git_dir not in parts and git_dir not in add:
+            add.append(git_dir)
+    if add:
+        os.environ["PATH"] = os.pathsep.join(add + parts)
+
+
+_fast_darwin_path()
 
 
 def tmpdir(prefix: str = "arktest-") -> Path:

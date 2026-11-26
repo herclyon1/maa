@@ -787,8 +787,10 @@ def report_contract(cfg, notifier, version: str, log_=None, contract=None) -> Ch
     return c
 
 
-# Boot self-check lines not judged while hard-locked (report()): both are about running shifts.
-LOCK_NOT_JUDGED = frozenset({"队列的排期读得到、至少一条开着定时", texts.MAS_CONTRACT_CHECK})
+# Boot self-check lines not judged while hard-locked (report()): only queue timer enablement
+# is turned off on purpose by the hard lock. Read-only contract checks (MAS_CONTRACT_CHECK)
+# stay judged so upstream schema breaks surface as ✗ even while locked.
+LOCK_NOT_JUDGED = frozenset({"队列的排期读得到、至少一条开着定时"})
 
 
 def report(cfg, notifier, log_=None, mas_waited: float = 0.0) -> list[Check]:
@@ -800,8 +802,8 @@ def report(cfg, notifier, log_=None, mas_waited: float = 0.0) -> list[Check]:
     except Exception:  # noqa: BLE001 - the self-check itself must not take the boot down
         lg.exception("开机自检自己出错")
         return []
-    # Hard-locked (hardlock.py): the queue timers are off on purpose and nothing reads or writes
-    # the scheduler settings, so those two lines are not judged; the line keeps what it found.
+    # Hard-locked (hardlock.py): the queue timers are off on purpose, so that line is not judged
+    # (the line keeps what it found); read-only contract checks still fail normally.
     from ark_relay.features import hardlock  # noqa: PLC0415
     if hardlock.active(getattr(cfg, "state_dir", None)):
         checks = [Check(f"{c.name}（硬锁中不判：{c.detail or '不成立'}）", True, "")

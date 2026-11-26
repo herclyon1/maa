@@ -572,11 +572,12 @@ if [ "$ACTION" = launch ]; then
   BUDGET=$((BUDGET + (WUWA_LAUNCH_MAX > LAUNCH_WAIT ? WUWA_LAUNCH_MAX : LAUNCH_WAIT) + 15))
 fi
 BUDGET=${ARK_GUI_WAIT:-$BUDGET}
+POLL=${ARK_GUI_POLL:-2}
 OUT=""
-for _ in $(seq 1 $(( (BUDGET + 1) / 2 ))); do
+for _ in $(seq 1 $(( (BUDGET + POLL - 1) / POLL ))); do
   if OUT=$(ssh -o ConnectTimeout=15 "$USER_AT" 'type C:\ProgramData\ark-gui.txt' 2>/dev/null | tr -d '\r') \
      && [ -n "$OUT" ]; then break; fi
-  sleep 2
+  sleep "$POLL"
 done
 if [ -z "$OUT" ]; then
   echo "✋ session 1 里的任务没有产出结果（等了 ${BUDGET} 秒）。" >&2
