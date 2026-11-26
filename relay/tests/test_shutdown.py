@@ -3850,5 +3850,159 @@ def _part_alarm_hold_root_cure():
           (True, True, False))
 
 
+def _part_statestore_stat_and_legacy_errors():
+    """Slice F regressions: stat() transient/persistent OSError in _load(fresh=True), and
+    _sweep_legacy skipping unreadable LEGACY files without renaming them to .migrated."""
+    import json
+
+    from ark_relay.core import statestore
+    from ark_relay.core.statestore import StateStore
+
+    REAL_STAT = Path.stat
+    REAL_READ = Path.read_text
+    REAL_WAITS = statestore.LOCK_WAITS
+    NO_WAITS = (0.0, 0.0, 0.0)
+
+    def _on_disk(d):
+        return json.loads(REAL_READ(d / statestore.FILE, encoding="utf-8"))
+
+    def _patch_stat(target: Path, fail_count: int, exc: OSError):
+        """Mock Path.stat for `target`: raise `exc` for the first `fail_count` calls (<0: always)."""
+        state = {"tries": 0, "fails": 0}
+
+        def _fake_stat(self, *a, **kw):
+            if self == target:
+                state["tries"] += 1
+                if fail_count < 0 or state["tries"] <= fail_count:
+                    state["fails"] += 1
+                    raise exc
+            return REAL_STAT(self, *a, **kw)
+
+        Path.stat = _fake_stat
+        return state
+
+    print("[stat() persistent PermissionError on fresh write: retries, raises, never wipes state.json]")
+    d = tmpdir()
+    seed = {
+        "modes": {"alarm_hold": {"until": "2026-11-26T20:00:00+08:00", "reason": "test"}},
+        "weekly": {"garden": {"done_week": "2026-W48"}},
+        "marks": {"report:2026-11-26": "2026-11-26T22:00:00"},
+        "queues": {"phone_seen": ["id-1"]},
+        "updates": {"preupdate": {"day": "2026-11-26"}},
+        "versions": {"code": "20261126"},
+    }
+    (d / statestore.FILE).write_text(json.dumps(seed, ensure_ascii=False), encoding="utf-8")
+    store = StateStore(d)
+    check("baseline read sees alarm_hold", store.get("modes", "alarm_hold"), seed["modes"]["alarm_hold"])
+    target = d / statestore.FILE
+    statestore.LOCK_WAITS = NO_WAITS
+    try:
+        st = _patch_stat(target, -1, PermissionError(13, "antivirus lock on stat (test)"))
+        raised = ""
+        try:
+            store.set("versions", "okww", "v9.9.9")
+        except PermissionError as exc:
+            raised = type(exc).__name__
+        check("fresh write retries LOCK_WAITS + 1 times then raises PermissionError",
+              (raised, st["tries"]), ("PermissionError", len(NO_WAITS) + 1))
+        check("disk state.json untouched (all sections preserved)", _on_disk(d), seed)
+        check("no corrupt copy created for lock error", list(d.glob("state.json.corrupt-*")), [])
+        check("refused_since recorded on stat PermissionError", statestore.refused_since(target) is not None, True)
+        check("_LAST_GOOD not overwritten with empty dict",
+              statestore._LAST_GOOD[str(target)]["modes"]["alarm_hold"], seed["modes"]["alarm_hold"])
+        check("plain read while stat locked falls back to last good",
+              StateStore(d).get("weekly", "garden"), {"done_week": "2026-W48"})
+    finally:
+        Path.stat = REAL_STAT
+        statestore.LOCK_WAITS = REAL_WAITS
+
+    check("after lock clears, plain read recovers and clears refused_since",
+          (store.get("weekly", "garden"), statestore.refused_since(target)),
+          ({"done_week": "2026-W48"}, None))
+
+    print("\n[stat() transient PermissionError recovers within LOCK_WAITS and merges cleanly]")
+    statestore.LOCK_WAITS = NO_WAITS
+    try:
+        st = _patch_stat(target, 2, PermissionError(13, "brief stat lock (test)"))
+        store.set("versions", "okww", "v9.9.9")
+        # 2 failed stat tries + 1 succeeded stat in _load + 1 post-write stat in _flush
+        check("transient lock failed twice, retried and succeeded", (st["fails"], st["tries"]), (2, 4))
+    finally:
+        Path.stat = REAL_STAT
+        statestore.LOCK_WAITS = REAL_WAITS
+    after = _on_disk(d)
+    check("transient recovery kept alarm_hold and wrote new key",
+          (after["modes"].get("alarm_hold"), after["weekly"].get("garden"), after["versions"].get("okww")),
+          (seed["modes"]["alarm_hold"], seed["weekly"]["garden"], "v9.9.9"))
+
+    print("\n[stat() non-lock OSError raises immediately without sleeping or wiping]")
+    statestore.LOCK_WAITS = NO_WAITS
+    try:
+        st = _patch_stat(target, -1, OSError(5, "I/O error on stat (test)"))
+        raised = ""
+        try:
+            store.update("queues", "phone_seen", lambda cur: [*(cur or []), "id-2"])
+        except OSError as exc:
+            raised = type(exc).__name__
+        check("non-lock OSError fails on first try and raises", (raised, st["tries"]), ("OSError", 1))
+        check("disk still intact after non-lock OSError", _on_disk(d)["modes"]["alarm_hold"], seed["modes"]["alarm_hold"])
+    finally:
+        Path.stat = REAL_STAT
+        statestore.LOCK_WAITS = REAL_WAITS
+    store.get("modes", "alarm_hold")  # clear _UNREAD after test
+
+    print("\n[stat() FileNotFoundError on brand-new dir still initializes normally]")
+    d_new = tmpdir()
+    s_new = StateStore(d_new)
+    check("missing state.json reads empty and not refused",
+          (s_new.section("weekly"), statestore.refused_since(d_new / statestore.FILE)), ({}, None))
+    s_new.set("versions", "okww", "v1.0.0")
+    check("first write creates state.json", _on_disk(d_new)["versions"]["okww"], "v1.0.0")
+
+    print("\n[_sweep_legacy: unreadable/corrupt LEGACY files are skipped and NOT renamed .migrated]")
+    d_leg = tmpdir()
+    garden = d_leg / "garden.json"
+    boss = d_leg / "weeklyboss.json"
+    pending = d_leg / "pending.json"
+    bad_utf8 = d_leg / "okww-version.txt"
+    empty_json = d_leg / "annihilation.json"
+    garden.write_text(json.dumps({"done_week": "2026-W48"}), encoding="utf-8")
+    boss.write_text(json.dumps({"index": 2, "name": "test", "done_week": "2026-W48"}), encoding="utf-8")
+    pending.write_text("{not-valid-json", encoding="utf-8")
+    bad_utf8.write_bytes(b"\xff\xfe\xfd")
+    empty_json.write_text("{}", encoding="utf-8")
+
+    def _read_fail_garden(self, *a, **kw):
+        if self == garden:
+            raise PermissionError(13, "garden.json locked (test)")
+        return REAL_READ(self, *a, **kw)
+
+    statestore._SWEPT.discard(str(d_leg))
+    Path.read_text = _read_fail_garden
+    try:
+        s_leg = StateStore(d_leg)
+    finally:
+        Path.read_text = REAL_READ
+
+    check("readable legacy file migrated and renamed",
+          (s_leg.get("weekly", "boss"), boss.exists(), (d_leg / "weeklyboss.json.migrated").exists()),
+          ({"index": 2, "name": "test", "done_week": "2026-W48"}, False, True))
+    check("empty valid JSON still retired to .migrated",
+          (empty_json.exists(), (d_leg / "annihilation.json.migrated").exists()), (False, True))
+    check("locked garden.json NOT renamed .migrated",
+          (garden.exists(), (d_leg / "garden.json.migrated").exists(), s_leg.get("weekly", "garden")),
+          (True, False, None))
+    check("corrupt JSON pending.json NOT renamed .migrated",
+          (pending.exists(), (d_leg / "pending.json.migrated").exists()), (True, False))
+    check("invalid UTF-8 okww-version.txt did not crash init and NOT renamed .migrated",
+          (bad_utf8.exists(), (d_leg / "okww-version.txt.migrated").exists()), (True, False))
+
+    statestore._SWEPT.discard(str(d_leg))
+    s_leg2 = StateStore(d_leg)
+    check("after lock clears, garden.json migrates on next sweep and renames to .migrated",
+          (s_leg2.get("weekly", "garden"), garden.exists(), (d_leg / "garden.json.migrated").exists()),
+          ({"done_week": "2026-W48"}, False, True))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_shutdown_main, _part_shutdown_after_restart, _part_shutdown_unfixed_shift, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording, _part_skip_failed_pushed, _part_skip_flag_collision, _part_skip_receipt_lost, _part_skip_receipts, _part_skip_sat_out, _part_skip_shutdown_bat_error, _part_farm_poweroff, _part_place_desktop_bat, _part_statestore_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads, _part_alarm_hold_root_cure]))
+    sys.exit(run_parts([_part_shutdown_main, _part_shutdown_after_restart, _part_shutdown_unfixed_shift, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording, _part_skip_failed_pushed, _part_skip_flag_collision, _part_skip_receipt_lost, _part_skip_receipts, _part_skip_sat_out, _part_skip_shutdown_bat_error, _part_farm_poweroff, _part_place_desktop_bat, _part_statestore_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads, _part_alarm_hold_root_cure, _part_statestore_stat_and_legacy_errors]))

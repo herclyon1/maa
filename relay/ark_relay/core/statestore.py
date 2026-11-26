@@ -227,7 +227,7 @@ def add_red(day: str, heading: str, texts: "list[str]", *, state_dir=None,
         prev_day = (at - timedelta(days=1)).strftime("%Y-%m-%d")
         for d in dict.fromkeys((day, at_day, prev_day)):
             try:
-                old += path_for(d, state_dir).read_text(encoding="utf-8") + "\n"
+                old += path_for(d, state_dir).read_text(encoding="utf-8", errors="replace") + "\n"
             except OSError:
                 pass
         used = [int(m.group(1)) for m in re.finditer(rf"^{RED} R-{stamp}-(\d+) ", old, re.M)]
@@ -385,7 +385,7 @@ def _read_legacy(f: Path, how: str):
     """Read an old file into a value per `how`. Returns None if unreadable (the caller skips it)."""
     try:
         raw = f.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         log.warning("旧状态文件 %s 读不出来，跳过", f.name)
         return None
     if how == "json":
@@ -564,15 +564,34 @@ class StateStore:
                 log.warning("删不掉没写完的状态临时文件 %s，下次进程启动再试", f.name, exc_info=True)
 
     # ---------- read ----------
+    def _stat_mtime(self, waits: tuple[float, ...]) -> tuple[float, OSError | None]:
+        """Return (st_mtime, None), (-1.0, None) when missing, or (-1.0, exc) when refused."""
+        for wait in (*waits, None):
+            try:
+                return self.path.stat().st_mtime, None
+            except FileNotFoundError:
+                return -1.0, None
+            except OSError as exc:
+                if wait is not None and locked(exc):
+                    time.sleep(wait)
+                    continue
+                return -1.0, exc
+        return -1.0, None
+
     def _load(self, fresh: bool = False) -> dict:
         """state.json as a dict. `fresh` rereads the file even when its mtime
         matches the cached copy: a write must start from what is on disk, and
         another instance may have written within the clock's resolution."""
-        try:
-            m = self.path.stat().st_mtime
-        except OSError:
-            m = -1.0
         seq = _WRITE_SEQ.get(str(self.path), 0)
+        last = self._data if self._data is not None else _LAST_GOOD.get(str(self.path))
+        waits = LOCK_WAITS if fresh or last is None else ()
+        m, stat_err = self._stat_mtime(waits)
+        if stat_err is not None:
+            _refused(self.path, stat_err)
+            if fresh:
+                raise stat_err
+            # Not cached, _mtime kept: the next read tries the file again.
+            return last if last is not None else {sec: {} for sec in SECTIONS}
         # While its reads are refused the cached copy is not served: each read tries the
         # file once more, so the run of refusals ends (or reaches its WARNING) on a read.
         if (self._data is not None and m == self._mtime and not fresh and self._seq == seq
@@ -580,8 +599,6 @@ class StateStore:
             return self._data
         data: dict = {}
         if m >= 0:
-            last = self._data if self._data is not None else _LAST_GOOD.get(str(self.path))
-            waits = LOCK_WAITS if fresh or last is None else ()
             for wait in (*waits, None):
                 try:
                     data = json.loads(self.path.read_text(encoding="utf-8"))
@@ -608,6 +625,8 @@ class StateStore:
                         _CORRUPT_SAID.pop(str(self.path), None)
                 _read_back(self.path)
                 break
+        else:
+            _read_back(self.path)
         for s in SECTIONS:
             data.setdefault(s, {})
         self._data, self._mtime, self._seq = data, m, seq
@@ -749,10 +768,11 @@ class StateStore:
             f = self.dir / name
             if not f.is_file():
                 continue
-            if take(section, key, _read_legacy(f, how)):
-                moved.append(name)
-            else:
-                moved.append(name)   # value already in state.json: the old file should still be taken away
+            value = _read_legacy(f, how)
+            if value is None:
+                continue
+            take(section, key, value)
+            moved.append(name)
         for pattern, (section, tmpl, how) in LEGACY_GLOB.items():
             head, _, tail = pattern.partition("*")
             for f in sorted(self.dir.glob(pattern)):

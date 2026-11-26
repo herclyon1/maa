@@ -3957,5 +3957,163 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
         p.unlink(missing_ok=True)
 
 
+def _part_collector_db_order_and_oserror():
+    """Slice F regressions: history.db tie-breaker ORDER BY timestamp, id; db.stat()
+    PermissionError tracking; _record_identity OSError/UnicodeDecodeError resilience;
+    malformed data/sanity fields not crashing scan()."""
+    import json
+    import os
+    import sqlite3
+    import time
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import collector
+    from ark_relay.core.config import SERVER_TZ
+
+    def _make_history_db(root: Path, rows: list[tuple]) -> Path:
+        (root / "data").mkdir(parents=True, exist_ok=True)
+        hist = root / "history"
+        hist.mkdir(parents=True, exist_ok=True)
+        db = root / "data" / "history.db"
+        if db.exists():
+            db.unlink()
+        con = sqlite3.connect(db)
+        con.execute(
+            "CREATE TABLE records ("
+            "id TEXT PRIMARY KEY, time TEXT NOT NULL, timestamp REAL NOT NULL, "
+            "date TEXT NOT NULL, username TEXT NOT NULL, script_name TEXT NOT NULL, "
+            "status TEXT NOT NULL, message TEXT NOT NULL, data TEXT NOT NULL, "
+            "log_path TEXT, log_text_fallback TEXT, storage_errors TEXT NOT NULL)"
+        )
+        con.executemany(
+            "INSERT INTO records VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", rows
+        )
+        con.commit()
+        con.close()
+        return hist
+
+    print("[history.db: same-timestamp rows have deterministic ORDER BY timestamp, id across scans]")
+    ts = 1793149260.5
+    t_iso = "2026-10-28T05:01:00.500000+04:00"
+    id_lo = "0000aaaa-1111-2222-3333-444455556666"
+    id_hi = "ffffbbbb-1111-2222-3333-444455556666"
+    row_lo = (id_lo, t_iso, ts, "2026-10-28", "arknights", "MAA", "ok", "Success!", "{}",
+              f"2026-10-28/{id_lo}/0.log", "", "[]")
+    row_hi = (id_hi, t_iso, ts, "2026-10-28", "arknights", "MAA", "ok", "Success!", "{}",
+              f"2026-10-28/{id_hi}/0.log", "", "[]")
+
+    root_a = tmpdir() / "db_order_a"
+    # Insert higher id first so physical rowid order disagrees with id order.
+    hist_a = _make_history_db(root_a, [row_hi, row_lo])
+    for rid in (id_lo, id_hi):
+        lp = hist_a / "2026-10-28" / rid / "0.log"
+        lp.parent.mkdir(parents=True, exist_ok=True)
+        lp.write_text("[2026-10-28 09:01:00.000] 开始任务\n[2026-10-28 09:05:00.000] 任务完成\n", encoding="utf-8")
+
+    db_rows_a = collector._db_rows(hist_a)
+    check("_db_rows tie-breaks equal timestamp by id ascending",
+          [r[0] for r in db_rows_a], [id_lo, id_hi])
+    recs_a = collector.scan(hist_a, set())
+    ids_a = [r.run_id for r in recs_a]
+    check("scan assigns base to smaller id and suffixed run_id to larger id",
+          ids_a, ["2026-10-28/arknights/MAA-05-01-00", f"2026-10-28/arknights/MAA-05-01-00-{id_hi[:8]}"])
+    seen = set(ids_a)
+    check("rescan with seen returns empty (no duplicate booking)", collector.scan(hist_a, seen), [])
+
+    # Rebuild the DB with opposite insertion order (simulating VACUUM / rowid reorder):
+    # run_ids must stay identical so seen still suppresses both.
+    _make_history_db(root_a, [row_lo, row_hi])
+    check("after opposite insertion order, _db_rows keeps same order",
+          [r[0] for r in collector._db_rows(hist_a)], [id_lo, id_hi])
+    check("after opposite insertion order, scan with original seen still returns []",
+          collector.scan(hist_a, seen), [])
+
+    print("\n[_db_rows: PermissionError on history.db stat is tracked, not swallowed as missing]")
+    db_file = root_a / "data" / "history.db"
+    real_stat = Path.stat
+    warns = _Warnings()
+    collector.log.addHandler(warns)
+    saved_streak = collector._db_fail_streak[0]
+    collector._db_fail_streak[0] = 0
+
+    def _deny_db_stat(self, *a, **kw):
+        if self == db_file:
+            raise PermissionError(13, "history.db locked (test)")
+        return real_stat(self, *a, **kw)
+
+    Path.stat = _deny_db_stat
+    try:
+        for _ in range(4):
+            check("locked history.db returns []", collector._db_rows(hist_a), [])
+        check("streak incremented on stat PermissionError", collector._db_fail_streak[0], 4)
+        now = datetime(2026, 11, 26, 10, 0, tzinfo=SERVER_TZ)
+        check("next_moment schedules retry when stat failed",
+              collector.next_moment(now), (now + timedelta(seconds=45), "重读 AUTO-MAS 的 history.db"))
+        check("exactly one WARNING emitted at threshold 3",
+              len([r for r in warns.records if "history.db" in r.getMessage()]), 1)
+    finally:
+        Path.stat = real_stat
+        collector.log.removeHandler(warns)
+    check("after lock clears, _db_rows succeeds and resets streak",
+          (len(collector._db_rows(hist_a)), collector._db_fail_streak[0]), (2, 0))
+
+    empty_root = tmpdir() / "no_db" / "history"
+    empty_root.mkdir(parents=True)
+    check("missing history.db returns [] without raising streak",
+          (collector._db_rows(empty_root), collector._db_fail_streak[0]), ([], 0))
+    collector._db_fail_streak[0] = saved_streak
+
+    print("\n[_record_identity: corrupt UTF-8 JSON and transient stat() OSError never crash scan()]")
+    hroot = tmpdir() / "hist_bad"
+    day_dir = hroot / "2026-11-26" / "arknights"
+    day_dir.mkdir(parents=True)
+    bad_json = day_dir / "MAA-05-00-01.json"
+    good_json = day_dir / "MAA-05-05-00.json"
+    bad_json.write_bytes(b'{"maa_result": "\xe4\xb8')  # truncated multi-byte UTF-8
+    good_json.write_text(json.dumps({"maa_result": "Success!"}), encoding="utf-8")
+    (day_dir / "MAA-05-05-00.log").write_text(
+        "[2026-11-26 09:05:00.000] 开始\n[2026-11-26 09:10:00.000] 完成\n", encoding="utf-8")
+    old = time.time() - 600
+    for f in (bad_json, good_json):
+        os.utime(f, (old, old))
+    recs = collector.scan(hroot, set())
+    check("corrupt UTF-8 JSON skipped, sibling valid JSON still scanned",
+          [r.run_id for r in recs], ["2026-11-26/arknights/MAA-05-05-00"])
+
+    # stat() fails right inside _record_identity after read_text() succeeds
+    no_log_json = day_dir / "MAA-05-06-00.json"
+    no_log_json.write_text(json.dumps({"maa_result": "Success!"}), encoding="utf-8")
+
+    def _deny_json_stat(self, *a, **kw):
+        if self == no_log_json:
+            raise PermissionError(13, "json stat locked (test)")
+        return real_stat(self, *a, **kw)
+
+    Path.stat = _deny_json_stat
+    try:
+        rec = collector.parse_record(no_log_json, hroot)
+    finally:
+        Path.stat = real_stat
+    check("transient stat OSError in _record_identity falls back to started without raising",
+          (rec is not None, rec.run_id if rec else "", rec.finished == rec.started if rec else False),
+          (True, "2026-11-26/arknights/MAA-05-06-00", True))
+
+    print("\n[_db_identity / _enrich_record: malformed data or sanity values do not crash scan()]")
+    root_bad = tmpdir() / "db_malformed"
+    rid_bad = "11112222-3333-4444-5555-666677778888"
+    hist_bad = _make_history_db(root_bad, [
+        (rid_bad, "2026-10-28T06:00:00+04:00", 1793152800.0, "2026-10-28", "endfield", "MaaEnd",
+         "ok", "Success!", json.dumps({"sanity": {"kind": "snapshot", "value": "not-an-int"}}),
+         f"2026-10-28/{rid_bad}/0.log", "", "[]"),
+    ])
+    lp = hist_bad / "2026-10-28" / rid_bad / "0.log"
+    lp.parent.mkdir(parents=True, exist_ok=True)
+    lp.write_text("[2026-10-28 10:00:00.000] 开始\n[2026-10-28 10:01:00.000] 结束\n", encoding="utf-8")
+    mal_recs = collector.scan(hist_bad, set())
+    check("malformed sanity string in history.db still yields record without crashing",
+          [(r.run_id, r.ok) for r in mal_recs], [("2026-10-28/endfield/MaaEnd-06-00-00", True)])
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_activity_topup, _part_attempts_streak, _part_claim_no_claim_gate, _part_drops, _part_episodes, _part_flush_waits_own_script, _part_gathering_route_node_failed, _part_healthcheck_annihilation, _part_kuro_error_code, _part_logfile_silent, _part_logslice_new_year, _part_main_logfile_silent, _part_monthcard, _part_nofarm_visible, _part_refresh_raw_unread, _part_revive_gates, _part_scan_skips_seen, _part_setup_tasks_verify, _part_tape, _part_transitional, _part_undone_fallback_full, _part_verdict_no_history_log, _part_weekly_three_claims, _part_maa_checks, _part_maa_closedown_postaction, _part_maa_config_rejected, _part_maa_start_watchdog, _part_maa_unreachable_cleared_notes, _part_maa_window_overlap, _part_maa_write_master_first, _part_maa_unreachable, _part_outcome_main, _part_outcome_nest_words, _part_gamelog_errors, _part_m6_counts, _part_m6_okww]))
+    sys.exit(run_parts([_part_activity_topup, _part_attempts_streak, _part_claim_no_claim_gate, _part_drops, _part_episodes, _part_flush_waits_own_script, _part_gathering_route_node_failed, _part_healthcheck_annihilation, _part_kuro_error_code, _part_logfile_silent, _part_logslice_new_year, _part_main_logfile_silent, _part_monthcard, _part_nofarm_visible, _part_refresh_raw_unread, _part_revive_gates, _part_scan_skips_seen, _part_setup_tasks_verify, _part_tape, _part_transitional, _part_undone_fallback_full, _part_verdict_no_history_log, _part_weekly_three_claims, _part_maa_checks, _part_maa_closedown_postaction, _part_maa_config_rejected, _part_maa_start_watchdog, _part_maa_unreachable_cleared_notes, _part_maa_window_overlap, _part_maa_write_master_first, _part_maa_unreachable, _part_outcome_main, _part_outcome_nest_words, _part_gamelog_errors, _part_m6_counts, _part_m6_okww, _part_collector_db_order_and_oserror]))
