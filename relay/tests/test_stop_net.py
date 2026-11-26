@@ -173,5 +173,75 @@ def _part_stop_push_slow_network():
     sys.exit(1 if fails else 0)
 
 
+def _part_netretry_budget_overshoot():
+    """netretry.call() must never pass timeout <= 0 after a timer overshoot in sleep()."""
+    import socket
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+    from ark_relay.core import notify as netretry
+
+    class _FixedRng:
+        def __init__(self, val: float):
+            self.val = val
+
+        def uniform(self, lo: float, hi: float) -> float:
+            return min(hi, max(lo, self.val))
+
+    real_rng = netretry._rng
+    netretry._rng = _FixedRng(0.5)
+    try:
+        print("[sleep 定时器过冲：预算耗尽时直接重抛原异常，绝不把 <= 0 传给 socket.settimeout]")
+        for label, overshoot in (("负剩余（过冲 0.2s）", 0.2), ("零剩余（恰好卡死边界）", 0.0)):
+            t = [0.0]
+            seen: list[float] = []
+
+            def clock():
+                return t[0]
+
+            def sleep_overshoot(s):
+                # Remaining budget before sleep was 0.1 s (limit=2.0, attempt0=1.4, pause=0.5).
+                t[0] += s + 0.1 + overshoot
+
+            def fn(timeout_s: float):
+                seen.append(timeout_s)
+                with socket.socket() as sock:
+                    sock.settimeout(timeout_s)
+                t[0] += 1.4
+                raise ConnectionResetError(10054, "peer reset")
+
+            try:
+                netretry.call(fn, "写测试", 2.0, detail="https://x.invalid", clock=clock, sleep=sleep_overshoot)
+                caught = None
+            except Exception as exc:  # noqa: BLE001
+                caught = exc
+            check(f"{label}：抛出原 ConnectionResetError 而非 ValueError",
+                  type(caught).__name__, "ConnectionResetError")
+            check(f"{label}：只调用了第 1 次，未把 <= 0 传给 fn", seen, [2.0])
+
+        print("\n[sleep 略微过冲但仍有正剩余：第 2 次收到正超时并成功]")
+        t2 = [0.0]
+        seen2: list[float] = []
+
+        def fn2(timeout_s: float):
+            seen2.append(timeout_s)
+            with socket.socket() as sock:
+                sock.settimeout(timeout_s)
+            if len(seen2) == 1:
+                t2[0] += 1.0
+                raise TimeoutError("first try timed out")
+            return "ok"
+
+        def sleep_slight(s):
+            t2[0] += s + 0.25   # leaves 2.0 - 1.0 - 0.5 - 0.25 = 0.25 s
+
+        out = netretry.call(fn2, "读测试", 2.0, detail="https://x.invalid",
+                            clock=lambda: t2[0], sleep=sleep_slight)
+        check("第 2 次成功返回", out, "ok")
+        check("第 2 次拿到的仍是严格正数超时", (len(seen2), seen2[0], round(seen2[1], 4)), (2, 2.0, 0.25))
+    finally:
+        netretry._rng = real_rng
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_stop_push_slow_network]))
+    sys.exit(run_parts([_part_stop_push_slow_network, _part_netretry_budget_overshoot]))

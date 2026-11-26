@@ -3367,8 +3367,16 @@ def _part_notify_routing_main():
     check("第一条报警送到了（Server酱）", n.send("⚠️ 出错了", "正文", alert=True), [])
     check("第二条报警送到了（Server酱）", n.send("⚠️ 又出错了", "正文", alert=True), [])
     check("两次被拒，两条通道故障", len([t for c, t in log if t.startswith("🔌") and c == "Server酱"]), 2)
-    check("故障通知试的也是群的顺序：先群机器人，再 Server酱",
-          [c for c, t in log if t.startswith("🔌")][:2], ["企业微信机器人", "Server酱"])
+    check("故障通知只走还活着的渠道，不再重打刚失败的群机器人",
+          [c for c, t in log if t.startswith("🔌")], ["Server酱", "Server酱"])
+    n_sc, log_sc = build(broken=("Server酱",))
+    check("Server酱挂了日报回退群机器人", n_sc.send("📋 日报", "正文", daily=True), [])
+    check("故障通知走群机器人且不再死磕刚失败的 Server酱",
+          [c for c, t in log_sc if t.startswith("🔌")], ["企业微信机器人"])
+    n_other, log_other = build()
+    n_other._announce_outage({"企业微信": "60020"}, ["Server酱"])
+    check("非群组通道故障仍按群组顺序先发群机器人并一次即停",
+          [c for c, t in log_other if t.startswith("🔌")], ["企业微信机器人"])
 
     print("\n[每条送到的推送记一行：走哪一路、哪个渠道收下（审查 10-13 s5 #4）]")
     import logging
@@ -3820,5 +3828,133 @@ def _part_notify_channels():  # noqa: C901
           _image_bytes_for_wecom(small), small.read_bytes())
 
 
+def _part_notify_resilience():
+    """HTTPException retries in _post, alive-only outage announcements, and netretry budget guard."""
+    import http.client
+    import json
+    import logging
+    import os
+    import urllib.error
+    import urllib.request
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
+                      SERVERCHAN_KEY="", WECOM_CORPID="", WECOM_BOT_URL="",
+                      ARK_LLM_KEY="")
+    from ark_relay.core import notify
+    from ark_relay.core.config import Config
+    from ark_relay.features import errwatch
+
+    class _Resp:
+        def __init__(self, payload: bytes):
+            self._payload = payload
+
+        def read(self):
+            return self._payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    real_open, real_sleep = urllib.request.urlopen, notify.time.sleep
+    notify.time.sleep = lambda s: None
+    try:
+        print("[_post 重试 IncompleteRead / BadStatusLine / 截断 UTF-8]")
+        calls: list[str] = []
+        seq: list = [
+            http.client.IncompleteRead(b'{"err'),
+            http.client.BadStatusLine("HTTP/1.1"),
+            _Resp(json.dumps({"errcode": 0}).encode("utf-8")),
+        ]
+
+        def scripted(req, timeout=None):
+            calls.append(req.full_url if hasattr(req, "full_url") else str(req))
+            got = seq.pop(0)
+            if isinstance(got, BaseException):
+                raise got
+            return got
+
+        urllib.request.urlopen = scripted
+        check("IncompleteRead 与 BadStatusLine 均会重试并最终送达",
+              notify._post_json("https://fake.test/bot", {"k": 1}), {"errcode": 0})
+        check("一共尝试 3 次", len(calls), 3)
+
+        calls.clear()
+        seq[:] = [_Resp(b"\xff\xfe"), _Resp(json.dumps({"errcode": 0}).encode("utf-8"))]
+        check("损坏 UTF-8 响应也会重试并最终送达",
+              notify._post_json("https://fake.test/bot", {"k": 2}), {"errcode": 0})
+        check("损坏 UTF-8 重试后第 2 次成功", len(calls), 2)
+
+        calls.clear()
+        seq[:] = [http.client.IncompleteRead(b"")] * notify._RETRIES
+        try:
+            notify._post_json("https://fake.test/bot", {"k": 3})
+            raised = ""
+        except http.client.IncompleteRead:
+            raised = "IncompleteRead"
+        check("连续 3 次 IncompleteRead 最终原样抛出", (raised, len(calls)), ("IncompleteRead", 3))
+
+        print("\n[_announce_outage 不再重复猛打刚失败的通道，同时保持 errwatch.PUSHED 契约]")
+        cfg = Config()
+        cfg.state_dir = TMP
+        cfg.wecom_bot_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k"
+        cfg.serverchan_key = "SCTabc"
+        bot_hits, sc_hits = [], []
+
+        def fake_channels(req, timeout=None):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            if "webhook" in url:
+                bot_hits.append(url)
+                raise http.client.IncompleteRead(b"cut")
+            sc_hits.append(url)
+            return _Resp(json.dumps({"code": 0}).encode("utf-8"))
+
+        urllib.request.urlopen = fake_channels
+        seen_warn = []
+
+        class _WarnGrab(logging.Handler):
+            def emit(self, record):
+                if record.levelno >= logging.WARNING:
+                    seen_warn.append((record.getMessage(), bool(getattr(record, errwatch.PUSHED, False))))
+
+        grab = _WarnGrab()
+        notify.log.addHandler(grab)
+        try:
+            n = notify.Notifier(cfg)
+            check("群机器人连续 IncompleteRead 后回退 Server酱送达",
+                  n.send("⚠️ 故障测试", "正文", alert=True), [])
+            check("群机器人仅在原发送试了 3 次，故障通告不再重打群机器人", len(bot_hits), notify._RETRIES)
+            check("Server酱 收到原消息与通道故障通告共 2 次", len(sc_hits), 2)
+            outage_warns = [x for x in seen_warn if "企业微信机器人推送失败" in x[0]]
+            check("仅送达 Server酱时保留 PUSHED=False 契约（等机器人恢复再进群）",
+                  [p for _, p in outage_warns], [False])
+
+            bot_hits.clear()
+            sc_hits.clear()
+            seen_warn.clear()
+
+            def sc_down(req, timeout=None):
+                url = req.full_url if hasattr(req, "full_url") else str(req)
+                if "sctapi" in url:
+                    sc_hits.append(url)
+                    raise urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
+                bot_hits.append(url)
+                return _Resp(json.dumps({"errcode": 0}).encode("utf-8"))
+
+            urllib.request.urlopen = sc_down
+            check("Server酱 502 时日报回退群机器人送达", n.send("📋 日报", "正文", daily=True), [])
+            check("Server酱 仅原发送试 1 次，故障通告不再重打 Server酱", len(sc_hits), 1)
+            check("群机器人收到日报与通道故障通告共 2 次", len(bot_hits), 2)
+            sc_warns = [x for x in seen_warn if "Server酱推送失败" in x[0]]
+            check("群机器人已收到通道故障通告时标 PUSHED=True（errwatch 不重复推送）",
+                  [p for _, p in sc_warns], [True])
+        finally:
+            notify.log.removeHandler(grab)
+    finally:
+        urllib.request.urlopen, notify.time.sleep = real_open, real_sleep
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_alert_dedup, _part_first_error_alert, _part_failure_alert, _part_group_long_alarm, _part_uptime_alarm, _part_errwatch_midnight_counts, _part_known_fixed_live, _part_unresolved, _part_silent_green_guards, _part_alertlog_main, _part_alertlog_channel, _part_alertlog_no_lock_on_cos, _part_macpush, _part_every_failure_pushed, _part_recovered_daily_only, _part_manual_stop_backfill, _part_manual_stop_not_selfheal, _part_notify_routing_main, _part_notify_channels]))
+    sys.exit(run_parts([_part_alert_dedup, _part_first_error_alert, _part_failure_alert, _part_group_long_alarm, _part_uptime_alarm, _part_errwatch_midnight_counts, _part_known_fixed_live, _part_unresolved, _part_silent_green_guards, _part_alertlog_main, _part_alertlog_channel, _part_alertlog_no_lock_on_cos, _part_macpush, _part_every_failure_pushed, _part_recovered_daily_only, _part_manual_stop_backfill, _part_manual_stop_not_selfheal, _part_notify_routing_main, _part_notify_channels, _part_notify_resilience]))

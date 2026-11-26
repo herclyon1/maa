@@ -3293,5 +3293,200 @@ def _part_snap_timeout_thread_safety():
         engine.forget_scripts_cache()
 
 
+def _part_daily_upload_concurrency_and_midnight():
+    """Concurrent daily uploads (errwatch-push + engine) and midnight _last_ok day isolation."""
+    import http.client
+    import os
+    import threading
+    import time
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import SERVER_TZ, Config
+    from ark_relay.features import evidence as ev
+
+    def stamp(dt: datetime) -> str:
+        return dt.astimezone().strftime("%m-%d %H:%M:%S")
+
+    def make_cfg(relay_log: Path, state: Path) -> Config:
+        cfg = Config()
+        cfg.state_dir = state
+        cfg.automas_dir = None
+        cfg.cos_secret_id = cfg.cos_secret_key = cfg.cos_bucket = cfg.cos_region = "x"
+        os.environ["ARK_LOG_FILE"] = str(relay_log)
+        return cfg
+
+    saved_state = (
+        ev._last_attempt[0],
+        ev._last_day[0],
+        dict(ev._last_ok),
+        list(ev._last_errors),
+        ev._ocr_sent[0],
+        os.environ.get("ARK_LOG_FILE"),
+    )
+    try:
+        d1 = datetime(2026, 11, 26, 23, 59, 30, tzinfo=SERVER_TZ)
+        d2 = datetime(2026, 11, 27, 0, 0, 10, tzinfo=SERVER_TZ)
+        d2_later = datetime(2026, 11, 27, 0, 0, 20, tzinfo=SERVER_TZ)
+
+        st = tmpdir()
+        relay = tmpdir() / "relay.log"
+        relay.write_text(
+            f"{stamp(d1)} INFO    ark.test  day1-line\n"
+            f"{stamp(d2)} INFO    ark.test  day2-line\n",
+            encoding="utf-8",
+        )
+        cfg = make_cfg(relay, st)
+
+        print("[并发上传：加锁串行化 + 独立临时目录，不共享固定路径，事后清理]")
+        active = [0]
+        max_active = [0]
+        seen_paths: list[Path] = []
+        guard = threading.Lock()
+        entered = threading.Event()
+        release = threading.Event()
+
+        class SlowUp:
+            def __init__(self, gate: bool = False):
+                self.gate = gate
+
+            def upload(self, path: Path, timeout: int = 60) -> dict:
+                with guard:
+                    active[0] += 1
+                    max_active[0] = max(max_active[0], active[0])
+                    seen_paths.append(path)
+                    first_in = len(seen_paths) == 1
+                try:
+                    if self.gate and first_in:
+                        entered.set()
+                        release.wait(5)
+                    else:
+                        time.sleep(0.02)
+                    data = path.read_bytes()
+                    assert data, "staged file must be readable"
+                    key = f"daily/{path.name}"
+                    return {"name": path.name, "url": f"https://host/{key}", "page": f"https://host/{key}?sig=1"}
+                finally:
+                    with guard:
+                        active[0] -= 1
+
+        ev._last_attempt[0] = 0.0
+        ev._last_day[0] = ""
+        ev._last_ok.clear()
+        ev._last_errors.clear()
+
+        up = SlowUp(gate=True)
+        outs: list[dict] = []
+        errs: list[Exception] = []
+
+        def worker(force: bool, t_val: float):
+            try:
+                outs.append(ev.upload_daily_logs(cfg, force=force, now=d1, clock=lambda: t_val, uploader=up))
+            except Exception as exc:  # noqa: BLE001
+                errs.append(exc)
+
+        t_err = threading.Thread(target=worker, args=(False, 1000.0), name="errwatch-push")
+        t_eng = threading.Thread(target=worker, args=(True, 1001.0), name="engine-shutdown")
+        t_err.start()
+        check("首线程进入上传", entered.wait(5), True)
+        t_eng.start()
+        time.sleep(0.05)
+        check("第二线程等待锁，未并发进入上传", max_active[0], 1)
+        release.set()
+        t_err.join(5)
+        t_eng.join(5)
+        check("双线程并发无异常", errs, [])
+        check("双线程均完成且全程串行（并发峰值=1）", (len(outs), max_active[0]), (2, 1))
+        daily_dir = st / "evidence" / "daily"
+        check("上传文件基名保持 relay-YYYY-MM-DD.log",
+              [p.name for p in seen_paths], ["relay-2026-11-26.log", "relay-2026-11-26.log"])
+        check("每次上传使用独立临时目录（非共享 daily/ 固定路径）",
+              (all(p.parent != daily_dir for p in seen_paths), len({p.parent for p in seen_paths}) == 2),
+              (True, True))
+        check("上传后临时目录已清理", list(daily_dir.iterdir()), [])
+
+        print("\n[双线程同时 force=False：前者完成、后者命调节流并拿到链接]")
+        ev._last_attempt[0] = 0.0
+        ev._last_day[0] = ""
+        ev._last_ok.clear()
+        seen_paths.clear()
+        entered.clear()
+        release.clear()
+        outs.clear()
+        up2 = SlowUp(gate=True)
+
+        def worker2(t_val: float):
+            outs.append(ev.upload_daily_logs(cfg, force=False, now=d1, clock=lambda: t_val, uploader=up2))
+
+        t1 = threading.Thread(target=worker2, args=(2000.0,))
+        t2 = threading.Thread(target=worker2, args=(2002.0,))
+        t1.start()
+        check("线程 1 进入上传", entered.wait(5), True)
+        t2.start()
+        time.sleep(0.05)
+        release.set()
+        t1.join(5)
+        t2.join(5)
+        check("仅真正上传 1 次", len(seen_paths), 1)
+        check("一次上传、一次节流跳过，两者都带当天链接",
+              (sorted(o["skipped"] for o in outs), all("relay-2026-11-26.log" in o["url"] for o in outs)),
+              ([False, True], True))
+
+        print("\n[跨零点隔离：23:59:30 上传后 00:00:10 不返回前一天链接]")
+        ev._last_attempt[0] = 0.0
+        ev._last_day[0] = ""
+        ev._last_ok.clear()
+        ev._last_errors.clear()
+        up3 = SlowUp(gate=False)
+        r_d1 = ev.upload_daily_logs(cfg, force=False, now=d1, clock=lambda: 3000.0, uploader=up3)
+        check("23:59:30 返回前一天链接", "relay-2026-11-26.log" in r_d1["url"], True)
+        r_d2 = ev.upload_daily_logs(cfg, force=False, now=d2, clock=lambda: 3040.0, uploader=up3)
+        check("00:00:10 跨日不被前一天节流，直接上传新一天日志",
+              (r_d2["skipped"], "relay-2026-11-27.log" in r_d2["url"]), (False, True))
+
+        class FailUp:
+            def upload(self, path: Path, timeout: int = 60) -> dict:
+                raise OSError("cos down")
+
+        ev._last_attempt[0] = 0.0
+        ev._last_day[0] = ""
+        ev._last_ok.clear()
+        ev._last_errors.clear()
+        r_prev = ev.upload_daily_logs(cfg, force=False, now=d1, clock=lambda: 4000.0, uploader=up3)
+        check("前一天上传成功", "relay-2026-11-26.log" in r_prev["url"], True)
+        r_fail = ev.upload_daily_logs(cfg, force=False, now=d2, clock=lambda: 4040.0, uploader=FailUp())
+        check("新一天首次上传失败", (r_fail["skipped"], bool(r_fail["errors"]), r_fail["url"]), (False, True, ""))
+        r_throt = ev.upload_daily_logs(cfg, force=False, now=d2_later, clock=lambda: 4050.0, uploader=FailUp())
+        check("新一天失败后 10s 命调节流：不泄露前一天链接，保留当天错误",
+              (r_throt["skipped"], r_throt["url"], r_throt["truncated"], r_throt["errors"]),
+              (True, "", False, r_fail["errors"]))
+
+        print("\n[check_sources 捕获 HTTPException，prune 清理崩溃残留临时目录]")
+        def cut_fetch(_url: str) -> bytes:
+            raise http.client.IncompleteRead(b"partial")
+
+        changed, unreach = ev.check_sources(fetch=cut_fetch)
+        check("IncompleteRead 记为不可达而不崩溃", (changed, len(unreach)), ([], len(ev.PINS)))
+
+        stale = daily_dir / ".upload-stale"
+        stale.mkdir(parents=True, exist_ok=True)
+        (stale / "relay-2026-08-01.log").write_text("x", encoding="utf-8")
+        old_ts = (datetime.now() - timedelta(days=40)).timestamp()
+        os.utime(stale, (old_ts, old_ts))
+        ev.prune(st, 30)
+        check("prune 清掉超期临时目录", stale.exists(), False)
+    finally:
+        ev._last_attempt[0] = saved_state[0]
+        ev._last_day[0] = saved_state[1]
+        ev._last_ok.clear()
+        ev._last_ok.update(saved_state[2])
+        ev._last_errors[:] = saved_state[3]
+        ev._ocr_sent[0] = saved_state[4]
+        if saved_state[5] is None:
+            os.environ.pop("ARK_LOG_FILE", None)
+        else:
+            os.environ["ARK_LOG_FILE"] = saved_state[5]
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_evidence_main, _part_evidence_archive, _part_evidence_cli_window, _part_evidence_daily_silent, _part_evidence_maaend_live_logs, _part_evidence_notify_once, _part_evidence_relay_after_run, _part_evidence_saved_count, _part_evidence_sources_unreachable, _part_error_evidence, _part_game_evidence, _part_held_push_keeps_evidence, _part_task_shots, _part_tacet_shots, _part_self_attrs_main, _part_self_heal_red, _part_undefined_names, _part_module_table, _part_parts, _part_scripts_relay_attrs, _part_scripts_running_asks_automas, _part_scripts_cache_toctou, _part_snap_timeout_thread_safety]))
+    sys.exit(run_parts([_part_evidence_main, _part_evidence_archive, _part_evidence_cli_window, _part_evidence_daily_silent, _part_evidence_maaend_live_logs, _part_evidence_notify_once, _part_evidence_relay_after_run, _part_evidence_saved_count, _part_evidence_sources_unreachable, _part_error_evidence, _part_game_evidence, _part_held_push_keeps_evidence, _part_task_shots, _part_tacet_shots, _part_self_attrs_main, _part_self_heal_red, _part_undefined_names, _part_module_table, _part_parts, _part_scripts_relay_attrs, _part_scripts_running_asks_automas, _part_scripts_cache_toctou, _part_snap_timeout_thread_safety, _part_daily_upload_concurrency_and_midnight]))

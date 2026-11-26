@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 import hashlib
+import http.client
 import urllib.error
 import urllib.request
 import json
@@ -255,7 +256,7 @@ def check_sources(fetch=None, timeout: int = 30) -> tuple[list[str], list[str]]:
     for pin in PINS:
         try:
             raw = fetch(JSDELIVR.format(repo=pin.repo, branch=pin.branch, path=pin.path))
-        except (urllib.error.URLError, OSError, ValueError) as exc:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as exc:
             unreachable.append(pin.name)
             LAST_ERRORS[pin.name] = f"{type(exc).__name__}: {getattr(exc, 'reason', None) or exc}"
             continue
@@ -1074,6 +1075,9 @@ def prune(state_dir: Path, days: int = 30) -> int:
                     if f.is_file() and f.stat().st_mtime < cutoff:
                         f.unlink()
                         gone += 1
+                    elif f.is_dir() and f.stat().st_mtime < cutoff:
+                        shutil.rmtree(f, ignore_errors=True)
+                        gone += 1
                 except OSError:
                     continue
             if gone:
@@ -1093,16 +1097,22 @@ DAY_MAX_BYTES = 50 * 1024 * 1024
 # At most one upload a minute from the error path (the object overwrites anyway).
 THROTTLE_S = 60.0
 
-# The last error-path upload attempt (epoch seconds, the caller's clock). Module
-# state so errwatch and shutdown share one throttle; tests pass a fake clock.
+# Serializes error-path and shutdown daily uploads so both threads never race on
+# _last_attempt/_last_day/_last_ok/_last_errors/_ocr_sent or overwrite COS out of order.
+_daily_lock = threading.Lock()
+# The last error-path upload attempt (epoch seconds, the caller's clock) and its
+# server day (YYYY-MM-DD). Module state so errwatch and shutdown share one throttle;
+# tests pass a fake clock.
 _last_attempt = [0.0]
+_last_day = [""]
 # The OCR cache of the official posters and calendars (banners.image_reader: url ->
 # lines with positions), uploaded when it changed, so every poster the relay reads
 # is kept as a real sample for the tests (each game version brings a new layout).
 OCR_CACHE_MAX_BYTES = 20 * 1024 * 1024
 _ocr_sent = [0.0]
-# The last upload's {url, truncated}: a push inside the throttle minute still ends
-# with the link (the day object is already there and is overwritten, not new).
+# The last upload's {day, url, truncated}: a push inside the throttle minute still
+# ends with the link (the day object is already there and is overwritten, not new),
+# scoped to the same server day so a midnight rollover never hands back yesterday's link.
 _last_ok: dict = {}
 _last_errors: list = []      # the last real attempt's errors, handed out with a throttled call
 # One PUT's socket timeout. Cos.upload defaults to 900 s, which would hold
@@ -1166,45 +1176,61 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
     reasons an upload did not land. Never raises - an upload problem is reported
     in the result, not thrown at the caller.
     """
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    if not force and clock() - _last_attempt[0] < THROTTLE_S:
-        return {"url": _last_ok.get("url", ""), "at": now.strftime("%H:%M"),
-                "truncated": bool(_last_ok.get("truncated")), "errors": list(_last_errors),
-                "skipped": True}
-    up = uploader if uploader is not None else _daily_uploader(cfg)
-    result = {"url": "", "at": now.strftime("%H:%M"), "truncated": False,
-              "errors": [], "skipped": False}
-    if up is None:
-        result["errors"].append("没有配置 COS（.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION）")
+    with _daily_lock:
+        at = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+        day = at.strftime("%Y-%m-%d")
+        if not force and _last_day[0] == day and clock() - _last_attempt[0] < THROTTLE_S:
+            ok_today = _last_ok if _last_ok.get("day") == day else {}
+            return {"url": ok_today.get("url", ""), "at": at.strftime("%H:%M"),
+                    "truncated": bool(ok_today.get("truncated")), "errors": list(_last_errors),
+                    "skipped": True}
+        up = uploader if uploader is not None else _daily_uploader(cfg)
+        result = {"url": "", "at": at.strftime("%H:%M"), "truncated": False,
+                  "errors": [], "skipped": False}
+        if up is None:
+            result["errors"].append("没有配置 COS（.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION）")
+            _last_attempt[0] = clock()
+            _last_day[0] = day
+            _last_errors[:] = result["errors"]
+            return result
+        day_start = at.replace(hour=0, minute=0, second=0, microsecond=0)
+        tmp_dir = Path(cfg.state_dir) / "evidence" / "daily"
+        stage_dir = tmp_dir / f".upload-{uuid.uuid4().hex}"
+        try:
+            stage_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            result["errors"].append(f"stage: {type(exc).__name__}: {exc}")
+            _last_attempt[0] = clock()
+            _last_day[0] = day
+            _last_errors[:] = result["errors"]
+            return result
+        try:
+            for kind, src in _sources(cfg):
+                data, truncated = _day_tail(src, day_start, at, DAY_MAX_BYTES)
+                if not data:
+                    continue
+                tmp = stage_dir / f"{kind}-{day}.log"
+                try:
+                    atomic_write_bytes(tmp, data)
+                    got = up.upload(tmp, timeout=UPLOAD_TIMEOUT_S)
+                except PermanentUploadError as exc:
+                    result["errors"].append(f"{kind}: {exc}")
+                    break                      # the key/bucket refuses: the app.log would too
+                except Exception as exc:       # noqa: BLE001 - a failed upload must not raise
+                    result["errors"].append(f"{kind}: {type(exc).__name__}: {exc}")
+                    continue
+                if kind == "relay":
+                    result["url"] = got.get("page") or got.get("url", "")   # signed: the bucket is private
+                    result["truncated"] = truncated
+                    _last_ok.clear()
+                    _last_ok.update(day=day, url=result["url"], truncated=truncated)
+            _upload_ocr_samples(cfg, up, stage_dir, day)
+        finally:
+            shutil.rmtree(stage_dir, ignore_errors=True)
         _last_attempt[0] = clock()
+        _last_day[0] = day
         _last_errors[:] = result["errors"]
         return result
-    day = now.strftime("%Y-%m-%d")
-    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    tmp_dir = Path(cfg.state_dir) / "evidence" / "daily"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    for kind, src in _sources(cfg):
-        data, truncated = _day_tail(src, day_start, now, DAY_MAX_BYTES)
-        if not data:
-            continue
-        tmp = tmp_dir / f"{kind}-{day}.log"
-        try:
-            atomic_write_bytes(tmp, data)
-            got = up.upload(tmp, timeout=UPLOAD_TIMEOUT_S)
-        except PermanentUploadError as exc:
-            result["errors"].append(f"{kind}: {exc}")
-            break                      # the key/bucket refuses: the app.log would too
-        except Exception as exc:       # noqa: BLE001 - a failed upload must not raise
-            result["errors"].append(f"{kind}: {type(exc).__name__}: {exc}")
-            continue
-        if kind == "relay":
-            result["url"] = got.get("page") or got.get("url", "")   # signed: the bucket is private
-            result["truncated"] = truncated
-            _last_ok.update(url=result["url"], truncated=truncated)
-    _upload_ocr_samples(cfg, up, tmp_dir, day)
-    _last_attempt[0] = clock()
-    _last_errors[:] = result["errors"]
-    return result
 
 
 # A week: a day missed while the machine stayed up, or while the line was down for
@@ -1241,33 +1267,37 @@ def backfill_past_days(cfg, *, now: "datetime | None" = None, uploader=None, day
     if up is None:
         return result
     tmp_dir = Path(cfg.state_dir) / "evidence" / "daily"
+    stage_dir = tmp_dir / f".backfill-{uuid.uuid4().hex}"
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    for back in range(1, days + 1):
-        day_start = today - timedelta(days=back)
-        day_end = day_start + timedelta(days=1) - timedelta(microseconds=1)
-        day = day_start.strftime("%Y-%m-%d")
-        for kind, src in _sources(cfg):
-            data, _truncated = _day_tail(src, day_start, day_end, DAY_MAX_BYTES)
-            if not data:
-                continue               # the machine holds nothing of that day (it was off, or the log moved on)
-            tmp = tmp_dir / f"{kind}-{day}.log"
-            try:
-                held = up.size(up.object_key(tmp))
-                if held is not None and held >= len(data):
-                    result["kept"] += 1
+    try:
+        for back in range(1, days + 1):
+            day_start = today - timedelta(days=back)
+            day_end = day_start + timedelta(days=1) - timedelta(microseconds=1)
+            day = day_start.strftime("%Y-%m-%d")
+            for kind, src in _sources(cfg):
+                data, _truncated = _day_tail(src, day_start, day_end, DAY_MAX_BYTES)
+                if not data:
+                    continue               # the machine holds nothing of that day (it was off, or the log moved on)
+                tmp = stage_dir / f"{kind}-{day}.log"
+                try:
+                    held = up.size(up.object_key(tmp))
+                    if held is not None and held >= len(data):
+                        result["kept"] += 1
+                        continue
+                    stage_dir.mkdir(parents=True, exist_ok=True)
+                    atomic_write_bytes(tmp, data)
+                    up.upload(tmp, timeout=UPLOAD_TIMEOUT_S)
+                except PermanentUploadError as exc:
+                    result["errors"].append(f"{day} {kind}: {exc}")
+                    return result          # the key/bucket refuses: every other object would too
+                except Exception as exc:   # noqa: BLE001 - a failed back-fill must not raise
+                    result["errors"].append(f"{day} {kind}: {type(exc).__name__}: {exc}")
+                    if not hasattr(exc, "code"):
+                        return result      # no answer at all (the line is down): the next object would wait as long
                     continue
-                tmp_dir.mkdir(parents=True, exist_ok=True)
-                atomic_write_bytes(tmp, data)
-                up.upload(tmp, timeout=UPLOAD_TIMEOUT_S)
-            except PermanentUploadError as exc:
-                result["errors"].append(f"{day} {kind}: {exc}")
-                return result          # the key/bucket refuses: every other object would too
-            except Exception as exc:   # noqa: BLE001 - a failed back-fill must not raise
-                result["errors"].append(f"{day} {kind}: {type(exc).__name__}: {exc}")
-                if not hasattr(exc, "code"):
-                    return result      # no answer at all (the line is down): the next object would wait as long
-                continue
-            result["sent"].append((day, kind, held, len(data)))
+                result["sent"].append((day, kind, held, len(data)))
+    finally:
+        shutil.rmtree(stage_dir, ignore_errors=True)
     return result
 
 
