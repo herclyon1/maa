@@ -3370,5 +3370,65 @@ def _part_unreachable_note_pushed_now():
     check("不写「今天没有官方公告」", texts.UNREACHABLE_SHAPE_NOTE in body, False)
 
 
+def _part_slice_l_maaend_no_exit_stop_and_spaces():
+    """Slice L regression: _all_done_no_exit ignores 停止任务 and handles spaced task names."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features import outcome
+
+    own = "2026-11-26 09:00:00 INFO  [Task] 实例 AUTO-MAS: 开始执行任务, 数量: 2\n"
+    done_two = (own
+                + "[2026-11-26 09:00:01] 任务开始: 🎁赠送干员礼物\n"
+                + "[2026-11-26 09:01:00] 任务完成: 🎁赠送干员礼物\n"
+                + "[2026-11-26 09:01:01] 任务开始: ❌关闭游戏（PC）\n"
+                + "[2026-11-26 09:01:10] 任务完成: ❌关闭游戏（PC）\n")
+
+    print("[1. 跑完计划任务未自退，AUTO-MAS 发出停止任务只落盘「任务开始: 停止任务」：不算没干完]")
+    hung_stop_only = done_two + "[2026-11-26 09:01:30] 任务开始: 停止任务\n"
+    check("maaend_no_self_exit 认出已全完未自退", outcome.maaend_no_self_exit(hung_stop_only, own_log=True), True)
+    check("maaend_checks 无失败项、不发「没干完」假告警",
+          outcome.summarize(outcome.maaend_checks(hung_stop_only, [], own_log=True), "MaaEnd"), None)
+
+    hung_stop_crlf = (done_two + "[2026-11-26 09:01:30] 任务开始: 🛑 停止任务\n").replace("\n", "\r\n")
+    check("带 emoji 停止任务 + Windows CRLF：同样通过",
+          (outcome.maaend_no_self_exit(hung_stop_crlf, own_log=True),
+           outcome.summarize(outcome.maaend_checks(hung_stop_crlf, [], own_log=True), "MaaEnd")),
+          (True, None))
+
+    print("\n[2. 反假绿：只跑完 1/2 就被停止任务收尾，停止任务不顶替计划完成数]")
+    half_stopped = (own
+                    + "[2026-11-26 09:00:01] 任务开始: 🎁赠送干员礼物\n"
+                    + "[2026-11-26 09:01:00] 任务完成: 🎁赠送干员礼物\n"
+                    + "[2026-11-26 09:01:05] 任务开始: 停止任务\n"
+                    + "[2026-11-26 09:01:06] 任务完成: 停止任务\n")
+    check("1/2 + 停止任务完成：不算全完", outcome.maaend_no_self_exit(half_stopped, own_log=True), False)
+    check("maaend_checks 照常判失败",
+          outcome.summarize(outcome.maaend_checks(half_stopped, [], own_log=True), "MaaEnd") is not None, True)
+
+    print("\n[3. 含空格任务名按整名匹配（与 _maaend_cut_short 一致）]")
+    spaced_ok = (own
+                 + "[2026-11-26 09:00:01] 任务开始: ⚔️ 协议空间 A\n"
+                 + "[2026-11-26 09:01:00] 进入协议空间成功\n"
+                 + "[2026-11-26 09:02:00] 任务完成: ⚔️ 协议空间 A\n"
+                 + "[2026-11-26 09:02:01] 任务开始: ❌ 关闭游戏（PC）\n"
+                 + "[2026-11-26 09:02:10] 任务完成: ❌ 关闭游戏（PC）\n"
+                 + "[2026-11-26 09:02:30] 任务开始: 停止任务\n")
+    check("含空格任务全完成 + 停止任务：认出已全完且不报警",
+          (outcome.maaend_no_self_exit(spaced_ok, own_log=True),
+           outcome.summarize(outcome.maaend_checks(spaced_ok, [], own_log=True), "MaaEnd")),
+          (True, None))
+
+    spaced_mismatch = (own.replace("数量: 2", "数量: 1")
+                       + "[2026-11-26 09:00:01] 任务开始: ⚔️ 协议空间 A\n"
+                       + "[2026-11-26 09:01:00] 任务完成: ⚔️ 协议空间 A\n"
+                       + "[2026-11-26 09:02:00] 任务开始: ⚔️ 协议空间 B\n")
+    check("同前缀不同后缀任务 B 未结束：不算全完", outcome.maaend_no_self_exit(spaced_mismatch, own_log=True), False)
+
+    spaced_wrong_end = (own.replace("数量: 2", "数量: 1")
+                        + "[2026-11-26 09:00:01] 任务开始: 自动采集 谷地\n"
+                        + "[2026-11-26 09:01:00] 任务完成: 自动采集 武陵\n")
+    check("开始「自动采集 谷地」却只结束「自动采集 武陵」：不算全完",
+          outcome.maaend_no_self_exit(spaced_wrong_end, own_log=True), False)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_agreement, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now]))
+    sys.exit(run_parts([_part_mc28_settle_once, _part_mc28_state, _part_mc28_task_trail, _part_mc28_one_alarm, _part_maaend_app_log, _part_maaend_dir_resolve, _part_maaend_false_green, _part_maaend_logged_out, _part_maaend_agreement, _part_maaend_recovered, _part_maaend_reenable, _part_maaend_stopped_between_tasks, _part_maaend_stub_record, _part_maaend_bagfull, _part_maaend_bagfull_collect, _part_maaend_close_game_wrapup, _part_maaend_collect_items_v236, _part_maaend_collect_xianlu, _part_maaend_farm_drops, _part_maaend_two_farms, _part_unreachable_evidence, _part_unreachable_note_pushed_now, _part_slice_l_maaend_no_exit_stop_and_spaces]))

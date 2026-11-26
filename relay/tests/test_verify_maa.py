@@ -3957,5 +3957,119 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
         p.unlink(missing_ok=True)
 
 
+def _part_slice_l_activity_and_okww_outcome():
+    """Slice L regressions: activity.next_moment past retry, weekly unverified+short, boss-full farm."""
+    import types
+    from datetime import datetime, timezone
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import collector, texts
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import activity, machinechecks, makeup, outcome
+
+    print("[1. activity.next_moment: 冷却已过且被阻塞时不再返回过去时刻]")
+    st_dir = tmpdir()
+
+    def at(hh, mm, ss=0):
+        return datetime(2026, 11, 26, hh, mm, ss, tzinfo=SERVER_TZ)
+    activity._write(st_dir, "2026-11-26", {
+        "booked": at(9, 30).isoformat(), "run_id": "OK-WW-09-18-00", "points": 80,
+        "due": at(21, 30).isoformat(), "tries": 1, "result": "couldnt_run",
+        "dispatched_at": at(21, 40).isoformat(), "note": "调度程序没回应",
+    })
+    check("冷却未满（21:41）：返回 21:45 重试时刻",
+          activity.next_moment(st_dir, at(21, 41)), (at(21, 45), "鸣潮活跃晚班补再派一次"))
+    check("正好到达冷却边界（21:45:00）：返回 None，不触发 1 秒空转",
+          activity.next_moment(st_dir, at(21, 45)), None)
+    orig_blocked = makeup._blocked
+    try:
+        makeup._blocked = lambda e, now: "正在刷声骸"
+        eng = types.SimpleNamespace(
+            cfg=types.SimpleNamespace(state_dir=st_dir),
+            notifier=types.SimpleNamespace(send=lambda *a, **k: []))
+        check("冷却已过但正在刷声骸：maybe_run 暂不派", activity.maybe_run(eng, at(21, 46)), False)
+        check("冷却已过仍处于 couldnt_run：next_moment 返回 None，不返回过去时刻",
+              activity.next_moment(st_dir, at(21, 46)), None)
+    finally:
+        makeup._blocked = orig_blocked
+    utc_before = at(21, 41).astimezone(timezone.utc)
+    check("传 UTC 时区 now 同样换算到服务器时区",
+          activity.next_moment(st_dir, utc_before), (at(21, 45), "鸣潮活跃晚班补再派一次"))
+
+    print("\n[2. 周本：已核实 + 未核实领奖 + 波片不足时，不得漏报也不得写「已完成」]")
+    HEAD = "2026-11-26 10:01:00,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
+    OCR = "2026-11-26 10:02:00,000 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：{k}/3_0.99, x60_0.79]\n"
+    CLAIM = "2026-11-26 10:03:00,000 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
+    BACK = "2026-11-26 10:03:05,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 {k}/3→{n}/3\n"
+    SAME = "2026-11-26 10:03:05,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读次数没变（{k}/3），这次没领到\n"
+    SHORT = "2026-11-26 10:05:00,000 INFO TaskExecutor FarmEchoTask:结晶波片不足，取消并跳过本次周本\n"
+    NOWAVE = "2026-11-26 10:05:00,000 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
+    NOWAVE_END = ("2026-11-26 10:05:01,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：结晶波片不够领奖"
+                  "（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打\n")
+
+    mixed = HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + OCR.format(k=2) + CLAIM + SHORT
+    reason = outcome.weekly_incomplete_reason(mixed)
+    check("第 1 圈核实 + 第 2 圈未核实 + 第 3 圈波片不足：weekly_incomplete_reason 非空",
+          ("没核实领到" in reason, texts.plain(reason)), (True, []))
+    steps_mixed = outcome._okww_steps(mixed, 0)
+    check("日报步骤绝不写「已完成」", any("已完成" in s for s in steps_mixed), False)
+    check("日报步骤写清未领满、未核实与波片不足", steps_mixed,
+          ["周本（未领满：只领了 1 次，本周还剩 2 次；另有点了确认 1 次、领完没再读次数，没核实领到；剩下的奖励没领：结晶波片不足）"])
+    chk_mixed = [c for c in outcome.okww_checks(mixed, expect_nest=False, expect_daily=False, expect_stamina=False)
+                 if "周本" in c.label]
+    check("okww_checks 判失败并同时带波片不足与未核实明细",
+          [(c.ok, outcome.WEEKLY_SHORT_SAY in c.detail, "没核实领到" in c.detail,
+            texts.plain(c.label), texts.plain(c.detail)) for c in chk_mixed],
+          [(False, True, True, [], [])])
+    c4_res = machinechecks._c4({"rec": types.SimpleNamespace(script="OK-WW"), "raw": {}, "log_text": mixed})
+    check("上机核对 #4 不放绿（判失败）", (c4_res is not None and c4_res.status, "没核实领到" in c4_res.evidence),
+          (machinechecks.FAIL, True))
+
+    mixed_old_stop = HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + CLAIM + NOWAVE + NOWAVE_END
+    check("旧版波片不足带「这一趟按失败结束」＋未核实：weekly_incomplete_reason 仍非空且日报不写已完成",
+          (bool(outcome.weekly_incomplete_reason(mixed_old_stop)),
+           any("已完成" in s for s in outcome._okww_steps(mixed_old_stop, 0))),
+          (True, False))
+
+    same_short = HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + CLAIM + SAME.format(k=2) + SHORT
+    check("第 2 圈回读次数没变 + 波片不足：weekly_incomplete_reason 非空且日报不写已完成",
+          ("次数没变" in outcome.weekly_incomplete_reason(same_short),
+           any("已完成" in s for s in outcome._okww_steps(same_short, 0))),
+          (True, False))
+
+    full_unv_short = HEAD + OCR.format(k=1) + CLAIM + BACK.format(k=1, n=0) + CLAIM + SHORT
+    check("剩余 0/3 但另有未核实点击 + 波片不足：写「领奖有异常」且不写已完成",
+          outcome._okww_steps(full_unv_short, 0),
+          ["周本（领奖有异常：领了 1 次，本周已领满；另有点了确认 1 次、领完没再读次数，没核实领到；剩下的奖励没领：结晶波片不足）"])
+
+    legit_short = HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + NOWAVE + NOWAVE_END
+    check("对照：全部已核实 + 波片不足：仍返回空 reason 且日报照常",
+          (outcome.weekly_incomplete_reason(legit_short), outcome._okww_steps(legit_short, 0)),
+          ("", ["周本（已完成，领了 1 次，本周还剩 2 次；剩下的奖励没领：结晶波片不足）"]))
+
+    print("\n[3. 强敌突破材料已满停刷：_okww_farm 不误报「无音区（日志里没有序号）」]")
+    L = "2026-11-26 09:20:0{} INFO TaskExecutor TacetTask:{}\n"
+    boss_full = (L.format(1, "强敌领奖：莉莉的共鸣者突破材料 46/46")
+                 + L.format(2, "强敌领奖：莉莉的共鸣者突破材料已经够了（46/46），体力先留着不刷（无音区关着，等定下一个刷什么）"))
+    boss_gone = L.format(1, "强敌领奖：莉莉的共鸣者突破材料已经够了（培养目标页上不再列这一行），体力先留着不刷（无音区关着，等定下一个刷什么）")
+    boss_nomenu = L.format(1, "强敌领奖：莉莉的共鸣者突破材料已经够了（素材获取左栏没有「培养目标」这一格，莉莉练满了或培养目标已取消），体力先留着不刷（无音区关着，等定下一个刷什么）")
+    for tag, sample in (("读到 46/46 已满", boss_full), ("培养目标页不再列这一行", boss_gone), ("左栏无培养目标", boss_nomenu)):
+        farm, reward = outcome._okww_farm(sample)
+        check(f"{tag}：标明强敌已满未刷、不报无音区", (farm, reward), ("强敌·莉莉共鸣者突破材料（已满，未刷）", ""))
+        check(f"{tag}：文案过 plain()", texts.plain(farm), [])
+    f_log = tmpdir() / "boss_full.log"
+    f_log.write_text(boss_full, encoding="utf-8")
+    parsed = collector.parse_okww_log(f_log)
+    check("parse_okww_log：okww_farm 记强敌已满且不写无音区产出",
+          (parsed.get("okww_farm"), "okww_farm_reward" in parsed),
+          ("强敌·莉莉共鸣者突破材料（已满，未刷）", False))
+    boss_full_then_tacet = boss_full + "2026-11-26 09:21:00,000 INFO TaskExecutor TacetTask:info_set Teleport to Tacet Suppression 1\n"
+    check("若满后确实传送去刷了无音区：照常识别该无音区",
+          outcome._okww_farm(boss_full_then_tacet)[0].startswith("无音区·"), True)
+    boss_short = (L.format(1, "强敌领奖：莉莉的共鸣者突破材料 9/46")
+                  + L.format(2, "强敌领奖：体力 30 + 备用 0 不够领一次的 60，这趟刷完"))
+    check("强敌体力不足停刷（无无音区传送）：不误报无音区", outcome._okww_farm(boss_short), ("", ""))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_activity_topup, _part_attempts_streak, _part_claim_no_claim_gate, _part_drops, _part_episodes, _part_flush_waits_own_script, _part_gathering_route_node_failed, _part_healthcheck_annihilation, _part_kuro_error_code, _part_logfile_silent, _part_logslice_new_year, _part_main_logfile_silent, _part_monthcard, _part_nofarm_visible, _part_refresh_raw_unread, _part_revive_gates, _part_scan_skips_seen, _part_setup_tasks_verify, _part_tape, _part_transitional, _part_undone_fallback_full, _part_verdict_no_history_log, _part_weekly_three_claims, _part_maa_checks, _part_maa_closedown_postaction, _part_maa_config_rejected, _part_maa_start_watchdog, _part_maa_unreachable_cleared_notes, _part_maa_window_overlap, _part_maa_write_master_first, _part_maa_unreachable, _part_outcome_main, _part_outcome_nest_words, _part_gamelog_errors, _part_m6_counts, _part_m6_okww]))
+    sys.exit(run_parts([_part_activity_topup, _part_attempts_streak, _part_claim_no_claim_gate, _part_drops, _part_episodes, _part_flush_waits_own_script, _part_gathering_route_node_failed, _part_healthcheck_annihilation, _part_kuro_error_code, _part_logfile_silent, _part_logslice_new_year, _part_main_logfile_silent, _part_monthcard, _part_nofarm_visible, _part_refresh_raw_unread, _part_revive_gates, _part_scan_skips_seen, _part_setup_tasks_verify, _part_tape, _part_transitional, _part_undone_fallback_full, _part_verdict_no_history_log, _part_weekly_three_claims, _part_maa_checks, _part_maa_closedown_postaction, _part_maa_config_rejected, _part_maa_start_watchdog, _part_maa_unreachable_cleared_notes, _part_maa_window_overlap, _part_maa_write_master_first, _part_maa_unreachable, _part_outcome_main, _part_outcome_nest_words, _part_gamelog_errors, _part_m6_counts, _part_m6_okww, _part_slice_l_activity_and_okww_outcome]))
