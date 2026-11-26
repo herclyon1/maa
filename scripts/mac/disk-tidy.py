@@ -110,13 +110,20 @@ TMP_REF = re.compile(rf"claude-501/[^/\s'\"]+/({UUID_RX})"
 # A session that was continued after compaction names its predecessor's transcript like this;
 # the running successor keeps using the predecessor's tmp dir (c0d9dfdd -> 983aaaa0, 10-13).
 CONTINUED = re.compile(rf"read the full transcript at: \S*?/({UUID_RX})\.jsonl")
-PATH_TAIL = r"/(?:Claude|Money)/[^\s'\"`<>()\[\]{},;|*?\\]+"
+PATH_TAIL = r"/(?:Claude|Money)/[^\s'\"`<>()\[\]{},;|*?\\。，、；：）」】]+"
+BOARD_REL_REF = re.compile(r"(?<![A-Za-z0-9_/-])BOARD/([^\s'\"`<>()\[\]{},;|*?\\。，、；：）」】]+)")
+TRAIL_PUNCT = "/.:。，、；：）」】"
 VERSION = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
 WRAPPER_URL = re.compile(r"gradle-(\d+\.\d+(?:\.\d+)?)-(?:bin|all)\.zip")
 # Code only: remote-ref/tools also holds 141k JSON data files (measured 10-13 23:1x: reading them
 # made the scan take 242 s), and data does not reuse a path, a program does.
 CODE_SUFFIXES = {".py", ".sh", ".zsh", ".command", ".js", ".mjs", ".ts", ".swift"}
 REF_SKIP_DIRS = {".git", "node_modules", ".build", "DerivedData", "out", "xcr-dd", "__pycache__"}
+MONEY_REF_SKIP_DIRS = REF_SKIP_DIRS | {
+    ".venv", ".venv_cp", "venv", "备份", "chrome-profile", "chrome-profile-watch",
+    "raw_jp", "raw_cn", "raw", "audio_clips",
+}
+MONEY_REF_SKIP_PREFIXES = ("归档_防清空_", "归档-", ".bak_", "bak_", "p18_", "p19_", "p20_")
 # Git-ignored build outputs the floor tier may take out of idle unmerged / dirty worktrees
 # (inventory row 4 and the skiphint-1011 row: .build, .swiftpm, .ruff_cache).
 BUILD_DIRS = {".build", ".swiftpm", ".ruff_cache"}
@@ -146,6 +153,9 @@ MONEY_DD_DEPTH = 8
 CHROME_CLONE_PREFIX = "code_sign_clone."
 CHROME_PROCS = {"Google Chrome"}
 CHROME_APP_BIN = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+BOARD_STALE_DAYS = 14
+BOARD_MIN_KB = 20 * 1024
+BOARD_PROTECTED_PREFIXES = ("方案审批", "归档-")
 
 
 
@@ -275,7 +285,7 @@ class Env:
     @classmethod
     def from_environ(cls) -> "Env":
         e = os.environ
-        return cls(home=Path.home(),
+        return cls(home=Path(norm(os.path.realpath(Path.home()))),
                    tmp_root=Path(norm(e.get("DISK_TIDY_TMP_ROOT", "/private/tmp/claude-501"))),
                    tmpdir=Path(os.path.realpath(e.get("DISK_TIDY_TMPDIR") or tempfile.gettempdir())),
                    brew=Path(e.get("DISK_TIDY_BREW_PREFIX", "/opt/homebrew")),
@@ -489,29 +499,63 @@ def active_journals(env: Env) -> tuple[set[str], str]:
 
 
 def ref_files(env: Env, repos: list[str]) -> list[Path]:
-    """Code that may reuse a path: hooks, the remote-ref tools, and every repo's tracked files."""
+    """Files that may reuse a path: hooks, active scripts under ~/Money (outside BOARD/),
+    active Claude memory notes (~/.claude/projects/*/memory/*.md), and every repo's tracked code."""
     out: list[Path] = []
-    for root in (env.hooks, env.ref_tools):
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames if d not in REF_SKIP_DIRS]
-            out += [Path(dirpath, f) for f in filenames if Path(f).suffix in CODE_SUFFIXES]
+    seen: set[Path] = set()
+
+    def _add(p: Path) -> None:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+
+    for dirpath, dirnames, filenames in os.walk(env.hooks):
+        dirnames[:] = [d for d in dirnames if d not in REF_SKIP_DIRS]
+        for f in filenames:
+            if Path(f).suffix in CODE_SUFFIXES:
+                _add(Path(dirpath, f))
+
+    board_root = norm(str(env.money / "styl-work/BOARD"))
+    if env.money.is_dir():
+        for dirpath, dirnames, filenames in os.walk(env.money):
+            if norm(dirpath) == board_root:
+                dirnames[:] = []
+                continue
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in MONEY_REF_SKIP_DIRS
+                and not d.startswith(MONEY_REF_SKIP_PREFIXES)
+                and norm(os.path.join(dirpath, d)) != board_root
+            ]
+            for f in filenames:
+                if Path(f).suffix in CODE_SUFFIXES:
+                    _add(Path(dirpath, f))
+
+    if env.projects.is_dir():
+        for mem in sorted(env.projects.glob("*/memory/*.md")):
+            if mem.is_file() and not mem.is_symlink():
+                _add(mem)
+
     for repo in repos:
         r = git(repo, "ls-files", "-z")
         if r is not None and r.returncode == 0:
-            out += [Path(repo, f) for f in r.stdout.split("\0") if Path(f).suffix in CODE_SUFFIXES]
+            for f in r.stdout.split("\0"):
+                if f and Path(f).suffix in CODE_SUFFIXES:
+                    _add(Path(repo, f))
     return out
 
 
 def references(env: Env, repos: list[str]) -> tuple[set[str], set[str], dict[str, set[str]], set[str], list[str]]:
-    """What some tool's code names (it reuses it): session ids; of those, the ones named without a
-    scratchpad entry; per session the scratchpad entries named; the folder names tools pass to
-    -derivedDataPath; ~/Claude and ~/Money paths."""
+    """What some tool's code or memory note names (it reuses it): session ids; of those, the ones
+    named without a scratchpad entry; per session the scratchpad entries named; the folder names
+    tools pass to -derivedDataPath; ~/Claude, ~/Money and BOARD/ paths."""
     ids: set[str] = set()
     whole: set[str] = set()
     entries: dict[str, set[str]] = {}
     dd_names: set[str] = set()
     paths: set[str] = set()
     home = str(env.home)
+    board_base = env.money / "styl-work/BOARD"
     path_ref = re.compile("(?:~|" + re.escape(home) + ")" + PATH_TAIL)
     for f in ref_files(env, repos):
         try:
@@ -540,7 +584,11 @@ def references(env: Env, repos: list[str]) -> tuple[set[str], set[str], dict[str
                 dd_names.add(os.path.basename(v))
         for m in path_ref.findall(text):
             p = home + m[1:] if m.startswith("~") else m
-            paths.add(p.rstrip("/.:"))
+            paths.add(norm(p.rstrip(TRAIL_PUNCT)))
+        for rel in BOARD_REL_REF.findall(text):
+            cleaned = rel.rstrip(TRAIL_PUNCT)
+            if cleaned:
+                paths.add(norm(str(board_base / cleaned)))
     return ids, whole, entries, dd_names, sorted(paths)
 
 
@@ -639,6 +687,9 @@ def zone_ok(env: Env, ctx: Ctx, p: str) -> bool:
         if any(within(p, o) for o in env.known_outputs()):
             return True
         if p in ctx.money_dd:
+            return True
+        board_dir = norm(str(env.money / "styl-work/BOARD"))
+        if os.path.dirname(p) == board_dir and not os.path.basename(p).startswith((".", *BOARD_PROTECTED_PREFIXES)):
             return True
         return within(p, env.claude) and any(within(p, w) for w in ctx.allowed_wt)
     return False
@@ -1254,9 +1305,41 @@ def rule_chrome_sign_clones(env: Env, ctx: Ctx) -> list[Item]:
     return items
 
 
+def rule_board_stale_dirs(env: Env, ctx: Ctx) -> list[Item]:
+    """BOARD/ anti-bloat (#p18 / S-06): direct subdirectories >20 MB untouched for 14+ days
+    (mtime & ctime), unopened and unreferenced by code/memory/journals, are moved to ~/.Trash
+    to reclaim space (subject to macOS Finder Trash auto-empty policy, e.g. 30-day removal if
+    FXRemoveOldTrashItems=1 — NOT permanent retention)."""
+    rule = "board-stale-dir"
+    board = env.money / "styl-work/BOARD"
+    if not board.is_dir():
+        return []
+    cut = env.cutoff(BOARD_STALE_DAYS * 24)
+    items = []
+    try:
+        entries = sorted(d for d in board.iterdir()
+                         if d.is_dir() and not d.is_symlink()
+                         and not d.name.startswith((".", *BOARD_PROTECTED_PREFIXES)))
+    except OSError:
+        return []
+    for d in entries:
+        p = str(d)
+        k = du_k(p)
+        if k is None or k < BOARD_MIN_KB:
+            continue
+        named_in_j = f"BOARD/{d.name}" in ctx.journal_text
+        why = guard(env, ctx, p) \
+            or ("a tool, hook, repo file or memory note names its path (reused)" if sorted_hit(ctx.ref_paths, p) else None) \
+            or ("named by an active workflow journal/prompt" if named_in_j else None) \
+            or (f"changed within {BOARD_STALE_DAYS} d" if changed_since(p, cut, ctime=True) else None)
+        items.append(keep(rule, p, why) if why else Item(rule, p, action="trash", size_k=k))
+    return items
+
+
 NORMAL_RULES = [rule_merged_worktrees, rule_stale_registrations, rule_derived_data, rule_old_gradle,
                 rule_gradle_transforms, rule_old_swift_toolchains, rule_dead_session_dirs,
                 rule_live_session_scratch, rule_known_build_outputs, rule_money_derived_data,
+                rule_board_stale_dirs,
                 rule_uv_cache, rule_brew_cache, rule_go_cache, rule_pyright_cache,
                 rule_unavailable_simulators, rule_chrome_sign_clones]
 FLOOR_RULES = [rule_merged_worktrees_floor, rule_derived_data_floor, rule_shared_derived_caches,
@@ -1294,11 +1377,26 @@ def _chmod_retry(func, path, _exc) -> None:
 
 def apply_one(env: Env, ctx: Ctx, it: Item) -> str | None:
     """Do it. Returns an error text, or None on success. The guard runs again right before."""
-    if it.action in ("rm", "worktree") or (it.action == "cmd" and it.path.startswith("/")):
+    if it.action in ("rm", "trash", "worktree") or (it.action == "cmd" and it.path.startswith("/")):
         ctx.in_use = open_paths()                      # fresh: minutes may have passed
         why = guard(env, ctx, it.path) if it.rule != "stale-registration" else None
         if why:
             return f"refused at removal time: {why}"
+    if it.action == "trash":
+        try:
+            trash_dir = env.home / ".Trash"
+            trash_dir.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d_%H%M%S")
+            base = os.path.basename(it.path.rstrip("/"))
+            dst = trash_dir / f"disk_tidy_{it.rule}_{stamp}_{base}"
+            n = 1
+            while dst.exists():
+                n += 1
+                dst = trash_dir / f"disk_tidy_{it.rule}_{stamp}_{n}_{base}"
+            shutil.move(it.path, str(dst))
+        except OSError as e:
+            return f"trash move failed: {e}"
+        return None
     if it.action == "rm":
         try:
             if os.path.isdir(it.path) and not os.path.islink(it.path):
