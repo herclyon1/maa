@@ -428,7 +428,7 @@ def arknights_comm_lead(now: datetime, posts: "list | None" = None,
     over_said = ""
     for m in _AK_COMM_EVENT.finditer(body):
         name, mo, part = m.group(1), int(m.group(2)), m.group(3)
-        year = now.year + (1 if mo < now.month - 6 else 0)
+        year = _ak_year(mo, posted)
         if part in _XUN_END:
             over = datetime(year, mo, _XUN_END[part])
         else:
@@ -479,6 +479,30 @@ def _ak_prts_rows(tr: "Trace") -> "list[Banner]":
         raise RuntimeError("PRTS 两条路都没读到卡池表")
     rows.sort(key=lambda b: b.start)
     return rows
+
+
+def _ak_post_matches(st: datetime, pool: str, names: "tuple[str, ...]",
+                     running_rows: "list[Banner]") -> bool:
+    """Whether `running_rows` already has the banner announced as `(st, pool, names)`."""
+    name_set = set(names)
+    return any(re.sub(r"^【[^】]*】", "", r.name) == pool
+               or (r.start is not None and r.start.date() == st.date() and name_set & set(r.chars))
+               for r in running_rows)
+
+
+def _ak_post_upcoming(st: datetime, who: str, en: datetime, now: datetime,
+                      prts_running: "list[Banner]") -> bool:
+    """Whether an official post is still upcoming at `now`: strictly in the future,
+    or a date-only (「版本更新后」, 00:00) post on its opening day while PRTS has not
+    listed it as running yet (matching `banners.render`, which keeps a 00:00 start
+    through its day while `_arknights` only fills it into 当期 from the next day)."""
+    if st > now:
+        return True
+    if (st.hour, st.minute) != (0, 0) or st.date() != now.date() or now > en:
+        return False
+    chars, pool = hub.split_who(who)
+    names = tuple(x for x in chars.split("、") if x)
+    return not _ak_post_matches(st, pool, names, prts_running)
 
 
 def _arknights(now: datetime, trace: "Trace | None" = None,
@@ -557,15 +581,15 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         chars, pool = hub.split_who(who)
         names = tuple(x for x in chars.split("、") if x)
         tr.opened("明日方舟", pool, chars, st, en, f"{_AK_NEWS}/{cid}")
-        if any(re.sub(r"^【[^】]*】", "", r.name) == pool
-               or (r.start.date() == st.date() and set(names) & set(r.chars)) for r in prts_running):
+        if _ak_post_matches(st, pool, names, prts_running):
             continue
         b = Banner("明日方舟", pool, names, st, en)
         debut.append(b)
         live.append(b)
         tr.src("明日方舟", "当期", f"{_AK_NEWS}/{cid}", f"{pool} {chars} {st:%Y-%m-%d %H:%M}~{en:%Y-%m-%d %H:%M}")
         hub.official_fill("明日方舟", "资料站", b, "官网寻访公告", tr)
-    if fut := [(st, who, en) for st, who, _p, en, _c in posts if st > now]:
+    if fut := [(st, who, en) for st, who, _p, en, _c in posts
+               if _ak_post_upcoming(st, who, en, now, prts_running)]:
         st, who, en = min(fut)
         tr.starts |= _stamps(st)
         tr.ends |= _stamps(en)
