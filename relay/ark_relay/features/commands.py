@@ -498,6 +498,9 @@ def _set_master(cmd: dict) -> tuple[bool, str]:
     automas = os.environ.get("ARK_AUTOMAS_DIR")
     if not automas:
         return False, "ARK_AUTOMAS_DIR 未设置"
+    from ark_relay.core import engine as engine_mod  # noqa: PLC0415
+    if engine_mod.script_config_open(automas):
+        return False, "AUTO-MAS 正在「设置脚本」，现在改设置会在关窗时被覆盖，请先关掉设置脚本再改"
     try:
         if game == "MaaEnd":
             from ark_relay.core.config import Config  # noqa: PLC0415

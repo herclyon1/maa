@@ -340,6 +340,8 @@ class Ctx:
     allowed_wt: list[str] = field(default_factory=list)
     money_dd: list[str] = field(default_factory=list)   # DerivedData folders in ~/Money/styl-work
     gradle_running: bool = True       # unknown counts as running
+    repo_files: dict[str, list[str]] = field(default_factory=dict)
+    wt_facts_cache: dict[str, tuple[bool, bool]] = field(default_factory=dict)
 
 
 def open_paths() -> list[str] | None:
@@ -488,21 +490,31 @@ def active_journals(env: Env) -> tuple[set[str], str]:
     return ids, "\n".join(texts)
 
 
-def ref_files(env: Env, repos: list[str]) -> list[Path]:
+def tracked_files(repos: list[str]) -> dict[str, list[str]]:
+    """Tracked relative paths per repo, collected once per snapshot."""
+    out: dict[str, list[str]] = {}
+    for repo in repos:
+        r = git(repo, "ls-files", "-z")
+        out[repo] = [f for f in r.stdout.split("\0") if f] if r is not None and r.returncode == 0 else []
+    return out
+
+
+def ref_files(env: Env, repos: list[str], repo_files: dict[str, list[str]] | None = None) -> list[Path]:
     """Code that may reuse a path: hooks, the remote-ref tools, and every repo's tracked files."""
     out: list[Path] = []
     for root in (env.hooks, env.ref_tools):
         for dirpath, dirnames, filenames in os.walk(root):
             dirnames[:] = [d for d in dirnames if d not in REF_SKIP_DIRS]
             out += [Path(dirpath, f) for f in filenames if Path(f).suffix in CODE_SUFFIXES]
+    files_by_repo = tracked_files(repos) if repo_files is None else repo_files
     for repo in repos:
-        r = git(repo, "ls-files", "-z")
-        if r is not None and r.returncode == 0:
-            out += [Path(repo, f) for f in r.stdout.split("\0") if Path(f).suffix in CODE_SUFFIXES]
+        out += [Path(repo, f) for f in files_by_repo.get(repo, ()) if Path(f).suffix in CODE_SUFFIXES]
     return out
 
 
-def references(env: Env, repos: list[str]) -> tuple[set[str], set[str], dict[str, set[str]], set[str], list[str]]:
+def references(env: Env, repos: list[str],
+               repo_files: dict[str, list[str]] | None = None
+               ) -> tuple[set[str], set[str], dict[str, set[str]], set[str], list[str]]:
     """What some tool's code names (it reuses it): session ids; of those, the ones named without a
     scratchpad entry; per session the scratchpad entries named; the folder names tools pass to
     -derivedDataPath; ~/Claude and ~/Money paths."""
@@ -513,7 +525,7 @@ def references(env: Env, repos: list[str]) -> tuple[set[str], set[str], dict[str
     paths: set[str] = set()
     home = str(env.home)
     path_ref = re.compile("(?:~|" + re.escape(home) + ")" + PATH_TAIL)
-    for f in ref_files(env, repos):
+    for f in ref_files(env, repos, repo_files=repo_files):
         try:
             if f.stat().st_size > REF_FILE_BYTES:
                 continue
@@ -607,15 +619,17 @@ def money_derived_data(env: Env) -> list[str]:
 
 def snapshot(env: Env) -> Ctx:
     repos = repo_list(env)
+    rfiles = tracked_files(repos)
     wts = [w for r in repos for w in worktrees(r)]
     ids, text = active_journals(env)
-    ref_ids, ref_whole, ref_entries, dd_names, ref_paths = references(env, repos)
+    ref_ids, ref_whole, ref_entries, dd_names, ref_paths = references(env, repos, repo_files=rfiles)
     standing = env.standing()
     allowed = sorted(w.path for w in wts if allowed_worktree(env, w) and w.path not in standing)
     return Ctx(in_use=open_paths(), procs=proc_names(), live_ids=live_sessions(env),
                journal_ids=ids, journal_text=text, ref_ids=ref_ids, ref_whole=ref_whole,
                ref_entries=ref_entries, dd_names=dd_names, ref_paths=ref_paths, repos=repos, worktrees=wts,
-               allowed_wt=allowed, money_dd=money_derived_data(env), gradle_running=gradle_running())
+               allowed_wt=allowed, money_dd=money_derived_data(env), gradle_running=gradle_running(),
+               repo_files=rfiles)
 
 
 def zone_ok(env: Env, ctx: Ctx, p: str) -> bool:
@@ -681,16 +695,27 @@ def keep(rule: str, path: str, why: str) -> Item:
 
 # ---- worktrees ---------------------------------------------------------------------------
 
-def merged(repo: str, head: str) -> bool:
+def _main_refs(repo: str) -> list[tuple[str, str]]:
+    """[(ref_name, commit_sha)] for origin/main and main that exist in `repo`."""
+    out: list[tuple[str, str]] = []
+    for r in ("origin/main", "main"):
+        x = git(repo, "rev-parse", "--verify", "-q", r)
+        if x is not None and x.returncode == 0 and (sha := x.stdout.strip()):
+            out.append((r, sha))
+    return out
+
+
+def merged(repo: str, head: str, refs: list[tuple[str, str]] | None = None) -> bool:
     """HEAD is in origin/main (ancestor), or every commit has an equivalent there (git cherry)."""
-    refs = [r for r in ("origin/main", "main")
-            if (x := git(repo, "rev-parse", "--verify", "-q", r)) is not None and x.returncode == 0]
-    for ref in refs:
+    resolved = _main_refs(repo) if refs is None else refs
+    if any(head and head == sha for _, sha in resolved):
+        return True
+    for ref, _sha in resolved:
         x = git(repo, "merge-base", "--is-ancestor", head, ref)
         if x is not None and x.returncode == 0:
             return True
-    if refs:
-        x = git(repo, "cherry", refs[0], head)
+    if resolved:
+        x = git(repo, "cherry", resolved[0][0], head)
         if x is not None and x.returncode == 0 and not any(
                 ln.startswith("+") for ln in x.stdout.splitlines()):
             return True
@@ -736,11 +761,16 @@ def wt_named(ctx: Ctx, wt: Worktree) -> str | None:
 
 def wt_facts(env: Env, ctx: Ctx, wts: list[Worktree]) -> dict[str, tuple[bool, bool]]:
     """(merged, dirty) per worktree path, computed in parallel (git status is the slow part)."""
-    def one(w: Worktree) -> tuple[str, tuple[bool, bool]]:
-        _wait_not_background()
-        return w.path, (merged(w.repo, w.head), dirty(w.path))
-    with ThreadPoolExecutor(8) as ex:
-        return dict(ex.map(one, wts))
+    missing = [w for w in wts if w.path not in ctx.wt_facts_cache]
+    if missing:
+        refs_by_repo = {r: _main_refs(r) for r in {w.repo for w in missing}}
+
+        def one(w: Worktree) -> tuple[str, tuple[bool, bool]]:
+            _wait_not_background()
+            return w.path, (merged(w.repo, w.head, refs_by_repo[w.repo]), dirty(w.path))
+        with ThreadPoolExecutor(8) as ex:
+            ctx.wt_facts_cache.update(ex.map(one, missing))
+    return {w.path: ctx.wt_facts_cache[w.path] for w in wts}
 
 
 def removable_worktrees(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
@@ -789,14 +819,20 @@ def rule_idle_build_outputs(env: Env, ctx: Ctx) -> list[Item]:
     the tree is fine), hold no tracked file, and the tree must be idle 2 h."""
     rule, items = "idle-build-output", []
     standing = env.standing()
-    for w in ctx.worktrees:
-        if w.prunable or not os.path.isdir(w.path) or w.path in standing or not allowed_worktree(env, w):
-            continue
+    todo = [w for w in ctx.worktrees
+            if not w.prunable and os.path.isdir(w.path) and w.path not in standing and allowed_worktree(env, w)]
+
+    def ignored_dirs(w: Worktree) -> list[str]:
+        _wait_not_background()
         r = git(w.path, "ls-files", "-o", "-i", "--exclude-standard", "--directory")
         if r is None or r.returncode != 0:
-            continue
-        outs = [os.path.join(w.path, x.rstrip("/")) for x in r.stdout.splitlines()
+            return []
+        return [os.path.join(w.path, x.rstrip("/")) for x in r.stdout.splitlines()
                 if os.path.basename(x.rstrip("/")) in BUILD_DIRS]
+
+    with ThreadPoolExecutor(8) as ex:
+        outs_list = list(ex.map(ignored_dirs, todo))
+    for w, outs in zip(todo, outs_list, strict=True):
         if not outs:
             continue
         busy = wt_named(ctx, w) or wt_recent(env, w, ACTIVE_HOURS)
@@ -874,10 +910,13 @@ def gradle_in_use(env: Env, ctx: Ctx) -> set[str]:
         if m:
             out.add(m.group(0))
     for repo in ctx.repos:
-        r = git(repo, "ls-files", "-z", "--", "*gradle-wrapper.properties")
-        for f in (r.stdout.split("\0") if r is not None and r.returncode == 0 else []):
-            if f:
-                out.update(WRAPPER_URL.findall(read_text(Path(repo, f))))
+        if repo in ctx.repo_files:
+            files = [f for f in ctx.repo_files[repo] if f.endswith("gradle-wrapper.properties")]
+        else:
+            r = git(repo, "ls-files", "-z", "--", "*gradle-wrapper.properties")
+            files = [f for f in r.stdout.split("\0") if f] if r is not None and r.returncode == 0 else []
+        for f in files:
+            out.update(WRAPPER_URL.findall(read_text(Path(repo, f))))
     return out
 
 
@@ -960,10 +999,13 @@ def rule_old_swift_toolchains(env: Env, ctx: Ctx) -> list[Item]:
     in_use = str(cfg.get("inUse") or "")
     pins = set()
     for repo in ctx.repos:
-        r = git(repo, "ls-files", "-z", "--", "*.swift-version")
-        for f in (r.stdout.split("\0") if r is not None and r.returncode == 0 else []):
-            if f:
-                pins.add(read_text(Path(repo, f)).strip())
+        if repo in ctx.repo_files:
+            files = [f for f in ctx.repo_files[repo] if f.endswith(".swift-version")]
+        else:
+            r = git(repo, "ls-files", "-z", "--", "*.swift-version")
+            files = [f for f in r.stdout.split("\0") if f] if r is not None and r.returncode == 0 else []
+        for f in files:
+            pins.add(read_text(Path(repo, f)).strip())
     for v in cfg.get("installedToolchains") or []:
         tc = env.toolchains / f"swift-{v}-RELEASE.xctoolchain"
         why = ("swiftly has no toolchain in use" if not in_use else None) \

@@ -120,11 +120,34 @@ _EF_MISSING_RESPAWN = 2
 _EF_RESPAWN_TRIES = 3
 
 
-def _read_quiet(desk, focus: str):
-    """Read `focus` without firing a per-poll WARNING when the window is not up yet."""
+def _read_quiet(desk, focus: str, *, wait_at: float | None = None,
+                seen_err: set | None = None):
+    """Read `focus` inside a polling wait loop without firing per-poll WARNING storms.
+
+    Missing window (`focus_missing`) stays INFO until the loop decides; a desktop-agent
+    error (`scr.error`) warns once per `(wait_at, error)` within this wait instance
+    (re-warning on any different error, after a healthy read recovers, or in a new wait),
+    while the loop's final failure always pushes via `_note(problems, ...)`.
+    """
     if isinstance(desk, Desktop):
-        return desk.read(focus=focus, warn_missing=False)
-    return desk.read(focus=focus)
+        scr = desk.read(focus=focus, warn_missing=False, warn_error=False)
+    else:
+        scr = desk.read(focus=focus)
+    err = getattr(scr, "error", "")
+    if err:
+        if seen_err is not None and wait_at is not None:
+            fault_at = (wait_at, err)
+            # one fault, one push: same desktop read error within one wait_at polling loop
+            if fault_at not in seen_err:
+                seen_err.add(fault_at)
+                log.warning("桌面读屏失败：%s", err)
+            else:
+                log.info("桌面读屏仍失败（同次等待已报过）：%s", err)
+        else:
+            log.warning("桌面读屏失败：%s", err)
+    elif seen_err is not None and not _focus_missing(scr):
+        seen_err.clear()
+    return scr
 
 
 def _click_text_quiet(desk, text: str, focus: str) -> bool:
@@ -163,21 +186,23 @@ def _wait_endfield_title(desk, launcher: Path, *, poll_s: float,
                          problems: list[str] | None, sleep) -> bool:
     """Wait up to 15 minutes for Endfield to reach the title screen; retry 「开始游戏」
     if the launcher is still sitting on it, and restart once on 「请重启游戏」."""
-    deadline = time.monotonic() + 900
+    wait_at = time.monotonic()
+    deadline = wait_at + 900
     restarted = False
     seen_game = False
     missing_runs = 0
     start_retries = 0
+    seen_err: set = set()
     scr = None
     while time.monotonic() < deadline:
-        scr = _read_quiet(desk, "Endfield")
+        scr = _read_quiet(desk, "Endfield", wait_at=wait_at, seen_err=seen_err)
         if not _unread(scr) and scr.has(*READY_WORDS["终末地"]):
             log.info("游戏更新：终末地已到标题画面（读到「点击任意位置继续」），客户端可用")
             return True
         if _focus_missing(scr):
             missing_runs += 1
             if missing_runs >= 2 and start_retries < _EF_START_RETRIES:
-                lscr = _read_quiet(desk, "Games")
+                lscr = _read_quiet(desk, "Games", wait_at=wait_at, seen_err=seen_err)
                 if not _unread(lscr) and lscr.has("开始游戏"):
                     start_retries += 1
                     missing_runs = 0
@@ -229,13 +254,15 @@ def _wait_endfield_download(desk: Desktop, launcher: Path, *, budget_s: float, p
     Reads quietly so a launcher briefly restarting or sitting in the tray does not
     fire per-poll warnings, and re-spawns it after consecutive missing-window polls.
     Returns (ready, last_scr, aborted_on_dialog)."""
-    deadline = time.monotonic() + budget_s
+    wait_at = time.monotonic()
+    deadline = wait_at + budget_s
     missing_runs = 0
     respawns = 0
+    seen_err: set = set()
     scr = None
     while time.monotonic() < deadline:
         sleep(poll_s)
-        scr = _read_quiet(desk, "Games")
+        scr = _read_quiet(desk, "Games", wait_at=wait_at, seen_err=seen_err)
         _launcher_note(desk, "终末地", "wait", scr, _EF_BUSY, ("开始游戏",), _EF_SPACE_WORDS)
         if not _unread(scr) and scr.has("开始游戏"):
             return True, scr, False

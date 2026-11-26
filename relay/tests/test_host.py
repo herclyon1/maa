@@ -3736,5 +3736,269 @@ ask Tailscale says so (audit 11-08 A-25; dispatch relay-opt-round5-1108 R5-02).
         wd.os.environ.update(saved[3])
 
 
+def _part_polling_spam_cure():
+    """R-05: real-entrypoint replay of single-fault polling WARNING storms (11-25 desktop
+    read 17-alert storm, 10-29 MaaEnd 4-option rename 16-alert storm, ledger bad-line
+    ticks, directory watcher outage retries, stagegate put-back retries)."""
+    import json
+    import logging
+    import threading
+    import types
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import desktop as dk
+    from ark_relay.core import ledger as ledger_mod
+    from ark_relay.core import mastercfg
+    from ark_relay.core import watch as watch_mod
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import gameupdate_games as gug
+    from ark_relay.features import stagegate
+
+    warns: list[tuple[str, str]] = []
+
+    class _Catch(logging.Handler):
+        def emit(self, rec):
+            if rec.levelno >= logging.WARNING:
+                warns.append((rec.name, rec.getMessage()))
+
+    h = _Catch()
+    loggers = (dk.log, gug.log, mastercfg.log, ledger_mod.log, watch_mod.log, stagegate.log)
+    for lg in loggers:
+        lg.addHandler(h)
+
+    try:
+        print("[1. Desktop single failed read() / read_file() emits 1 WARNING, not 2]")
+        warns.clear()
+        d_fail = dk.Desktop(tmpdir() / "state", spawn=lambda exe, cwd, args: False, timeout=1)
+        scr = d_fail.read(focus="Games")
+        check("read() returns error Screen", scr.error, "没能起来")
+        check("single read() failure emits exactly 1 WARNING (no _run+read double fire)", len(warns), 1)
+        warns.clear()
+        res_f = d_fail.read_file(Path("fake.png"), timeout=1)
+        check("read_file() returns None on failure", res_f, None)
+        check("single read_file() failure emits exactly 1 WARNING", len(warns), 1)
+
+        print("\n[2. 11-25 replay: update_endfield 20-poll desktop error storm -> 1 WARNING + final failure]")
+        clock = {"t": 0.0}
+        saved_gug = (gug.time.monotonic, gug._spawn, gug.kill)
+        gug.time.monotonic = lambda: clock["t"]
+        gug._spawn = lambda exe, cwd=None: True
+        gug.kill = lambda *names: True
+
+        def fake_sleep(s):
+            clock["t"] += s
+
+        def make_desk(scripted):
+            it = iter(scripted)
+            last = [scripted[-1]]
+
+            def spawn(exe, cwd, args):
+                try:
+                    item = next(it)
+                    last[0] = item
+                except StopIteration:
+                    item = last[0]
+                if item is None:
+                    return False
+                Path(args[-1]).write_text(json.dumps(item, ensure_ascii=False), encoding="utf-8")
+                return True
+
+            return dk.Desktop(tmpdir() / "state", spawn=spawn, timeout=1)
+
+        def ok_ocr(*texts):
+            return {"ok": True, "clicked": [], "log": [],
+                    "ocr": [{"text": t, "x": 100, "y": 100 + i * 30, "w": 80, "h": 20} for i, t in enumerate(texts)]}
+
+        def ok_click(txt):
+            return {"ok": True, "clicked": [txt], "log": [], "ocr": []}
+
+        def err_read(msg):
+            return {"ok": False, "clicked": [], "log": [msg], "ocr": []}
+
+        EF = (Path("Endfield.exe"), Path("Launcher.exe"))
+        try:
+            # 20 consecutive identical failures in download wait -> 1 WARNING + final timeout problem
+            warns.clear()
+            clock["t"] = 0.0
+            probs: list[str] = []
+            d = make_desk([ok_ocr("更新游戏"), ok_click("更新游戏"), err_read("超时")])
+            out = gug.update_endfield(d, *EF, budget_s=600, poll_s=30, problems=probs, sleep=fake_sleep)
+            check("timeout returns empty", out, "")
+            check("20 polls of identical error -> exactly 1 WARNING", len(warns), 1)
+            check("final timeout failure still reported in problems", any("没等到「开始游戏」" in p for p in probs), True)
+
+            # Different error mid-wait -> pushes new WARNING; recovery + recurrence -> pushes again
+            warns.clear()
+            clock["t"] = 1000.0
+            probs = []
+            d2 = make_desk([
+                ok_ocr("更新游戏"),
+                ok_click("更新游戏"),
+                err_read("超时"),
+                err_read("超时"),
+                err_read("ERR OCR崩溃"),
+                err_read("ERR OCR崩溃"),
+                ok_ocr("正在下载 50%"),
+                err_read("超时"),
+                err_read("超时"),
+                ok_ocr("开始游戏"),
+                ok_click("开始游戏"),
+                ok_ocr("点击任意位置继续"),
+            ])
+            out2 = gug.update_endfield(d2, *EF, budget_s=600, poll_s=30, problems=probs, sleep=fake_sleep)
+            check("recovered update finishes cleanly", out2, "终末地 客户端已通过启动器更新")
+            check("distinct error + post-recovery recurrence each warn once (3 total)", len(warns), 3)
+            check("no problems on success", probs, [])
+
+            # New update_endfield wait instance with same error -> fresh WARNING
+            warns.clear()
+            clock["t"] = 2000.0
+            probs = []
+            d3 = make_desk([ok_ocr("更新游戏"), ok_click("更新游戏"), err_read("超时")])
+            gug.update_endfield(d3, *EF, budget_s=90, poll_s=30, problems=probs, sleep=fake_sleep)
+            check("new wait instance warns afresh", len(warns), 1)
+        finally:
+            gug.time.monotonic, gug._spawn, gug.kill = saved_gug
+
+        print("\n[3. 10-29 replay: MaaEnd 4 renamed missing-def options -> 1 consolidated WARNING]")
+        root = tmpdir()
+        automas = root / "automas"
+        (automas / "data" / "sid" / "Default" / "ConfigFile").mkdir(parents=True)
+        master = automas / "data" / "sid" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
+        maaend = root / "maaend"
+        (maaend / "tasks").mkdir(parents=True)
+        (maaend / "locales" / "interface").mkdir(parents=True)
+        (maaend / "locales" / "interface" / "zh_cn.json").write_text(
+            json.dumps({"task.AutoCollect.label": "自动采集"}, ensure_ascii=False), encoding="utf-8")
+        (maaend / "interface.json").write_text('{"import": ["tasks/AutoCollect.json"]}', encoding="utf-8")
+        (maaend / "tasks" / "AutoCollect.json").write_text(json.dumps({
+            "task": [{"name": "AutoCollect", "label": "$task.AutoCollect.label", "option": []}],
+            "option": {}}), encoding="utf-8")
+        renamed = ("AutoCollectValleyIVRareItems", "AutoCollectValleyIVCommonItems",
+                   "AutoCollectWulingRareItems", "AutoCollectWulingCommonItems")
+        master.write_text(json.dumps({"instances": [{"id": "automas", "tasks": [
+            {"taskName": "AutoCollect", "enabled": True,
+             "optionValues": {k: {"type": "checkbox", "caseNames": ["x"]} for k in renamed}}]}]}),
+            encoding="utf-8")
+        mastercfg._said.clear()
+        warns.clear()
+        for _ in range(3):
+            mastercfg.read_maaend(automas, maaend)
+        check("4 renamed options across 3 reads -> 1 consolidated WARNING (not 8 or 24)", len(warns), 1)
+        check("consolidated WARNING names all 4 options", all(k in warns[0][1] for k in renamed), True)
+        check("no redundant no_cases WARNING when defs missing", any("没有可选值" in m for _, m in warns), False)
+        # Adding a 5th broken option changes signature -> immediately pushes new WARNING
+        master.write_text(json.dumps({"instances": [{"id": "automas", "tasks": [
+            {"taskName": "AutoCollect", "enabled": True,
+             "optionValues": {**{k: {"type": "checkbox", "caseNames": ["x"]} for k in renamed},
+                              "AutoCollectSchedule": {"type": "select", "caseName": "EveryDay"}}}]}]}),
+            encoding="utf-8")
+        mastercfg.read_maaend(automas, maaend)
+        check("new broken option triggers fresh WARNING", len(warns), 2)
+
+        print("\n[4. Ledger bad-line polling: missing fields / bad timestamps warn once per broken line]")
+        st = ledger_mod.State(tmpdir() / "lstate")
+        lp = st.ledger_path("2026-11-26")
+        lp.parent.mkdir(parents=True, exist_ok=True)
+        lp.write_text(
+            '{"script": "MAA"}\n'
+            '{"run_id": "r1", "script": "MAA", "user": "u", "ok": true, "started": "bad", "finished": "bad"}\n'
+            '{torn json\n', encoding="utf-8")
+        ledger_mod._LEDGER_TORN_SAID.clear()
+        warns.clear()
+        for _ in range(5):
+            st.read_ledger("2026-11-26")
+        check("3 broken lines read 5 times -> 3 WARNINGs total (not 15)", len(warns), 3)
+        with lp.open("a", encoding="utf-8") as fh:
+            fh.write('{"script": "OK-WW"}\n')
+        st.read_ledger("2026-11-26")
+        check("new broken line immediately fires 1 new WARNING", len(warns), 4)
+
+        print("\n[5. Directory watcher drop retries: 1 WARNING per outage, re-warns after rebuild]")
+        wake = threading.Event()
+        done_w = threading.Event()
+        # Outage 1: open ok -> wait drops -> 2 failed rebuilds -> rebuild ok -> Outage 2: wait drops -> stop
+        opens = iter([101, None, None, 102, None])
+        waits = iter([1, 1])
+        sleeps = [0]
+
+        class _FakeK:
+            class FindFirstChangeNotificationW:
+                argtypes = restype = None
+
+                def __new__(cls, *a):
+                    try:
+                        return next(opens)
+                    except StopIteration:
+                        return None
+
+            class FindNextChangeNotification:
+                argtypes = restype = None
+
+                def __new__(cls, *a):
+                    return False
+
+            class FindCloseChangeNotification:
+                argtypes = None
+
+                def __new__(cls, *a):
+                    return True
+
+            class WaitForSingleObject:
+                argtypes = restype = None
+
+                def __new__(cls, *a):
+                    return next(waits, 1)
+
+        def fake_watch_sleep(_s):
+            sleeps[0] += 1
+            if sleeps[0] >= 4:
+                done_w.set()
+                raise SystemExit
+
+        saved_w = (watch_mod.ctypes, watch_mod.time)
+        fake_ctypes = types.SimpleNamespace(
+            windll=types.SimpleNamespace(kernel32=_FakeK()),
+            c_wchar_p=object, c_int=object, c_uint32=object,
+            c_void_p=lambda x: types.SimpleNamespace(value=x),
+        )
+        watch_mod.ctypes = fake_ctypes
+        watch_mod.time = types.SimpleNamespace(sleep=fake_watch_sleep)
+        warns.clear()
+        try:
+            ok_w = watch_mod._windows("D:\\fake", wake)
+            check("watcher started", ok_w, True)
+            done_w.wait(5)
+        finally:
+            watch_mod.ctypes, watch_mod.time = saved_w
+        # Outage 1 had 3 attempts (initial drop + 2 failed rebuilds) -> 1 WARNING; Outage 2 after rebuild -> 2nd WARNING
+        check("2 outages across 4 sleep retries -> exactly 2 WARNINGs", len(warns), 2)
+
+        print("\n[6. StageGate _put_back retries: 1 WARNING per (due, error); new error pushes]")
+        sg_state = tmpdir() / "sg"
+        sg_cfg = types.SimpleNamespace(state_dir=sg_state, automas_dir=tmpdir(), maa_dir=tmpdir())
+        from ark_relay.core.statestore import StateStore
+        StateStore(sg_state).set("updates", "stagegate_skips", [
+            {"queue": "早班", "due": "2026-11-26 09:00", "item": "x"}])
+        t_base = datetime(2026, 11, 26, 12, 0, tzinfo=SERVER_TZ)
+        err_msg = ["API timeout"]
+
+        def bad_restorer(_rec):
+            raise RuntimeError(err_msg[0])
+
+        warns.clear()
+        stagegate._put_back(sg_cfg, t_base, busy=lambda: False, restorer=bad_restorer)
+        stagegate._put_back(sg_cfg, t_base + timedelta(minutes=20), busy=lambda: False, restorer=bad_restorer)
+        stagegate._put_back(sg_cfg, t_base + timedelta(minutes=40), busy=lambda: False, restorer=bad_restorer)
+        check("3 retries with identical put-back error -> 1 WARNING", len(warns), 1)
+        err_msg[0] = "Queue renamed"
+        stagegate._put_back(sg_cfg, t_base + timedelta(minutes=60), busy=lambda: False, restorer=bad_restorer)
+        check("different put-back error immediately fires 2nd WARNING", len(warns), 2)
+    finally:
+        for lg in loggers:
+            lg.removeHandler(h)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_apphost_covers_service, _part_estop_verifies, _part_farm_launcher, _part_hidden_launch_quoting, _part_launcher_states, _part_endfield_start_retry, _part_endfield_launcher_quiet, _part_procs_wmi, _part_relaunch, _part_rollback_stop_failed, _part_unknown_process_list, _part_wait_network, _part_watch_handle_close, _part_procwatch_cancel, _part_procwatch_drop, _part_wmi_listener, _part_procnames, _part_watchdog_copy, _part_watchdog_crashloop, _part_watchdog_guard, _part_watchdog_guard_missing, _part_watchdog_push_delivery, _part_gh_watchdog]))
+    sys.exit(run_parts([_part_apphost_covers_service, _part_estop_verifies, _part_farm_launcher, _part_hidden_launch_quoting, _part_launcher_states, _part_endfield_start_retry, _part_endfield_launcher_quiet, _part_procs_wmi, _part_relaunch, _part_rollback_stop_failed, _part_unknown_process_list, _part_wait_network, _part_watch_handle_close, _part_procwatch_cancel, _part_procwatch_drop, _part_wmi_listener, _part_procnames, _part_watchdog_copy, _part_watchdog_crashloop, _part_watchdog_guard, _part_watchdog_guard_missing, _part_watchdog_push_delivery, _part_gh_watchdog, _part_polling_spam_cure]))

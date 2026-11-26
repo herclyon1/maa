@@ -471,7 +471,7 @@ def _stop_push_limits(box) -> None:
     errwatch.mark_stopping()
     errwatch.mark_os_shutdown()
     box.POST_TIMEOUT, box.ATTEMPTS = STOP_PUSH_NOTICE_S, 1
-    skland._TIMEOUT = STOP_PUSH_SKLAND_S
+    skland._TIMEOUT, skland._ATTEMPTS = STOP_PUSH_SKLAND_S, 1
     maintenance.GET_TIMEOUT, maintenance.GET_ATTEMPTS = STOP_PUSH_SITE_S, 1
 
 

@@ -319,6 +319,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "stagegate_dues": "关卡门最近几天每一班查过的结论：{日期: {队列/HH:MM: {verdict, stage, why, pulled, others}}}",
         "essence_filler_pending": "基质刷取目标都齐了、等没有任务在跑时切成刷垫子的那趟记录：{run_id, day, at}（essence.on_record 写，essence.step 切完或切不成清掉）",
         "essence_filler_done_for": "上一趟已经处理过切刷垫子的运行标识（同一趟记录重新记账时不再切；essence.step）",
+        "protocol_space_guard": "MaaEnd 母本当前启用的理智任务开关记录：{active: [...]}（用于发现「设置脚本」意外取消协议空间勾选并自动恢复）",
         # Leftovers only: nothing writes these any more, and since 840c3f4c nothing
         # switches their tasks back on or drops them either (machine check #63 reads them).
         "maaend_disabled_1_5_3": "旧记录：9 月初为 1.5.3 关掉的 MaaEnd 任务 {disabled 或 tasks, since}；开机开回那一步 10-13 已删，留下的不动",

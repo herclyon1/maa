@@ -13,6 +13,7 @@ has synthetic copies of every construct; the repo is public, so not the files th
 from __future__ import annotations
 
 import sys as _sys
+import os
 import re
 import json
 import logging
@@ -1539,6 +1540,8 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
         roots = [str(o) for o in (all_tasks.get(n) or {}).get("option") or []]
         shown[n] = ("@enabled",) + _maaend_tree(all_opts, roots)
         out["roots"][n] = [f"{n}/{o}" for o in roots]
+    untranslated_items: list[tuple[str, str]] = []
+    no_cases_items: list[str] = []
     for task_name, wanted in shown.items():
         task = _maaend_task(doc, task_name)
         if task is None:
@@ -1568,11 +1571,7 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
             label = zh(d.get("label"))
             if not label or label == d.get("label", "").lstrip("$") or not _HAN.search(label):
                 out["untranslated"].append(key)
-                _warn_once(f"untranslated:{key}", "found" if d else "missing",
-                           "MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译",
-                           key, "找到了" if d else "找不到")
-            else:
-                _cleared(f"untranslated:{key}")
+                untranslated_items.append((key, "找到了" if d else "找不到"))
             out["labels"][key] = _plain(label) or opt
             kind = str(cur.get("type") or d.get("type") or "")
             if kind in ("switch", "select", "checkbox", "input"):
@@ -1586,12 +1585,33 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
                          for c in (d.get("cases") or []) if c.get("name")]
                 if cases:
                     out["options"][key] = cases
-                    _cleared(f"no_cases:{key}")
                 else:
                     if key not in out["untranslated"]:
                         out["untranslated"].append(key)
-                    _warn_once(f"no_cases:{key}", "no cases",
-                               "MaaEnd 选项 %s 是选择项但没有可选值，手机页只能给个文本框", key)
+                    # Missing definition already explains absent cases; only report
+                    # no_cases separately when the option definition itself exists.
+                    if d:
+                        no_cases_items.append(key)
+    if untranslated_items:
+        sig = "|".join(f"{k}:{st}" for k, st in sorted(untranslated_items))
+        if len(untranslated_items) == 1:
+            k0, st0 = untranslated_items[0]
+            _warn_once("maaend_untranslated", sig,
+                       "MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译", k0, st0)
+        else:
+            desc = "、".join(f"{k}（定义{st}）" for k, st in untranslated_items)
+            _warn_once("maaend_untranslated", sig,
+                       "MaaEnd 有 %d 个选项没有中文名（%s），手机页会标成没翻译",
+                       len(untranslated_items), desc)
+    else:
+        _cleared("maaend_untranslated")
+    if no_cases_items:
+        sig_nc = "|".join(sorted(no_cases_items))
+        _warn_once("maaend_no_cases", sig_nc,
+                   "MaaEnd 选项 %s 是选择项但没有可选值，手机页只能给个文本框",
+                   "、".join(no_cases_items))
+    else:
+        _cleared("maaend_no_cases")
     return out
 
 
@@ -1610,9 +1630,13 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
     label = task_name
     if opt == "@enabled":
         before = bool(task.get("enabled"))
-        if before == bool(value):
+        ctrl = _maaend_instance(doc).get("controllerName")
+        ctl = task.get("enabledByController")
+        ctrl_mismatch = bool(ctrl and isinstance(ctl, dict) and str(ctrl) in ctl
+                             and bool(ctl[str(ctrl)]) != bool(value))
+        if before == bool(value) and not ctrl_mismatch:
             return True, f"{task_name} 本来就是{'开' if before else '关'}着的"
-        set_maaend_enabled(task, bool(value), _maaend_instance(doc).get("controllerName"))
+        set_maaend_enabled(task, bool(value), ctrl)
     else:
         d = _maaend_option_def(maaend_dir, task_name, opt)
         cur = (task.get("optionValues") or {}).get(opt)
@@ -1681,9 +1705,120 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
         label = f"{task_name} 的 {opt}"
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
     if opt == "@enabled":
-        return _maaend_readback(f, task_name, opt, label, task["enabled"], "@enabled", before, None)
+        ok_rb, msg_rb = _maaend_readback(f, task_name, opt, label, task["enabled"], "@enabled", before, None)
+        if ok_rb and task_name in ("ProtocolSpace", "AutoEssence"):
+            _note_sanity_switch_intent(doc)
+        return ok_rb, msg_rb
     return _maaend_readback(f, task_name, opt, label, cur, kind, before,
                             next(iter(want)) if kind == "input" else None)
+
+
+_SANITY_GUARD_TASKS = ("ProtocolSpace", "AutoEssence")
+
+
+def _note_sanity_switch_intent(doc: dict, state_dir=None) -> None:
+    """Record the active MaaEnd sanity tasks after an intentional relay edit so
+    guard_maaend_protocol_space never fights a deliberate switch off."""
+    sd = state_dir or os.environ.get("ARK_STATE_DIR")
+    if not sd:
+        return
+    try:
+        from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+        ins = _maaend_instance(doc)
+        have = {t.get("taskName"): t for t in (ins.get("tasks") or []) if isinstance(t, dict)}
+        active = [n for n in _SANITY_GUARD_TASKS if n in have and bool(have[n].get("enabled"))]
+        StateStore(Path(sd)).set("updates", "protocol_space_guard", {"active": active})
+    except Exception:  # guard memory is advisory
+        log.debug("未能记下协议空间开关意图", exc_info=True)
+
+
+def guard_maaend_protocol_space(automas_dir, state_dir=None) -> tuple[list[str], str]:
+    """Protect MaaEnd's ProtocolSpace switch & per-controller cache against accidental unticking
+    (e.g. AUTO-MAS 「设置脚本」 rewriting mxu-MaaEnd.json on open/close, 2026-10-17).
+
+    1) Refuses to write while an AUTO-MAS ScriptConfig session is open (prevents race).
+    2) Keeps `enabledByController[controllerName]` aligned with `enabled` for ProtocolSpace /
+       AutoEssence so opening 「设置脚本」 never resets the checkbox from stale controller cache.
+    3) If an external rewrite leaves BOTH ProtocolSpace and AutoEssence disabled while the last
+       known active sanity task included ProtocolSpace (and it was not deliberately turned off
+       via write_maaend/set_plan), backs up mxu-MaaEnd.json, restores ProtocolSpace=True, verifies
+       readback, and logs a WARNING.
+    """
+    from ark_relay.core import engine as engine_mod  # noqa: PLC0415
+    if engine_mod.script_config_open(automas_dir):
+        return [], "AUTO-MAS 正在「设置脚本」，暂不改母本"
+    f = maaend_master(automas_dir)
+    if not f or not f.is_file():
+        return [], ""
+    try:
+        doc = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return [], ""
+    ins = _maaend_instance(doc)
+    if not ins:
+        return [], ""
+    ctrl = ins.get("controllerName")
+    have = {t.get("taskName"): t for t in (ins.get("tasks") or []) if isinstance(t, dict)}
+    ps = have.get("ProtocolSpace")
+    if ps is None:
+        return [], ""
+
+    sd = Path(state_dir) if state_dir else (Path(os.environ["ARK_STATE_DIR"]) if os.environ.get("ARK_STATE_DIR") else None)
+    saved_active: list[str] | None = None
+    if sd is not None:
+        try:
+            from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+            raw = StateStore(sd).get("updates", "protocol_space_guard")
+            if isinstance(raw, dict) and isinstance(raw.get("active"), list):
+                saved_active = [str(x) for x in raw["active"]]
+        except Exception:  # noqa: BLE001
+            saved_active = None
+
+    active = [n for n in _SANITY_GUARD_TASKS if n in have and bool(have[n].get("enabled"))]
+    changes: list[str] = []
+    restored_ps = False
+
+    if not active and saved_active and "ProtocolSpace" in saved_active:
+        set_maaend_enabled(ps, True, ctrl)
+        changes.append("协议空间开关被外部改成了关，已恢复勾选")
+        restored_ps = True
+        active = ["ProtocolSpace"]
+
+    for name in _SANITY_GUARD_TASKS:
+        t = have.get(name)
+        if t is None or not ctrl or not bool(t.get("enabled")):
+            continue
+        ctl = t.get("enabledByController")
+        if isinstance(ctl, dict) and str(ctrl) in ctl and not bool(ctl[str(ctrl)]):
+            set_maaend_enabled(t, True, ctrl)
+            changes.append(f"{name} 已同步控制器开关")
+
+    if sd is not None and active and active != saved_active:
+        try:
+            from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+            StateStore(sd).set("updates", "protocol_space_guard", {"active": active})
+        except Exception:
+            log.debug("未能保存协议空间开关记录", exc_info=True)
+
+    if not changes:
+        return [], ""
+
+    bak = f.with_name(f.name + f".bak-guard-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
+    try:
+        bak.write_bytes(f.read_bytes())
+        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
+        back_ps = _maaend_task(json.loads(f.read_text(encoding="utf-8")), "ProtocolSpace") or {}
+        if restored_ps and not bool(back_ps.get("enabled")):
+            return [], f"协议空间恢复勾选后读回来仍是关，备份在 {bak.name}"
+    except (OSError, ValueError) as exc:
+        return [], f"协议空间开关保护写入失败：{exc}"
+
+    note = f"MaaEnd 母本保护：{'；'.join(changes)}（原文件备份为 {bak.name}）"
+    if restored_ps:
+        log.warning("%s", note)
+    else:
+        log.info("%s", note)
+    return changes, note
 
 
 def _maaend_readback(f: Path, task_name: str, opt: str, label: str, wrote, kind: str,
@@ -2013,4 +2148,4 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                      + "\n".join(f"· {c}" for c in changes)
                      + f"\n（原文件备份为 {bak.name}）")
 
-__all__ = ['MAAEND_SHOWN', 'MAAEND_TREE_GROUP', 'MAAEND_TREE_TASKS', 'MAA_AWARD', 'MAA_AWARD_PATHS', 'MAA_DRONES', 'MAA_DRONES_PATH', 'MAA_SINGLETON_TASKS', 'OKWW_READONLY', 'OKWW_SHOWN', 'OKWW_SUBS', '_LIST', '_last_error', '_maa_award', '_maa_awards', '_maa_infrast', '_maa_infrasts', '_maa_task', '_maa_tasks', '_okww_cases', '_okww_doc', '_write_maa_award', '_write_maa_copies', 'dedup_maa_task_queue', 'heal_maa_master', 'log', 'maa_master', 'maaend_master', 'migrate_maaend_options', 'okww_file', 'prune_maaend_orphans', 'read_maa', 'read_maaend', 'read_okww', 'set_maaend_enabled', 'write_maa', 'write_maaend', 'write_okww']
+__all__ = ['MAAEND_SHOWN', 'MAAEND_TREE_GROUP', 'MAAEND_TREE_TASKS', 'MAA_AWARD', 'MAA_AWARD_PATHS', 'MAA_DRONES', 'MAA_DRONES_PATH', 'MAA_SINGLETON_TASKS', 'OKWW_READONLY', 'OKWW_SHOWN', 'OKWW_SUBS', '_LIST', '_last_error', '_maa_award', '_maa_awards', '_maa_infrast', '_maa_infrasts', '_maa_task', '_maa_tasks', '_okww_cases', '_okww_doc', '_write_maa_award', '_write_maa_copies', 'dedup_maa_task_queue', 'guard_maaend_protocol_space', 'heal_maa_master', 'log', 'maa_master', 'maaend_master', 'migrate_maaend_options', 'okww_file', 'prune_maaend_orphans', 'read_maa', 'read_maaend', 'read_okww', 'set_maaend_enabled', 'write_maa', 'write_maaend', 'write_okww']

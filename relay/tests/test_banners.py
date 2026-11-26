@@ -1633,6 +1633,52 @@ def _part_banners():  # noqa: C901
               "· 下期：万物更新 · 祀 · 「丹青渡」版本更新后开（版本 10-15 开启）" in out, True)
         check("briefing: nothing withheld", tr.withheld, [])
 
+        # Second complete official briefing fixture (v1d7, fetched verbatim 2026-11-26):
+        # differs from v1d6 in (a) 3 JSON.parse blocks with override page.title after base v1d6 title,
+        # (b) ISO-with-seconds closeTime ('2026-12-23T11:59:00' vs v1d6 '2026-11-05T11:59'), and
+        # (c) second operator (米米诺) having no gachaPoolName and skipped.
+        fx7 = FX / "ef-briefing-v1d7"
+        page7 = (fx7 / "latest.html").read_text(encoding="utf-8")
+        bundle7 = (fx7 / "bundle.js").read_text(encoding="utf-8")
+        check("briefing v1d6 vs v1d7 date-format difference present in fixtures",
+              ('"closeTime":"2026-11-05T11:59"' in bundle,
+               '"closeTime":"2026-12-23T11:59:00"' in bundle7), (True, True))
+
+        def get7(url):
+            if url == _b._EF_BRIEFING:
+                return page7
+            if url.endswith("/_version_briefing/v1d7/version-v1d7.b01683.js"):
+                return bundle7
+            raise OSError(url)
+
+        ver7, rows7 = _b.ef_briefing_banners(bundle7)
+        check("briefing v1d7: override version title wins over base v1d6 title",
+              ver7, "穿越甚大蘑境与你相逢")
+        check("briefing v1d7: only pool operator kept (free 米米诺 skipped)",
+              [r["who"] for r in rows7], ["小刻「锻砧、行囊与蜜糖」"])
+        check("briefing v1d7: startsAfterUpdate + ISO-with-seconds closeTime",
+              (rows7[0]["open"], rows7[0]["listed"], rows7[0]["close"], rows7[0]["after_update"]),
+              (None, datetime(2026, 11, 25, 7, 0), datetime(2026, 12, 23, 11, 59), True))
+        check("briefing v1d7: 11-21 -> 小刻, after update, version day 11-25",
+              _b.endfield_next_from_briefing(datetime(2026, 11, 21, 21, 45), {"明河"}, get=get7),
+              (None, "小刻「锻砧、行囊与蜜糖」", "穿越甚大蘑境与你相逢", datetime(2026, 11, 25, 7, 0)))
+        check("briefing v1d7: once 小刻 is out -> none",
+              _b.endfield_next_from_briefing(datetime(2026, 11, 21, 21, 45), {"小刻"}, get=get7), None)
+        check("briefing v1d7: past listed opening (11-26) -> none",
+              _b.endfield_next_from_briefing(datetime(2026, 11, 26, 12, 0), set(), get=get7), None)
+
+        _b._text, _b.endfield_next_from_news, _b._json = (lambda url, *a, **k: get7(url)), (lambda now: None), no_api
+        try:
+            tr7, notes7 = _b.Trace.new(), {}
+            got7, nxt7 = _b._endfield(None, lambda path: {"data": {"list": []}},
+                                      datetime(2026, 11, 21, 21, 45), trace=tr7, notes=notes7)
+        finally:
+            _b._text, _b.endfield_next_from_news, _b._json = real_text, real_news, real_json
+        out7 = render(got7, datetime(2026, 11, 21, 21, 45), {"终末地": nxt7}, notes=notes7, trace=tr7)
+        check("briefing v1d7: 11-21 report line",
+              "· 下期：锻砧、行囊与蜜糖 · 小刻 · 「穿越甚大蘑境与你相逢」版本更新后开（版本 11-25 开启）" in out7, True)
+        check("briefing v1d7: nothing withheld", tr7.withheld, [])
+
     def _sf_pool_times() -> None:
         """Silent-failure audit rows banners.py:244 and :424: a Skland pool or a Kuro
     wiki tab whose times could not be read was dropped without a word, and a

@@ -296,9 +296,17 @@ def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str],
         if t is None:
             continue
         want_on = name == want_task
-        if bool(t.get("enabled")) != want_on:
-            changes.append(f"{name}: {'开' if want_on else '关'}")
+        enabled_changed = bool(t.get("enabled")) != want_on
+        ctl = t.get("enabledByController")
+        # Sync an enabled task whose per-controller cache contradicts it (False -> MXU would untick on open),
+        # while keeping a no-op set_plan silent when only a disabled task carries a stale cache.
+        ctrl_mismatch = bool(want_on and controller_name and isinstance(ctl, dict)
+                             and str(controller_name) in ctl and not bool(ctl[str(controller_name)]))
         mastercfg.set_maaend_enabled(t, want_on, controller_name)
+        if enabled_changed:
+            changes.append(f"{name}: {'开' if want_on else '关'}")
+        elif ctrl_mismatch:
+            changes.append(f"{name}: 同步控制器开关")
 
 
 # AutoEssenceMenu's cases in MaaEnd's own words (locales/interface/zh_cn.json,
@@ -407,6 +415,10 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
     if err := _validate_plan(tab, line, rewards_set, maaend_dir):
         return False, err
 
+    from ark_relay.core import engine as engine_mod  # noqa: PLC0415
+    if engine_mod.script_config_open(automas_dir):
+        return False, "AUTO-MAS 正在「设置脚本」，现在改理智方案会在关窗时被覆盖，请先关掉设置脚本再改"
+
     f = _master(automas_dir)
     if f is None:
         return False, f"找不到 MaaEnd 母本 {MARKER}"
@@ -440,6 +452,8 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
     backup, err = _commit_master(f, original, data)
     if backup is None:
         return False, err
+    from ark_relay.core import mastercfg as _mc  # noqa: PLC0415
+    _mc._note_sanity_switch_intent(data)
     log.info("理智方案改动: %s", "；".join(changes))
     return True, (f"{before_label or '(未知)'}\n改成 {read(automas_dir).get('label', '?')}"
                   f"\n（备份 {backup.name}）")

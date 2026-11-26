@@ -591,9 +591,9 @@ class Desktop:
         return _spawn_hidden_via_task(exe, cwd, args)
 
     def run(self, actions: list[dict], focus: str | None = None,
-            timeout: float | None = None) -> dict:
+            timeout: float | None = None, *, warn_error: bool = True) -> dict:
         with _RUN_LOCK:
-            data = self._run(actions, focus, timeout)
+            data = self._run(actions, focus, timeout, warn_error=warn_error)
         try:
             self._remember(actions, focus, data)
         except Exception:  # the trace is evidence only; never breaks a run
@@ -614,7 +614,8 @@ class Desktop:
                 if old:
                     _drop(f)
 
-    def _run(self, actions: list[dict], focus: str | None, timeout: float | None) -> dict:
+    def _run(self, actions: list[dict], focus: str | None, timeout: float | None, *,
+             warn_error: bool = True) -> dict:
         self._ensure_agent()
         self._prune_work()
         rid = uuid.uuid4().hex[:8]
@@ -633,7 +634,7 @@ class Desktop:
                    ("-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File",
                     str(self.agent), str(req), str(res)))
         if not ok:
-            log.warning("桌面助手没能在交互会话里起来")
+            (log.warning if warn_error else log.info)("桌面助手没能在交互会话里起来")
             _drop(req)
             return {"ok": False, "log": ["没能起来"], "ocr": [], "shot": str(shot)}
         deadline = time.monotonic() + (timeout or self.timeout)
@@ -650,14 +651,14 @@ class Desktop:
                 _drop(req, res)
                 return data
             time.sleep(1)
-        log.warning("桌面助手 %s 超时没有结果", rid)
+        (log.warning if warn_error else log.info)("桌面助手 %s 超时没有结果", rid)
         return {"ok": False, "log": ["超时"], "ocr": [], "shot": str(shot)}
 
     # -- common combinations --
     def read(self, focus: str | None = None, settle_ms: int = 0, *,
-             warn_missing: bool = True) -> Screen:
+             warn_missing: bool = True, warn_error: bool = True) -> Screen:
         acts = ([{"act": "wait", "ms": settle_ms}] if settle_ms else []) + [{"act": "ocr"}]
-        data = self.run(acts, focus=focus)
+        data = self.run(acts, focus=focus, warn_error=False)
         lines = [Line(str(o.get("text") or ""), int(o.get("x") or 0), int(o.get("y") or 0),
                       int(o.get("w") or 0), int(o.get("h") or 0))
                  for o in (data.get("ocr") or [])]
@@ -673,13 +674,13 @@ class Desktop:
             # The agent failed part-way (did not start, timed out, threw): whatever
             # lines came back are not a full read of the screen, so none count.
             why = "；".join(map(str, data.get("log") or [])) or "桌面助手没给结果"
-            log.warning("桌面读屏失败：%s", why)
+            (log.warning if warn_error else log.info)("桌面读屏失败：%s", why)
             return Screen([], Path(data.get("shot") or ""), error=why)
         return Screen(lines, Path(data.get("shot") or ""))
 
     def read_file(self, path: Path, timeout: float = 90) -> "list[Line] | None":
         """OCR one image file (not the screen); None when the agent failed."""
-        data = self.run([{"act": "ocrfile", "path": str(path)}], timeout=timeout)
+        data = self.run([{"act": "ocrfile", "path": str(path)}], timeout=timeout, warn_error=False)
         if not data.get("ok"):
             log.warning("桌面助手读图失败：%s", "；".join(map(str, data.get("log") or [])))
             return None

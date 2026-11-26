@@ -9,19 +9,6 @@ Skipped tests are registered here too and may stay at most one week.
 
 ## Todo
 
-- [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05 - overdue).**
-      `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
-      endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the
-      v1d6 page is a sample in `relay/tests/test_banners.py`. When the next version's briefing goes
-      live, save it as a second sample so the parser is checked against two issues, not one.
-- [ ] **Debug mode swallows a shutdown chance and does not give it back when it expires (found
-      2026-10-07).** 2026-10-06: debug mode was on until 21:10 Beijing; every shutdown point from
-      17:38 to 19:26 met it and was consumed (`modes.py`). When debug mode expired nothing re-ran the
-      shutdown decision, so at 21:30 the relay judged "skipped" and pushed 「🌙 今晚不关机」 to the
-      group (`shutdown.py`), then shut down at 21:49 once the next MAA record arrived. Until fixed: do
-      not leave debug mode on across a shutdown point and do not arm 「下次跑完不关机」 without a
-      reason. Fix: when debug mode expires, release the consumed chance and re-run the shutdown
-      decision; test with the 10-06 relay.log lines as the sample.
 - [ ] **The two Wuthering Waves "which one" numbers on the remote have to become names a human can
       read (the user, 2026-09-04):** 「给我标数字，我怎么知道 1234 是什么东西呢？」「无音区的名字没有必要，
       但是他刷的套装非常重要」. OK-WW stores only the index and teleports by counting down the in-game
@@ -80,10 +67,6 @@ Skipped tests are registered here too and may stay at most one week.
       minutes - the server-side base sanity. The 979 very likely includes a temporary layer that does
       not decrease when rewards are claimed. Waiting on the user's in-game numbers; until then a
       reading above the cap is a screen reading and is paired with Skland's base sanity and its time.
-- [ ] **One open finding from the 2026-09-30 audit of every file the relay writes into another
-      program:** whether an AUTO-MAS 「设置脚本」 session counts as `engine._automas_busy()` is not
-      verified; a master edit made during such a session is overwritten when the session ends
-      (AUTO-MAS's `ScriptConfig.py` of each script type copies the directory back).
 
 ## Decided, do not re-open
 

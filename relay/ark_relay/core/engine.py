@@ -12,6 +12,7 @@ after the verdict is already fixed.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import threading
 import time
@@ -189,22 +190,80 @@ def _automas_snapshot():
         return None
 
 
-def _automas_busy():
+def _open_other_mode_tasks(automas_dir, snap, now: datetime) -> list:
+    """Open non-AutoProxy tasks (e.g. ScriptConfig 「设置脚本」) seen in AUTO-MAS app.log
+    that are not already listed in `snap`."""
+    if not automas_dir:
+        return []
+    from ark_relay.features import trigger  # noqa: PLC0415
+    listed = {str((task or {}).get("taskId") or "") for task in ((snap or {}).get("tasks") or [])}
+    f = Path(automas_dir) / "debug" / "app.log"
+    try:
+        with f.open("rb") as fh:
+            fh.seek(max(0, f.stat().st_size - _APPLOG_TAIL))
+            lines = fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+    return [
+        t for t in trigger.parse(lines)
+        if (t.mode != "AutoProxy" and t.ended is None
+            and timedelta(0) <= now - t.created <= timedelta(minutes=OTHER_MODE_OPEN_MIN)
+            and not any(tid and (t.id == tid or t.id.startswith(tid)) for tid in listed))
+    ]
+
+
+def script_config_open(automas_dir=None, now: "datetime | None" = None) -> bool:
+    """True while AUTO-MAS has an open 「设置脚本」 (ScriptConfig) session.
+
+    Checks runtime-snapshot on Windows first (unfinished task with mode == ScriptConfig),
+    then falls back to AUTO-MAS debug/app.log so master-config writers refuse to race
+    AUTO-MAS's close-session copy-back even when runtime-snapshot omits ScriptConfig.
+    """
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    snap = None
+    if config.IS_WINDOWS:
+        snap = _automas_snapshot()
+        if isinstance(snap, dict):
+            for task in snap.get("tasks") or []:
+                if str((task or {}).get("mode") or "") == "ScriptConfig" and _task_unfinished(task):
+                    return True
+    amas = automas_dir or _BUSY_SEEN["automas_dir"] or os.environ.get("ARK_AUTOMAS_DIR")
+    return any(t.mode == "ScriptConfig" for t in _open_other_mode_tasks(amas, snap, cur))
+
+
+def _automas_busy(automas_dir=None, now: "datetime | None" = None):
     """Ask AUTO-MAS whether a task is running. True/False; None when it cannot be asked.
 
     A timeout means AUTO-MAS's listener is up while its event loop is blocked
     (e.g. MaaEnd's 10 s launch setup on 2026-11-23 10:24:53-10:25:03): treat as
     busy rather than falling through to tasklist before the game process exists.
+    Also checks AUTO-MAS debug/app.log for open non-AutoProxy tasks (such as
+    ScriptConfig 「设置脚本」) that runtime-snapshot omits, preventing master-config
+    overwrite races (R-09).
     """
     _SNAP_STATE.timed_out = False
     snap = _automas_snapshot()
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    amas = automas_dir or _BUSY_SEEN["automas_dir"] or os.environ.get("ARK_AUTOMAS_DIR")
     if snap is None:
         if getattr(_SNAP_STATE, "timed_out", False):
             log.info("AUTO-MAS 运行快照超时，暂按有脚本在跑处理")
             return True
+        if amas and (app_open := _open_other_mode_tasks(amas, None, cur)):
+            log.info("AUTO-MAS 日志里有未结束的 %s 任务（%s），按在忙处理",
+                     app_open[0].mode, app_open[0].id[:8])
+            _note_other_modes(None, True, now=cur, app_tasks=app_open)
+            return True
         return None
     busy = _judge_snapshot(snap)
-    _note_other_modes(snap, busy)
+    app_open = []
+    if not busy and amas:
+        app_open = _open_other_mode_tasks(amas, snap, cur)
+        if app_open:
+            busy = True
+            log.info("AUTO-MAS 运行快照未列，但日志里有未结束的 %s 任务（%s），按在忙处理",
+                     app_open[0].mode, app_open[0].id[:8])
+    _note_other_modes(snap, busy, now=cur, app_tasks=app_open)
     return busy
 
 
@@ -246,56 +305,51 @@ GIVEN_UP_KEEP_DAYS = 30
 _APPLOG_TAIL = 512 * 1024
 
 
-def _note_other_modes(snap, busy: bool, now: "datetime | None" = None) -> None:
+def _note_other_modes(snap, busy: bool, now: "datetime | None" = None,
+                      app_tasks: "list | None" = None) -> None:
     """Keep, for machine check #18, what AUTO-MAS's runtime-snapshot said while a
     task of a mode other than AutoProxy (a 设置脚本 session, say) was open: whether it
     was counted as running. A master edit made during such a session is copied over
     when it ends (docs/BACKLOG.md), so it has to count.
 
-    Listed in the snapshot and unfinished: counted. Not listed at all while app.log
-    has its 「创建任务」 line (OTHER_MODE_OPEN_MIN old at most) and no end line, with
-    the snapshot saying nothing runs: not counted. One entry per task and answer.
-    Never raises."""
+    Listed in the snapshot and unfinished, or caught via app.log (`app_tasks`): counted.
+    Not listed at all while app.log has its 「创建任务」 line (OTHER_MODE_OPEN_MIN old at
+    most) and no end line, with the caller reporting `busy=False`: not counted. One entry
+    per task and answer. Never raises."""
     state_dir = _BUSY_SEEN["state_dir"]
     if not state_dir:
         return
     try:
         _note_other_modes_in(Path(state_dir), _BUSY_SEEN["automas_dir"], snap, busy,
-                             (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ))
+                             (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ),
+                             app_tasks=app_tasks)
     except Exception:  # evidence for a check; never in the way of the answer
         log.debug("没记下调度程序非代理任务的忙闲", exc_info=True)
 
 
-def _note_other_modes_in(state_dir: Path, automas_dir, snap, busy: bool, now: datetime) -> None:
+def _note_other_modes_in(state_dir: Path, automas_dir, snap, busy: bool, now: datetime,
+                         app_tasks: "list | None" = None) -> None:
     import json  # noqa: PLC0415
-    from ark_relay.features import trigger  # noqa: PLC0415
     from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
     at = now.strftime("%m-%d %H:%M:%S")
     found: list[dict] = []
-    listed = set()
     for task in (snap or {}).get("tasks") or []:
         tid = str((task or {}).get("taskId") or "")
-        listed.add(tid)
         mode = str((task or {}).get("mode") or "")
         if mode and mode != "AutoProxy" and _task_unfinished(task):
             states = "、".join(f"{i.get('name')} {i.get('status')}" for i in _task_items(task))
             found.append({"at": at, "task": tid, "mode": mode, "busy": True,
                           "line": f"快照里列着、没完成：{states or '还没有状态'}"})
+    if app_tasks:
+        for t in app_tasks:
+            found.append({"at": at, "task": t.id, "mode": t.mode, "busy": True,
+                          "line": f"调度程序日志 {t.created:%H:%M:%S} 创建任务 {t.id[:8]}，"
+                                  f"模式 {t.mode}，快照未列但按日志判为在忙"})
     if not busy and automas_dir:
-        f = Path(automas_dir) / "debug" / "app.log"
-        try:
-            with f.open("rb") as fh:
-                fh.seek(max(0, f.stat().st_size - _APPLOG_TAIL))
-                lines = fh.read().decode("utf-8", "replace").splitlines()
-        except OSError:
-            lines = []
-        for t in trigger.parse(lines):
-            if (t.mode != "AutoProxy" and t.ended is None
-                    and timedelta(0) <= now - t.created <= timedelta(minutes=OTHER_MODE_OPEN_MIN)
-                    and not any(tid and (t.id == tid or t.id.startswith(tid)) for tid in listed)):
-                found.append({"at": at, "task": t.id, "mode": t.mode, "busy": False,
-                              "line": f"调度程序日志 {t.created:%H:%M:%S} 创建任务 {t.id[:8]}，"
-                                      f"模式 {t.mode}，触发来源 {t.source}，还没有结束那一行；快照里没有它"})
+        for t in _open_other_mode_tasks(automas_dir, snap, now):
+            found.append({"at": at, "task": t.id, "mode": t.mode, "busy": False,
+                          "line": f"调度程序日志 {t.created:%H:%M:%S} 创建任务 {t.id[:8]}，"
+                                  f"模式 {t.mode}，触发来源 {t.source}，还没有结束那一行；快照里没有它"})
     if not found:
         return
     path = state_dir / BUSY_FILE
@@ -424,6 +478,8 @@ class Engine:
                 self._push_state("跳过队列")
             except Exception:
                 log.exception("跳过队列后状态没能上报到手机")
+        if expired_until := modes.expire_debug_if_due(self.state.dir):
+            log.info("🔧 调试模式（至 %s）已到期，释放被吞的关机机会，本轮重新判关机", expired_until)
         active = modes.debug_active(self.state.dir)
         if active != self._debug_last:
             if active:
@@ -431,10 +487,6 @@ class Engine:
                          modes.debug_until(self.state.dir))
             elif self._debug_last is not None:
                 log.info("🔧 调试模式已结束，恢复正常判定")
-                # A natural expiry does not run the skipped shutdown: the machine
-                # stays up until the next queue finishes. On purpose. Turning it
-                # off by hand (modes.set_debug off=True) is the one path that
-                # releases the skipped occasion, so the next re-check may power off.
             self._debug_last = active
 
     # ---------- survive restarts ----------
@@ -564,6 +616,7 @@ class Engine:
         # it. Shutdown and the daily report are last.
         for what, step in (
             ("刷声骸到点收工", self._echo_farm_deadline),
+            ("协议空间开关保护", self._guard_maaend_switches),
             ("在跑巡查", self._run_watch),
             ("推送积压告警", self._flush_pending),
             ("周常门", self._weekly_gates),
@@ -600,6 +653,26 @@ class Engine:
             except Exception:
                 log.exception("本轮「%s」这一段出错，跳过它继续", what)
         return len(records)
+
+    def _guard_maaend_switches(self) -> None:
+        """Keep MaaEnd's ProtocolSpace switch & per-controller state intact after idle/ScriptConfig."""
+        if not self.cfg.automas_dir or self._scripts_running() or script_config_open(self.cfg.automas_dir):
+            return
+        from ark_relay.core import mastercfg  # noqa: PLC0415
+        f = mastercfg.maaend_master(self.cfg.automas_dir)
+        if f is None or not f.is_file():
+            return
+        try:
+            sig = (str(f), f.stat().st_mtime_ns, f.stat().st_size)
+        except OSError:
+            return
+        if sig == getattr(self, "_maaend_guard_sig", None):
+            return
+        mastercfg.guard_maaend_protocol_space(self.cfg.automas_dir, self.state.dir)
+        try:
+            self._maaend_guard_sig = (str(f), f.stat().st_mtime_ns, f.stat().st_size)
+        except OSError:
+            self._maaend_guard_sig = None
 
     def _echo_farm_deadline(self) -> None:
         """End a 「farm until HH:MM」 run when its moment arrives."""
@@ -944,9 +1017,19 @@ class Engine:
             if cutoff > now:
                 cands.append((cutoff, "日报截止"))
 
+        cands.extend(self._debug_deadline(now))
         cands.extend(self._alarm_hold_deadline(now))
 
         return min(cands) if cands else None
+
+    def _debug_deadline(self, now: datetime) -> list[tuple[datetime, str]]:
+        try:
+            end_dt = modes.debug_end(self.cfg.state_dir)
+            if end_dt is not None and end_dt > now:
+                return [(end_dt, "调试模式到期，重新判一次关机")]
+        except (OSError, ValueError, TypeError):
+            return []
+        return []
 
     def _alarm_hold_deadline(self, now: datetime) -> list[tuple[datetime, str]]:
         try:

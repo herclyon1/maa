@@ -66,6 +66,7 @@ BINDING_URL = "https://zonai.skland.com/api/v1/game/player/binding"
 ENDFIELD_CARD_URL = "https://zonai.skland.com/api/v1/game/endfield/card/detail"
 
 _TIMEOUT = 20
+_ATTEMPTS = 2
 _RETRY_PAUSE = 2.0
 _sleep = time.sleep
 
@@ -145,8 +146,9 @@ def _open(req: urllib.request.Request) -> dict:
         except urllib.error.HTTPError as e:
             trans = netretry.transient(e)
             alt = (netretry.next_cdn_ip(url, tried_ips, peer_box[0], pin_ip,
-                                        opener=urllib.request.urlopen) if trans else "")
-            cap = 3 if alt else 2
+                                        opener=urllib.request.urlopen)
+                   if (trans and _ATTEMPTS > 1) else "")
+            cap = 1 if _ATTEMPTS <= 1 else (max(_ATTEMPTS, 3) if alt else _ATTEMPTS)
             if not trans or attempt + 1 >= cap:
                 err = _http_error(e)
                 if err is e:
@@ -160,9 +162,10 @@ def _open(req: urllib.request.Request) -> dict:
         except Exception as exc:
             if not netretry.transient(exc):
                 raise
-            alt = netretry.next_cdn_ip(url, tried_ips, peer_box[0], pin_ip,
-                                       opener=urllib.request.urlopen)
-            cap = 3 if alt else 2
+            alt = (netretry.next_cdn_ip(url, tried_ips, peer_box[0], pin_ip,
+                                        opener=urllib.request.urlopen)
+                   if _ATTEMPTS > 1 else "")
+            cap = 1 if _ATTEMPTS <= 1 else (max(_ATTEMPTS, 3) if alt else _ATTEMPTS)
             if attempt + 1 >= cap:
                 raise
             pin_ip = alt

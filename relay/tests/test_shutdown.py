@@ -179,14 +179,16 @@ def _part_shutdown_main():
 
     dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")
     E._shutdown_issued = False; issued.clear()
-    check("到期后没有新队列跑完：仍然不关机（人可能正在用）",
-          E._maybe_shutdown(at(23, 30)), False)
-    check("到期后也没有发出关机命令", len(issued), 0)
+    check("调试模式到期后释放被吞的 |debug 机会并重判关机（R-06）",
+          E._maybe_shutdown(at(23, 30)), True)
+    check("到期重判后确实发出了关机命令", len(issued), 1)
+    check("过期 debug_until 与 |debug 跳过标记均已清理",
+          (store.get("modes", "debug_until"), store.get("modes", "shutdown_skipped")), (None, None))
 
     # 早班又跑了一趟，流水多一条 —— 这是一次新的关机机会
     ledger(run, dict(run, run_id="y"))
     E._shutdown_issued = False; issued.clear()
-    check("下一趟队列跑完：恢复正常关机", E._maybe_shutdown(at(23, 40)), True)
+    check("下一趟队列跑完：照常关机", E._maybe_shutdown(at(23, 40)), True)
     check("这次确实发出了关机命令", len(issued), 1)
 
     dbg_clear(); skipped_clear()
@@ -213,7 +215,7 @@ def _part_shutdown_main():
           E._maybe_shutdown(at(23, 40)), True)
     skipped_clear()
 
-    print("\n[手动关调试] 明确关掉要恢复正常，自然到期不恢复")
+    print("\n[手动关调试] 明确关掉同样释放 |debug 并恢复正常")
     from ark_relay.features import modes
     dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
     skipped_clear(); store.pop("modes", "skip_next_shutdown")
@@ -440,20 +442,22 @@ def _part_shutdown_main():
     check("(b) 00:45: powers off", E._maybe_shutdown(day_at(22, 0, 45)), True)
     check("(b) …with one power-off command", len(power_offs()), 1)
 
-    # (c) debug on right after the shift ends: that opportunity is skipped, the next one is not.
+    # (c) debug on right after the shift ends: held while debug is active; once debug expires,
+    # the |debug skip is released and decide() re-evaluates to "go" (R-06).
     skipped_clear(); dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
     ledgers({21: [morning, run]})
     fresh(day_at(21, 21, 20))
     K = E._shutdown_key(day_at(21, 22, 25))
     check("(c) 22:25, the shift ended, debug on -> debug", verdict(day_at(21, 22, 25)), "debug")
     check("(c) 22:25: stays on", E._maybe_shutdown(day_at(21, 22, 25)), False)
-    check("(c) this opportunity recorded", modes.shutdown_skipped(STATE), K)
+    check("(c) this opportunity recorded with |debug", modes.shutdown_skipped_raw(STATE), K + modes.DEBUG_SKIP_TAG)
     dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")
-    check("(c) 22:40, debug ran out, same opportunity -> skipped", verdict(day_at(21, 22, 40)), "skipped")
-    check("(c) 22:40: no late power-off", E._maybe_shutdown(day_at(21, 22, 40)), False)
-    ledgers({21: [morning, run, dict(run, run_id="y")]})
-    check("(c) the next shift end -> powers off", E._maybe_shutdown(day_at(21, 23, 40)), True)
+    check("(c) 22:40, debug ran out -> |debug released, decide re-evaluates to go",
+          verdict(day_at(21, 22, 40)), "go")
+    check("(c) 22:40: powers off on expiry re-check", E._maybe_shutdown(day_at(21, 22, 40)), True)
     check("(c) …with one power-off command", len(power_offs()), 1)
+    check("(c) expired debug_until and |debug cleared",
+          (store.get("modes", "debug_until"), modes.shutdown_skipped_raw(STATE)), (None, ""))
 
     # (c') debug on at a shift end whose daily report has not gone out: the report gate names
     # what holds the machine; debug mode is spent once the report has gone, if still on.
@@ -4004,5 +4008,132 @@ def _part_statestore_stat_and_legacy_errors():
           ({"done_week": "2026-W48"}, False, True))
 
 
+def _part_debug_expiry_redecides():
+    """R-06 (2026-10-06 replay): debug mode expires -> wakes engine via next_deadline(),
+    releases consumed |debug skip in _observe_modes()/expire_debug_if_due(), and re-runs
+    shutdown.decide() while keeping human skip_next_shutdown and |alarm intact."""
+    import json
+    import types
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import engine as engine_mod, ledger as ledger_mod
+    from ark_relay.core.config import Config, SERVER_TZ
+    from ark_relay.core.statestore import StateStore
+    from ark_relay.features import modes, shutdown as sd
+
+    base = tmpdir("dbg-exp-")
+    state_dir = base / "state"
+    mas_dir = base / "automas"
+    (mas_dir / "config").mkdir(parents=True)
+    # Schedule matching 2026-10-06 (morning 09:00, evening 21:30)
+    (mas_dir / "config" / "QueueConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "q_am"}, {"uid": "q_pm"}],
+        "q_am": {"Info": {"Name": "早班", "TimeEnabled": True, "AfterAccomplish": "NoAction"},
+                 "SubConfigsInfo": {
+                     "TimeSet": {"t1": {"Info": {"Enabled": True, "Time": "09:00"}}},
+                     "QueueItem": {"i1": {"Info": {"ScriptId": "s1"}}}}},
+        "q_pm": {"Info": {"Name": "晚班", "TimeEnabled": True, "AfterAccomplish": "NoAction"},
+                 "SubConfigsInfo": {
+                     "TimeSet": {"t1": {"Info": {"Enabled": True, "Time": "21:30"}}},
+                     "QueueItem": {"i2": {"Info": {"ScriptId": "s1"}}}}},
+    }), encoding="utf-8")
+    (mas_dir / "config" / "ScriptConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "s1"}],
+        "s1": {"Info": {"Name": "MAA", "Path": "D:\\MAA-v5.1.0-win-x64"}, "type": "MaaConfig"},
+    }), encoding="utf-8")
+
+    cfg = Config(history_dir=base / "hist", state_dir=state_dir, automas_dir=mas_dir,
+                 shutdown_after_run=True, shutdown_min_uptime=300)
+    sent: list = []
+    notifier = types.SimpleNamespace(send=lambda *a, **k: sent.append((a, k)) or [])
+    src = types.SimpleNamespace(fetch=lambda seen: [])
+    eng = engine_mod.Engine(cfg, src, ledger_mod.State(state_dir), notifier)
+    eng._scripts_running = lambda: False
+    eng._last_round_manual = lambda now, entries: False
+    eng._unfinished_queues = lambda now, entries: []
+    eng.state.report_sent = lambda d: True
+    eng._handled_any = True
+    issued = []
+    eng._power_off = lambda: issued.append(1) or True
+
+    real_now = datetime.now(tz=SERVER_TZ)
+    # Replay 2026-10-06 timeline anchored to 10-06 morning shift (boot 08:45, finish 09:30,
+    # debug held through 17:38..19:26 until expiry at 21:10 Beijing — 10 min before 21:20 boot).
+    day = datetime(2026, 10, 6, tzinfo=SERVER_TZ)
+    boot = day.replace(hour=8, minute=45)
+    eng._started_at = boot
+    eng._boot_time = lambda now=None: boot
+    run = {"script": "MAA", "user": "u", "run_id": "2026-10-06/ark/r1", "ok": True,
+           "started": day.replace(hour=9, minute=1).isoformat(),
+           "finished": day.replace(hour=9, minute=30).isoformat()}
+    lp = eng.state.ledger_path("2026-10-06")
+    lp.parent.mkdir(parents=True, exist_ok=True)
+    lp.write_text(json.dumps(run) + "\n", encoding="utf-8")
+
+    print("[1. 2026-10-06: debug active at 17:38..19:26 consumes opportunity with |debug]")
+    store = StateStore(state_dir)
+    # 1a. next_deadline schedules wakeup right at debug_until (21:10) while debug is on
+    store.set("modes", "debug_until", "2026-10-06 21:10")
+    dl = eng.next_deadline(day.replace(hour=19, minute=26))
+    check("next_deadline wakes at 21:10 debug_until",
+          (dl[0], "调试模式到期" in dl[1]) if dl else None,
+          (day.replace(hour=21, minute=10), True))
+
+    # 1b. While debug is active (relative to wall clock used by shutdown.decide), shutdown is held and tagged |debug
+    store.set("modes", "debug_until", f"{real_now + timedelta(hours=1):%Y-%m-%d %H:%M}")
+    check("17:38 debug active -> decide is debug", sd.decide(eng, day.replace(hour=17, minute=38)).code, "debug")
+    check("17:38 _maybe_shutdown stays on", eng._maybe_shutdown(day.replace(hour=17, minute=38)), False)
+    key = eng._shutdown_key(day.replace(hour=19, minute=26))
+    check("19:26 _maybe_shutdown stays on", eng._maybe_shutdown(day.replace(hour=19, minute=26)), False)
+    check("shutdown_skipped carries |debug tag", modes.shutdown_skipped_raw(state_dir), key + modes.DEBUG_SKIP_TAG)
+    check("no power-off issued while debug active", len(issued), 0)
+
+    print("\n[2. Debug expires at 21:10: _observe_modes releases |debug and decide() re-runs -> go]")
+    store.set("modes", "debug_until", f"{real_now - timedelta(minutes=1):%Y-%m-%d %H:%M}")
+    eng._debug_last = True
+    eng._observe_modes()
+    check("_observe_modes cleared expired debug_until", store.get("modes", "debug_until"), None)
+    check("_observe_modes released |debug skip", modes.shutdown_skipped_raw(state_dir), "")
+    # At 21:10 (10 min before 21:20 boot, outside 2-min boot-imminent window): decide() returns go, not skipped!
+    v_exp = sd.decide(eng, day.replace(hour=21, minute=10))
+    check("21:10 after expiry -> decide() is go (not skipped)", v_exp.code, "go")
+    check("21:10 _maybe_shutdown powers off cleanly", eng._maybe_shutdown(day.replace(hour=21, minute=10)), True)
+    check("one power-off issued", len(issued), 1)
+
+    print("\n[3. Direct expiry without prior _observe_modes: _maybe_shutdown releases |debug itself]")
+    eng._shutdown_issued = False
+    issued.clear()
+    store.set("modes", "debug_until", f"{real_now - timedelta(minutes=2):%Y-%m-%d %H:%M}")
+    modes.mark_shutdown_skipped(state_dir, key, by_debug=True)
+    check("decide() does not stay stuck on |debug after expiry", sd.decide(eng, day.replace(hour=21, minute=10)).code, "go")
+    check("_maybe_shutdown clears expired debug and powers off", eng._maybe_shutdown(day.replace(hour=21, minute=10)), True)
+    check("disk cleaned of debug_until and |debug",
+          (store.get("modes", "debug_until"), modes.shutdown_skipped_raw(state_dir)), (None, ""))
+
+    print("\n[4. Safety boundaries: human skip_next_shutdown, |alarm, and malformed debug_until untouched]")
+    eng._shutdown_issued = False
+    issued.clear()
+    # Human untagged skip stays even when debug expires
+    modes.mark_shutdown_skipped(state_dir, key, by_debug=False)
+    store.set("modes", "debug_until", f"{real_now - timedelta(minutes=5):%Y-%m-%d %H:%M}")
+    expired = modes.expire_debug_if_due(state_dir)
+    check("expired debug_until reported", bool(expired), True)
+    check("human untagged shutdown_skipped preserved", modes.shutdown_skipped_raw(state_dir), key)
+    check("decide() still respects human skip", sd.decide(eng, day.replace(hour=21, minute=10)).code, "skipped")
+
+    # |alarm skip stays even when debug expires
+    modes.mark_shutdown_skipped(state_dir, key, by_alarm=True)
+    store.set("modes", "debug_until", f"{real_now - timedelta(minutes=5):%Y-%m-%d %H:%M}")
+    modes.expire_debug_if_due(state_dir)
+    check("|alarm shutdown_skipped preserved", modes.shutdown_skipped_raw(state_dir), key + modes.ALARM_SKIP_TAG)
+    check("decide() still respects |alarm skip", sd.decide(eng, day.replace(hour=21, minute=10)).code, "skipped")
+
+    # Malformed debug_until stays fail-safe (active, not expired)
+    store.set("modes", "debug_until", "not-a-date")
+    check("malformed debug_until does not expire", modes.expire_debug_if_due(state_dir), None)
+    check("malformed debug_until stays active", modes.debug_active(state_dir), True)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_shutdown_main, _part_shutdown_after_restart, _part_shutdown_unfixed_shift, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording, _part_skip_failed_pushed, _part_skip_flag_collision, _part_skip_receipt_lost, _part_skip_receipts, _part_skip_sat_out, _part_skip_shutdown_bat_error, _part_farm_poweroff, _part_place_desktop_bat, _part_statestore_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads, _part_alarm_hold_root_cure, _part_statestore_stat_and_legacy_errors]))
+    sys.exit(run_parts([_part_shutdown_main, _part_shutdown_after_restart, _part_shutdown_unfixed_shift, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording, _part_skip_failed_pushed, _part_skip_flag_collision, _part_skip_receipt_lost, _part_skip_receipts, _part_skip_sat_out, _part_skip_shutdown_bat_error, _part_farm_poweroff, _part_place_desktop_bat, _part_statestore_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads, _part_alarm_hold_root_cure, _part_statestore_stat_and_legacy_errors, _part_debug_expiry_redecides]))

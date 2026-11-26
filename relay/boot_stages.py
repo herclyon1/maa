@@ -1083,6 +1083,13 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             log.warning("MaaEnd 设置格式迁移没做：%s", note)
     except Exception:
         log.exception("迁移 MaaEnd 设置格式出错")
+    try:
+        from ark_relay.core import mastercfg as _mc_ps  # noqa: PLC0415
+        healed, note = _mc_ps.guard_maaend_protocol_space(cfg.automas_dir, cfg.state_dir)
+        if healed:
+            log.info("开机：%s", note)
+    except Exception:
+        log.exception("检查 MaaEnd 协议空间开关出错")
     # MAA's master can hold two entries of one task (MAA's nameless one and the
     # named copy AUTO-MAS appended on a write-back); AUTO-MAS runs the named one
     # while the phone page had been reading and writing the other (Gemini's

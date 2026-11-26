@@ -821,24 +821,23 @@ def decide(eng, now: datetime) -> Verdict:
     if (now >= cutoff and not eng.state.report_sent(day)
             and eng.state.read_ledger(day)):
         return Verdict(False, "report", "到点该关机了，但日报还没发出去，继续等")
-    # Debug mode skips this one shutdown opportunity rather than deferring it every
-    # tick. Both checks sit after every other gate, so only a real opportunity is
-    # skipped. Recording the key is a side effect and happens in _maybe_shutdown.
+    # Debug mode holds this shutdown opportunity while active. Once it expires or is
+    # turned off, any |debug skip it recorded is released so decide() re-evaluates.
     if modes.debug_active(eng.state.dir):
         return Verdict(False, "debug", "调试模式开着，这一次关机跳过")
     key = eng._shutdown_key(now)
     raw_skip = modes.shutdown_skipped_raw(eng.state.dir)
-    if raw_skip in (key, key + modes.DEBUG_SKIP_TAG):
+    if raw_skip == key:
         return Verdict(False, "skipped",
-                       "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
+                       "这一次关机已经跳过了（手机上点了「下次跑完不关机」）")
     if hold := modes.alarm_hold_info(eng.state.dir, now):
         why = str(hold.get("reason") or "有未修完的故障报警")
         until = str(hold.get("until") or "")
         tail = f"（留机至 {until}）" if until else ""
         return Verdict(False, "alarm-hold", f"故障留机锁开着，先不关机：{why}{tail}")
-    if modes.shutdown_skipped(eng.state.dir) == key:
+    if raw_skip == key + modes.ALARM_SKIP_TAG:
         return Verdict(False, "skipped",
-                       "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")
+                       "这一次关机已经跳过了（故障留机锁到期时临近下次开机，等下一趟再判）")
     return Verdict(True, "go", "本轮已处理完毕")
 
 
@@ -1062,19 +1061,26 @@ def _issue_poweroff(eng, now: datetime, live_clock: bool, gen0: int, why: dict) 
             _record_poweroff(eng, None)
 
 
+def _expire_debug_for_shutdown(eng) -> None:
+    if expired_until := modes.expire_debug_if_due(eng.state.dir):
+        log.info("🔧 调试模式（至 %s）已到期，释放被吞的关机机会并重新判关机", expired_until)
+
+
 def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     """Decision plus side effects. decide() judges; this does what follows a "go"."""
     live_clock = now is None
     now = (datetime.now(tz=SERVER_TZ) if live_clock else now).astimezone(SERVER_TZ)
+    _expire_debug_for_shutdown(eng)
     v = decide(eng, now)
     if v.code == "debug":
-        # Debug mode skips this one opportunity (see decide): record its key (upgrade |alarm -> |debug).
+        # Debug mode holds this opportunity while active; tag with |debug so expiry
+        # or manual off releases only debug's own skip (never a human mark or |alarm).
         key = eng._shutdown_key(now)
         raw_skip = modes.shutdown_skipped_raw(eng.state.dir)
         if raw_skip not in (key, key + modes.DEBUG_SKIP_TAG):
             modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
-            log.info("🔧 调试模式：这一次关机已跳过（%s）；"
-                     "到期后不会补关，等下一趟队列跑完再判", key)
+            log.info("🔧 调试模式：这一次关机暂缓（%s）；"
+                     "到期或关闭后会释放机会重新判关机", key)
     if v.code == "alarm-hold" and _handle_alarm_hold_side_effects(eng, now):
         return False
     if not v.go:
