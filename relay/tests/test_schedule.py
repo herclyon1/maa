@@ -4281,5 +4281,168 @@ def _part_dispatch_guard_status_details():
         g.running, g._proc_start_times, g.live_tasks, g.HISTORY_DIR, g.RELAY_LOG, g.SCRIPT_LOGS = saved
 
 
+def _part_runwatch_queue_task_terminal_ahead():
+    """_queue_task & check_overrun skip historical terminal tasks ahead of a live task."""
+    import os
+    from datetime import datetime
+
+    TMP = tmpdir()
+    AUTOMAS = TMP / "AUTO-MAS"
+    (AUTOMAS / "config").mkdir(parents=True)
+    (AUTOMAS / "debug").mkdir()
+    MORNING_UID = "cc32e55a-55d0-408d-980d-642e66d111ae"
+    doc = {
+        "instances": [{"uid": MORNING_UID, "type": "QueueConfig"}],
+        MORNING_UID: {
+            "Info": {"Name": "早班", "TimeEnabled": True},
+            "SubConfigsInfo": {
+                "TimeSet": {"0": {"Info": {"Enabled": True, "Time": "09:00"}}},
+                "QueueItem": {"0": {"Info": {"ScriptId": "s0"}}},
+            },
+        },
+    }
+    (AUTOMAS / "config" / "QueueConfig.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    (AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
+    (AUTOMAS / "debug" / "app.log").write_text("", encoding="utf-8")
+    HIST = TMP / "history"
+    HIST.mkdir()
+    os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
+                      ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.core import engine as eng
+    from ark_relay.core.config import SERVER_TZ, Config
+    from ark_relay.core.ledger import State
+    from ark_relay.features import machinecheck as _mc
+    from ark_relay.features import runwatch
+
+    _mc.load()
+    _mc_real = dict(_mc.CHECKS)
+    _mc.CHECKS.clear()
+
+    def at(hh, mm, day=1, month=10):
+        return datetime(2026, month, day, hh, mm, tzinfo=SERVER_TZ)
+
+    def build():
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        e = eng.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=_Notes())
+        e._scripts_running = lambda: False
+        return e
+
+    def alarms(e):
+        return [(t, b) for t, b, a in e.notifier.sent if a]
+
+    old_v58 = {
+        "taskId": "old-v58-done",
+        "mode": "AutoProxy",
+        "queueId": MORNING_UID,
+        "log": "历史终态日志",
+        "task_info": [
+            {"name": "MAA", "status": "完成"},
+            {"name": "OK-WW", "status": "异常"},
+            {"name": "MaaEnd", "status": "完成"},
+        ],
+    }
+    live_v58 = {
+        "taskId": "live-v58-run",
+        "mode": "AutoProxy",
+        "queueId": MORNING_UID,
+        "log": "当前卡住日志",
+        "task_info": [
+            {"name": "MAA", "status": "完成"},
+            {"name": "OK-WW", "status": "运行"},
+            {"name": "MaaEnd", "status": "等待"},
+        ],
+    }
+    old_v59 = {
+        "taskId": "old-v59-done",
+        "mode": "AutoProxy",
+        "task": {
+            "info": {"name": "早班", "mode": "AutoProxy", "status": "success"},
+            "scripts": {
+                "order": [{"uid": "s1"}, {"uid": "s2"}],
+                "data": {
+                    "s1": {"info": {"name": "MAA", "status": "完成"}},
+                    "s2": {"info": {"name": "MaaEnd", "status": "完成"}},
+                },
+            },
+        },
+    }
+    old_v59_empty_cancelled = {
+        "taskId": "old-v59-cancelled",
+        "mode": "AutoProxy",
+        "task": {
+            "info": {"name": "早班", "mode": "AutoProxy", "status": "cancelled"},
+            "scripts": {"order": [], "data": {}},
+        },
+    }
+    live_v59 = {
+        "taskId": "live-v59-run",
+        "mode": "AutoProxy",
+        "log": "v5.9 当前在跑",
+        "task": {
+            "info": {"name": "早班", "mode": "AutoProxy", "status": "running"},
+            "scripts": {
+                "order": [{"uid": "s1"}, {"uid": "s2"}],
+                "data": {
+                    "s1": {"info": {"name": "MAA", "status": "完成"}},
+                    "s2": {"info": {"name": "MaaEnd", "status": "运行"}},
+                },
+            },
+        },
+    }
+    other_q_live = {
+        "taskId": "other-q-run",
+        "mode": "AutoProxy",
+        "queueId": "someone-else",
+        "task": {"info": {"name": "早班", "status": "running"}},
+        "task_info": [{"name": "MAA", "status": "运行"}],
+    }
+
+    print("[_queue_task 跳过排在前面的历史终态，命中同队列/同名当前在跑任务]")
+    check("v5.8 queueId：历史终态在前、当前在跑在后 → 命中当前在跑",
+          runwatch._queue_task({"tasks": [old_v58, live_v58]}, MORNING_UID, "早班") is live_v58, True)
+    check("v5.9 同名：历史终态与空脚本取消在前、当前在跑在后 → 命中当前在跑",
+          runwatch._queue_task({"tasks": [old_v59, old_v59_empty_cancelled, live_v59]},
+                               MORNING_UID, "早班") is live_v59, True)
+    check("全是历史终态 → 返回首个终态（不误判为在跑）",
+          runwatch._queue_task({"tasks": [old_v58]}, MORNING_UID, "早班") is old_v58, True)
+    check("带别的 queueId 的任务即使 info.name 同名也不串台",
+          runwatch._queue_task({"tasks": [other_q_live]}, MORNING_UID, "早班"), None)
+
+    print("\n[check_overrun 端到端：旧终态排在前面时，当前在跑任务超时仍照常告警]")
+    real_win, real_snap = eng.config.IS_WINDOWS, eng._automas_snapshot
+    try:
+        eng.config.IS_WINDOWS = True
+
+        e_v58 = build()
+        eng._automas_snapshot = lambda: {"tasks": [old_v58, live_v58]}
+        e_v58._run_watch(at(12, 30))   # fallback 180 + 30 = 210 min after 09:00
+        got_v58 = alarms(e_v58)
+        check("v5.8 同 queueId 历史终态在前 → 超时告警照发",
+              [t for t, _ in got_v58], ["⏰ 早班超时还没跑完"])
+        check("v5.8 告警正文展示的是当前在跑任务的状态",
+              bool(got_v58) and "OK-WW 运行" in got_v58[0][1], True)
+
+        e_v59 = build()
+        eng._automas_snapshot = lambda: {"tasks": [old_v59, old_v59_empty_cancelled, live_v59]}
+        e_v59._run_watch(at(12, 30))
+        got_v59 = alarms(e_v59)
+        check("v5.9 同名历史终态在前 → 超时告警照发",
+              [t for t, _ in got_v59], ["⏰ 早班超时还没跑完"])
+        check("v5.9 告警正文展示的是当前在跑任务的状态",
+              bool(got_v59) and "MaaEnd 运行" in got_v59[0][1], True)
+
+        e_done = build()
+        eng._automas_snapshot = lambda: {"tasks": [old_v58, old_v59, old_v59_empty_cancelled]}
+        e_done._run_watch(at(12, 30))
+        check("全都是历史终态 → 不误报超时", alarms(e_done), [])
+    finally:
+        eng.config.IS_WINDOWS, eng._automas_snapshot = real_win, real_snap
+        _mc.CHECKS.update(_mc_real)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_guard_status_details, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window]))
+    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_guard_status_details, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window, _part_runwatch_queue_task_terminal_ahead]))
