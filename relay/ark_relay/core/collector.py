@@ -401,16 +401,18 @@ def _db_rows(history_root: Path) -> list[tuple]:
     """The run rows of AUTO-MAS's data/history.db (v5.8.0-beta.2 on), oldest first; [] when
     there is no such file (older AUTO-MAS) or it cannot be read this time."""
     db = history_root.parent / "data" / "history.db"
-    if not db.exists():
-        return []
     try:
+        try:
+            db.stat()
+        except FileNotFoundError:
+            return []
         con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
         try:
             rows = con.execute("SELECT id, time, date, username, script_name, message, data, log_path"
-                               " FROM records ORDER BY timestamp").fetchall()
+                               " FROM records ORDER BY timestamp, id").fetchall()
         finally:
             con.close()
-    except sqlite3.Error as e:
+    except (sqlite3.Error, OSError) as e:
         _db_fail_streak[0] += 1
         if str(e) not in _db_said:
             _db_said.add(str(e))
@@ -440,7 +442,7 @@ def _db_identity(row: tuple, history_root: Path):
         at = at.replace(tzinfo=AUTOMAS_NAME_TZ)
     try:
         raw = json.loads(data or "{}")
-    except json.JSONDecodeError:
+    except (ValueError, TypeError):
         raw = {}
     if not isinstance(raw, dict):
         raw = {}
@@ -466,7 +468,7 @@ def parse_db_record(row: tuple, history_root: Path,
     raw, json_path, date_str, user, stem, started = got
     try:
         finished = datetime.fromtimestamp(json_path.with_suffix(".log").stat().st_mtime, tz=SERVER_TZ)
-    except OSError:
+    except (OSError, OverflowError, ValueError):
         finished = started
     if finished < started:
         finished = started
@@ -482,7 +484,7 @@ def _record_identity(json_path: Path, history_root: Path):
     """
     try:
         raw = json.loads(json_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):
         return None
     if not isinstance(raw, dict):
         return None
@@ -508,7 +510,10 @@ def _record_identity(json_path: Path, history_root: Path):
             _unparsed_new.append(rel.as_posix())
         return None
     started = started.replace(tzinfo=AUTOMAS_NAME_TZ).astimezone(SERVER_TZ)
-    finished = datetime.fromtimestamp(json_path.stat().st_mtime, tz=SERVER_TZ)
+    try:
+        finished = datetime.fromtimestamp(json_path.stat().st_mtime, tz=SERVER_TZ)
+    except (OSError, OverflowError, ValueError):
+        finished = started
     if finished < started:  # clock skew or a copied file; don't produce negatives
         finished = started
     return raw, date_str, user, stem, started, finished
@@ -651,23 +656,32 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
     # one. A record without the flag falls back to 0 after 「理智不足，结束任务」.
     if not raw.get("sanity_full_at"):
         if script == "MaaEnd" and raw.get("sanity") is not None:
-            floored = raw.get("sanity_floored")
-            if floored is None:
-                floored = bool(raw.get("sanity_exhausted")) and int(raw["sanity"]) == 0
-            if not floored:
-                ref = finished
-                try:
-                    if at := raw.get("sanity_read_at"):
-                        ref = datetime.strptime(str(at), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
-                except ValueError:
-                    pass
-                raw["sanity_full_at"] = _full_at_sentence(
-                    int(raw["sanity"]), int(raw.get("sanity_cap") or 360),
-                    _END_SANITY_SEC_PER_POINT, ref)
+            try:
+                sanity_val = int(raw["sanity"])
+                cap_val = int(raw.get("sanity_cap") or 360)
+            except (TypeError, ValueError):
+                sanity_val = cap_val = None
+            if sanity_val is not None and cap_val is not None:
+                floored = raw.get("sanity_floored")
+                if floored is None:
+                    floored = bool(raw.get("sanity_exhausted")) and sanity_val == 0
+                if not floored:
+                    ref = finished
+                    try:
+                        if at := raw.get("sanity_read_at"):
+                            ref = datetime.strptime(str(at), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+                    except ValueError:
+                        pass
+                    raw["sanity_full_at"] = _full_at_sentence(
+                        sanity_val, cap_val, _END_SANITY_SEC_PER_POINT, ref)
         elif raw.get("okww_stamina_left") is not None:
-            raw["sanity_full_at"] = _full_at_sentence(
-                int(raw["okww_stamina_left"]), _OKWW_STAMINA_CAP,
-                _OKWW_SEC_PER_POINT, finished)
+            try:
+                stamina_val = int(raw["okww_stamina_left"])
+            except (TypeError, ValueError):
+                stamina_val = None
+            if stamina_val is not None:
+                raw["sanity_full_at"] = _full_at_sentence(
+                    stamina_val, _OKWW_STAMINA_CAP, _OKWW_SEC_PER_POINT, finished)
     return failed
 
 
@@ -716,6 +730,7 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
         suffix = f"-{rid_[:8]}" if base in taken else ""
         taken.add(base)
         if base + suffix in seen:
+            _db_log_missing.pop(rid_, None)
             continue
         # The row is written after its 0.log (above); a 0.log still missing is waited out
         # for 120 s like the JSON layout's .log, then the run is booked without it.
