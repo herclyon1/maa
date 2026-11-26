@@ -127,7 +127,7 @@ def update_wuwa_history(state_dir, now: datetime, get=None, article_get=None, bu
                         lambda pid: {"postContent": [{"contentType": 1, "content": texts[pid]}]},
                         [a for a in articles if str(a.get("articleId")) in art_texts],
                         lambda aid: json.dumps({"articleContent": art_texts[str(aid)]}), now)
-    return hist, record_history(state_dir, "鸣潮", hist)
+    return hist, record_history(state_dir, "鸣潮", [h for h in hist if h.get("start") and h.get("end")])
 
 
 # The official site's article index (what mc.kurogames.com/main/news renders): a

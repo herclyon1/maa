@@ -4344,5 +4344,47 @@ def _part_needtable_fallback():
     check("全部已实装干员都缺数据时抛出首位未收录错误，不产空表", "新干员甲" in all_err, True)
 
 
+def _part_wuwa_history_missing_start():
+    """update_wuwa_history skips incomplete start=None entries instead of crashing record_history."""
+    import json
+    from datetime import datetime
+    from ark_relay.features import banners as _b
+
+    FX = fx_dir(Path(__file__), "fixtures")
+    hx = json.loads((FX / "ww-history-2026-10-06.json").read_text(encoding="utf-8"))
+
+    def hist_get(path, payload):
+        if "findEventList" in path:
+            return {"data": {"list": hx["events"]}}
+        content = hx["details"][str(payload["postId"])]["postContent"][0]["content"]
+        return {"data": {"postDetail": {"postContent": [{"contentType": 1, "content": content}]}}}
+
+    def aget(url):
+        if url == _b._WW_SITE_ARTICLES:
+            return json.dumps(hx["articles"])
+        aid = url.rsplit("/", 1)[1].split(".")[0]
+        return json.dumps({"articleContent": hx["article_text"][aid]})
+
+    def aget_no36(url):
+        if url == _b._WW_SITE_ARTICLES:
+            return json.dumps([a for a in hx["articles"]
+                               if "3.6版本更新维护预告" not in str(a.get("articleTitle") or "")])
+        return aget(url)
+
+    sd = tmpdir()
+    now = datetime(2026, 9, 15, 12, 0)
+    got_miss, chg_miss = _b.update_wuwa_history(sd, now, hist_get, aget_no36, budget=1000)
+    saved_miss = json.loads((sd / "banners" / "history.json").read_text(encoding="utf-8")).get("鸣潮") or {}
+    check("维护预告缺失致 3.6 第一期 start=None：不炸 TypeError，起止齐全的照常落盘",
+          (any(h["ver"] == "3.6" and h["start"] is None for h in got_miss), chg_miss,
+           "3.5|第二期" in saved_miss, "3.6|第一期" in saved_miss),
+          (True, [], True, False))
+    got_fill, chg_fill = _b.update_wuwa_history(sd, now, hist_get, aget, budget=1000)
+    saved_fill = json.loads((sd / "banners" / "history.json").read_text(encoding="utf-8")).get("鸣潮") or {}
+    check("后续拉到 3.6 维护预告补齐 start 后：3.6 第一期补录进 history.json，无误报变化",
+          (all(h["start"] is not None for h in got_fill), chg_fill, "3.6|第一期" in saved_fill),
+          (True, [], True))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_banners, _part_banner_post_miss, _part_bili_pinned_post, _part_event_expiry, _part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard, _part_skland_arknights_annihilation, _part_needtable_publish, _part_needtable_trims, _part_need_table, _part_needtable_fallback]))
+    sys.exit(run_parts([_part_banners, _part_banner_post_miss, _part_bili_pinned_post, _part_event_expiry, _part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard, _part_skland_arknights_annihilation, _part_needtable_publish, _part_needtable_trims, _part_need_table, _part_needtable_fallback, _part_wuwa_history_missing_start]))
