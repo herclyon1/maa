@@ -82,8 +82,8 @@ def _post(req: urllib.request.Request) -> dict:
                 raise _Busy(f"errcode -1 {data.get('errmsg', '')}".strip())
         except urllib.error.HTTPError:
             raise  # the server answered - retrying cannot change the answer
-        except (urllib.error.URLError, TimeoutError, OSError,
-                json.JSONDecodeError, _Busy) as exc:
+        except (urllib.error.URLError, http.client.HTTPException, TimeoutError,
+                OSError, json.JSONDecodeError, UnicodeDecodeError, _Busy) as exc:
             last = exc
             if attempt < _RETRIES - 1:
                 delay = _backoff(attempt)
@@ -695,10 +695,11 @@ class Notifier:
         ]
         self._announcing = True
         title = f"🔌 推送通道故障：{'、'.join(failed)}"
-        self.note_alarm(title)
         try:
-            # The default order is _GROUP_ORDER, so this reaches the group too.
-            sent, _ = self._fan_out(title, "\n".join(lines))
+            self.note_alarm(title)
+            # Announce via the channels still alive in _GROUP_ORDER, stopping once one accepts.
+            alive = tuple(n for n in _GROUP_ORDER if n not in failed) or _GROUP_ORDER
+            sent, _ = self._fan_out(title, "\n".join(lines), order=alive, stop_on_first=True)
         finally:
             self._announcing = False
         if sent:
@@ -755,8 +756,8 @@ def call(fn, what: str, limit: float, *, detail: str = "", clock=None, sleep=Non
     sleep = sleep or _sleep
     start = clock()
     first = ""
+    left = limit
     for attempt in range(ATTEMPTS):
-        left = limit - (clock() - start)
         try:
             got = fn(limit if attempt == 0 else left)
         except Exception as exc:
@@ -768,6 +769,9 @@ def call(fn, what: str, limit: float, *, detail: str = "", clock=None, sleep=Non
             _log_netretry.info("%s 第 %d 次没成（%s: %s），%.1f 秒后再试：%s", what, attempt + 1, type(exc).__name__, exc,
                      pause, detail)
             sleep(pause)
+            left = limit - (clock() - start)
+            if left <= 0:
+                raise
             continue
         if attempt:
             from ark_relay.features import errwatch  # noqa: PLC0415 - avoid an import cycle
