@@ -1744,5 +1744,151 @@ def _part_announce_update_log():
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
+def _part_keeper_wmi_down_backoff():
+    """With WMI down, failed revivals still obey exponential backoff (180->360->720->1440->1800)
+    while the 120 s liveness beat still adopts a backend that starts on its own."""
+    import itertools
+    import time
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    _stub_win32("win32evtlog", "win32gui")
+
+    import boot_stages
+    from ark_relay.features import automas_keeper, commands, procwatch
+
+    clock = [1000.0]
+    time.monotonic = lambda: clock[0]
+    automas_keeper._python_processes = lambda: []
+    automas_keeper._automas_handle = lambda: None
+    automas_keeper._installer_running = lambda: False
+    automas_keeper._automas_shell_running = lambda: False
+    commands.mas_up = lambda: False
+    procwatch._start_process_watch = lambda evt, alive, lg: False
+    revives: list[float] = []
+    boot_stages._revive_automas = lambda: revives.append(clock[0])
+
+    log = automas_keeper.log
+    log.setLevel(logging.INFO)
+    k = automas_keeper._AutomasKeeper(log, _TitleNotifier())
+    check("WMI unavailable at start", k.wmi_alive["ok"], False)
+
+    print("[WMI 不可用且拉起连败：按 180->360->720->1440->1800 退避，不每 2 分钟死循环]")
+    while len(revives) < 6 and clock[0] < 20000.0:
+        w = k.cap_wait(3600.0)
+        clock[0] += w
+        k.check(False, clock[0])
+    gaps = [round(b - a) for a, b in itertools.pairwise(revives)]
+    check("six revivals triggered", len(revives), 6)
+    check("exponential backoff gaps", gaps, [180, 360, 720, 1440, 1800])
+
+    print("[退避期间 AUTO-MAS 自己起来了：按活性间隔及时挂回句柄并清零退避]")
+    revives_before = len(revives)
+    started_at = clock[0]
+    # Simulate AUTO-MAS starting right after the 6th revival (during the 1800 s backoff).
+    fake_handle = object()
+    automas_keeper._automas_handle = lambda: fake_handle
+    commands.mas_up = lambda: True
+    w = k.cap_wait(3600.0)
+    check("wakes on liveness beat during long backoff", w, procwatch.AUTOMAS_CHECK_SECONDS)
+    clock[0] += w
+    k.check(False, clock[0])
+    check("adopted handle without waiting 1800 s", k.handle is fake_handle, True)
+    check("adopted within liveness beat", clock[0] - started_at, procwatch.AUTOMAS_CHECK_SECONDS)
+    check("did not revive again", len(revives), revives_before)
+    check("backoff state reset after confirm", (k.revive_failures, k.revive_deadline), (0, None))
+
+
+def _part_watch_kqueue_rebuild():
+    """watch._kqueue survives failed rebuilds (os.open / control OSError) without
+    calling control() on a closed kqueue (ValueError) or double-closing an fd."""
+    import threading
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import watch
+
+    delays: list[float] = []
+    closed_fds: list[int] = []
+    closed_kqs: list[int] = []
+    thread_errors: list[BaseException] = []
+    rebuilt = threading.Event()
+    stop_thread = threading.Event()
+    wake = threading.Event()
+
+    class _FakeKqueue:
+        def __init__(self, idx: int) -> None:
+            self.idx = idx
+            self.closed = False
+            self.calls = 0
+
+        def close(self) -> None:
+            if not self.closed:
+                self.closed = True
+                closed_kqs.append(self.idx)
+
+        def control(self, changelist, max_events, timeout):
+            if self.closed:
+                raise ValueError("I/O operation on closed kqueue object")
+            if changelist is not None:
+                if self.idx == 2:
+                    raise OSError("kevent register failed")
+                return []
+            self.calls += 1
+            if self.idx == 1:
+                raise OSError("vnode dropped")
+            if self.idx == 3:
+                if self.calls == 1:
+                    rebuilt.set()
+                    return [object()]
+                stop_thread.wait(5.0)
+                raise SystemExit
+            return []
+
+    open_calls = [0]
+    kq_seq = [0]
+
+    def fake_open(_path, _flags):
+        open_calls[0] += 1
+        n = open_calls[0]
+        if n == 1:
+            return 1001
+        if n == 2:
+            raise FileNotFoundError("directory temporarily gone")
+        if n == 3:
+            return 1002
+        return 1003
+
+    def fake_kqueue():
+        kq_seq[0] += 1
+        return _FakeKqueue(kq_seq[0])
+
+    orig_hook = threading.excepthook
+    threading.excepthook = lambda args: thread_errors.append(args.exc_value)
+    saved = (watch.os.open, watch.os.close, watch.select, watch.time)
+    watch.os.open = fake_open
+    watch.os.close = lambda fd: closed_fds.append(fd)
+    watch.select = types.SimpleNamespace(
+        kqueue=fake_kqueue,
+        kevent=lambda *a, **k: ("ev", a, k),
+        KQ_FILTER_VNODE=1,
+        KQ_EV_ADD=2,
+        KQ_EV_CLEAR=4,
+        KQ_NOTE_WRITE=8,
+        KQ_NOTE_EXTEND=16,
+    )
+    watch.time = types.SimpleNamespace(sleep=lambda s: delays.append(s))
+    try:
+        check("kqueue watcher started", watch._kqueue("/tmp/fake-history", wake), True)
+        check("rebuilt after os.open and control failures", rebuilt.wait(5.0), True)
+        check("wake signaled on rebuilt watcher", wake.is_set(), True)
+        check("no thread crash (no ValueError on closed kqueue)", thread_errors, [])
+        check("exponential rebuild delays before success", delays, [5.0, 10.0, 20.0])
+        check("fds closed once each including failed partial open", closed_fds, [1001, 1002])
+        check("failed and dropped kqueues closed once each", closed_kqs, [1, 2])
+    finally:
+        stop_thread.set()
+        watch.os.open, watch.os.close, watch.select, watch.time = saved
+        threading.excepthook = orig_hook
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_boot_backend_wait, _part_boot_config_alarm, _part_boot_restore_recovered, _part_keeper_blind_backoff, _part_keeper_exit, _part_keeper_hold_once, _part_stop_during_boot, _part_smoke_boot_lines, _part_update_announce_main, _part_update_announce_dedup, _part_announce_update_log]))
+    sys.exit(run_parts([_part_boot_backend_wait, _part_boot_config_alarm, _part_boot_restore_recovered, _part_keeper_blind_backoff, _part_keeper_exit, _part_keeper_hold_once, _part_stop_during_boot, _part_smoke_boot_lines, _part_update_announce_main, _part_update_announce_dedup, _part_announce_update_log, _part_keeper_wmi_down_backoff, _part_watch_kqueue_rebuild]))

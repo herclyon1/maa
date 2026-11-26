@@ -5044,5 +5044,66 @@ def _part_masuser_beta3():
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
+def _part_preupdate_pack_vanished():
+    """_wait_for_package tolerates OSError/FileNotFoundError when a candidate
+    UpdatePack_*.zip disappears or gets renamed between glob() and stat()."""
+    import types
+    from ark_relay.features import preupdate as P
+
+    clock = [1000.0]
+    real_time, real_stat, real_glob = P.time, Path.stat, Path.glob
+
+    def fake_sleep(s: float) -> None:
+        clock[0] += s
+
+    P.time = types.SimpleNamespace(sleep=fake_sleep, monotonic=lambda: clock[0])
+    try:
+        print("[一个候选包 stat() 时被清理消失：跳过它，继续等另一个稳住返回]")
+        root = tmpdir()
+        vanishing = root / "UpdatePack_old.zip"
+        good = root / "UpdatePack_new.zip"
+        vanishing.write_bytes(b"old-pack")
+        good.write_bytes(b"new-pack-bytes")
+        stat_hits = [0]
+
+        def flaky_stat(self, *a, **k):
+            if self.name == "UpdatePack_old.zip":
+                stat_hits[0] += 1
+                raise FileNotFoundError(2, "vanished mid-poll", str(self))
+            return real_stat(self, *a, **k)
+
+        Path.stat = flaky_stat
+        try:
+            got = P._wait_for_package(root, clock[0] + 60.0, stopping=lambda: False)
+        finally:
+            Path.stat = real_stat
+        check("did not crash on vanished pack and returned good pack", got, good)
+        check("vanished pack stat() actually hit FileNotFoundError", stat_hits[0] >= 1, True)
+
+        print("[首轮所有候选包都消失 + 一次 glob 抛 OSError：重置稳定计时并最终拿到新包]")
+        root2 = tmpdir()
+        p2 = root2 / "UpdatePack_v2.zip"
+        p2.write_bytes(b"v2-pack-bytes")
+        poll_n = [0]
+
+        def flaky_glob(self, pattern, *a, **k):
+            if self == root2 and pattern == "UpdatePack_*.zip":
+                poll_n[0] += 1
+                if poll_n[0] == 1:
+                    raise OSError("transient directory read failure")
+                if poll_n[0] == 2:
+                    return iter([root2 / "UpdatePack_gone.zip"])
+            return real_glob(self, pattern, *a, **k)
+
+        Path.glob = flaky_glob
+        try:
+            got2 = P._wait_for_package(root2, clock[0] + 60.0, stopping=lambda: False)
+        finally:
+            Path.glob = real_glob
+        check("survived glob OSError and missing file then stabilized", got2, p2)
+    finally:
+        P.time = real_time
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_wait_open, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3]))
+    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_wait_open, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3, _part_preupdate_pack_vanished]))

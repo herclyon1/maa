@@ -496,7 +496,7 @@ def _automas_version(automas_dir: Path) -> str:
         data = json.loads(
             (Path(automas_dir) / "res" / "version.json").read_text(encoding="utf-8"))
         return str(data.get("version") or "")
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, AttributeError):
         return ""
 
 
@@ -561,27 +561,38 @@ def _wait_for_package(automas_dir: Path, deadline: float, stopping=going_down) -
     install_update() refuses when the package is not there yet.
     """
     stable_at = None
+    last_pack: Path | None = None
     last_size = -1
     while time.monotonic() < deadline:
         time.sleep(3)
         if stopping():
             return None
-        packs = sorted(Path(automas_dir).glob("UpdatePack_*.zip"),
-                       key=lambda f: f.stat().st_mtime)
-        if not packs:
-            continue
-        pack = packs[-1]
         try:
-            size = pack.stat().st_size
+            candidates = list(Path(automas_dir).glob("UpdatePack_*.zip"))
         except OSError:
             continue
-        if size == last_size and size > 0:
+        dated: list[tuple[float, int, Path]] = []
+        for f in candidates:
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            dated.append((st.st_mtime, st.st_size, f))
+        if not dated:
+            stable_at = None
+            last_pack = None
+            last_size = -1
+            continue
+        dated.sort(key=lambda item: (item[0], item[2].name))
+        _mtime, size, pack = dated[-1]
+        if pack == last_pack and size == last_size and size > 0:
             if stable_at is None:
                 stable_at = time.monotonic()
             elif time.monotonic() - stable_at >= 9:
                 return pack
         else:
             stable_at = None
+            last_pack = pack
             last_size = size
     return None
 
@@ -979,7 +990,7 @@ def _okww_autostart(okww_dir: Path, value: bool) -> bool | None:
     try:
         data = json.loads(cfg.read_text(encoding="utf-8"))
         was = bool(data.get(_OKWW_AUTOSTART_KEY, False))
-    except (OSError, ValueError, TypeError):
+    except (OSError, ValueError, TypeError, AttributeError):
         log.warning("预更新：读不到 OK-WW 的 Basic Options，跳过 OK-WW")
         return None
     if was == value:
@@ -1001,6 +1012,8 @@ def _okww_state(okww_dir: Path) -> tuple[str, str, str, tuple[str, ...]]:
     try:
         d = json.loads(Path(okww_dir).joinpath(*_OKWW_APPJSON).read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
+        return "", "", "", ()
+    if not isinstance(d, dict):
         return "", "", "", ()
     avail = d.get("available_versions")
     return (str(d.get("current_version") or ""), str(d.get("update_state") or ""),
