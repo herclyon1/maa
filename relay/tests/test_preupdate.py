@@ -2311,6 +2311,45 @@ def _part_gameupdate_wait_open():
                   (slept.count(60), 120 in slept, dispatched), (1, False, []))
         finally:
             errwatch.clear_stopping()
+
+        print("\n[客户端超截止未就绪放弃（今天不补跑）：清掉待更新登记，重启和次日不再重复拉起刷告警]")
+        win_short = (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ),
+                     _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")
+        (ST / "ledger-2026-09-04.jsonl").write_text(
+            json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n",
+            encoding="utf-8")
+        gu.save_windows(ST, {"终末地": win_short})
+        gu.mark_pending(ST, "终末地", "官方公告")
+        slept.clear(); dispatched.clear()
+        late = _dt(2026, 9, 4, 13, 55, tzinfo=gu.SERVER_TZ)
+        t_late = [late]
+
+        def clk_late():
+            t_late[0] += _td(minutes=1)
+            return t_late[0]
+
+        notes, probs, reran = gu.run_deferred(
+            cfg, now=late, desk=FakeDesk([["登录", "公告"]]),
+            dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+            sleep=slept.append, clock=clk_late, stopping=lambda: False)
+        check("超截止放弃记入问题", any("仍没准备好客户端，今天不补跑" in p for p in probs), True)
+        check("不补跑", (dispatched, reran), ([], []))
+        check("放弃后已清掉待更新登记", gu.pending(ST), {})
+        # 当天重启（已过 14:00 截止）及次日再调 run_deferred：不再拉起、不再刷告警
+        again_reads = []
+
+        class _NoReadDesk:
+            def read(self, *a, **k):
+                again_reads.append(1)
+                return Screen([], Path("x.png"))
+
+        after_restart = _dt(2026, 9, 4, 14, 5, tzinfo=gu.SERVER_TZ)
+        check("重启后再调 run_deferred 直接空返",
+              gu.run_deferred(cfg, now=after_restart, desk=_NoReadDesk(),
+                              dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+                              sleep=slept.append, clock=lambda: after_restart, stopping=lambda: False),
+              ([], [], []))
+        check("重启后没有再去读启动器", again_reads, [])
     finally:
         gug._spawn, gug.kill, gu.kill, gu.restore_skips = saved
 

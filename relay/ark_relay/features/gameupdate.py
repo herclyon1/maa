@@ -790,6 +790,10 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
             notes.append(note + f"（依据：{why}）")
         if not ready:
             problems.append(f"{game}：到 {deadline:%m-%d %H:%M} 仍没准备好客户端，今天不补跑")
+            # Pending carries no date: clear it once this deadline gives up, or a
+            # restart (deadline < now -> budget_s 0) and later days keep retrying and
+            # alarming until cleared by hand. Next boot / failure re-registers if needed.
+            clear_pending(cfg.state_dir, game)
             continue
         # Ready. Servers still down: only wait when the script actually needs a
         # re-run; otherwise finish now instead of holding the shift's power-off.
