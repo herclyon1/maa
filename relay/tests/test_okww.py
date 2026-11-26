@@ -2109,6 +2109,42 @@ def _part_okww_claim_readback():  # noqa: C901
     check("BaseWWTask.tr 返回英文原句（不让 zh_CN 破坏 AUTO-MAS 完成判定）",
           t.tr("Daily Task Completed"), "Daily Task Completed")
 
+    print("\n[周本 incr_drop：combat_once 前复位 _in_combat，且补打次数封顶，永不死循环]")
+    t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+    t._in_combat = True
+    seen_before_combat = []
+
+    def _stale_combat(**kw):
+        # Simulate combat already ended: combat_once returns without mutating _in_combat.
+        seen_before_combat.append(t._in_combat)
+        t.events.append("resume-combat")
+
+    t.combat_once = _stale_combat
+    t.pick_echo = lambda: False
+    t.walk_find_echo = lambda: False
+    t.incr_drop(False)
+    check("进入 combat_once 前已把 _in_combat 复位为 False", seen_before_combat, [False])
+    check("战斗已结束且未清标志时只补打 1 次并照常领奖",
+          (t.events.count("resume-combat"), t._in_combat, t._ark_weekly_left), (1, False, 2))
+
+    t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+    t._in_combat = True
+    t.combat_once = lambda **kw: t.events.append("resume-combat")
+    t.pick_echo = lambda: False
+
+    def _stuck_combat():
+        t._in_combat = True
+        return False
+
+    t.walk_find_echo = _stuck_combat
+    t.incr_drop(False)
+    cap = ns["_WEEKLY_COMBAT_RESUME_MAX"]
+    check("即使每次拾取都重新标成战斗中，也只补打到上限后退出循环",
+          t.events.count("resume-combat"), cap)
+    check("退出循环后清掉 _in_combat 并记日志，接着照常找结晶领奖",
+          (t._in_combat, any("不再循环补打" in m for m in t.logs), t._ark_weekly_left),
+          (False, True, 2))
+
     print("\n[echo farm: the pickup toast's main stat, one log line per echo (2026-11-20)]")
     echo_stat = ns["echo_stat"]
     check("a clean read", echo_stat("生命"), "生命")
@@ -7703,5 +7739,296 @@ def _part_echo_farm_stop_and_backlog():
     check("红按钮、干净收工：不报群", troubles(n), [])
 
 
+def _part_okww_battle_pass_alt_finally():
+    """_battle_pass_open always releases the Alt key even if sleep or click_relative raises."""
+    from ark_relay.features import okww_overlay
+
+    ns = {"__name__": "ark_overrides_alt_test"}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+
+    class _Task:
+        def __init__(self, fail_at):
+            self.fail_at = fail_at
+            self.acts = []
+
+        def send_key_down(self, key):
+            self.acts.append(("down", key))
+
+        def send_key_up(self, key):
+            self.acts.append(("up", key))
+
+        def sleep(self, s):
+            if self.fail_at == "sleep":
+                raise RuntimeError("sleep boom")
+            self.acts.append(("sleep", s))
+
+        def click_relative(self, x, y, **kw):
+            if self.fail_at == "click_relative":
+                raise RuntimeError("click boom")
+            self.acts.append(("click_relative", x, y))
+
+    for fail_at in ("sleep", "click_relative"):
+        t = _Task(fail_at)
+        raised = False
+        try:
+            ns["_battle_pass_open"](t)
+        except RuntimeError:
+            raised = True
+        check(f"{fail_at} raises: error propagates", raised, True)
+        check(f"{fail_at} raises: alt down is paired with alt up",
+              [a for a in t.acts if a[0] in ("down", "up")], [("down", "alt"), ("up", "alt")])
+
+
+def _part_okww_report_atomic():
+    """ark_overrides._write_report writes atomically via temp file + fsync + replace."""
+    import json
+    import os
+    import types
+
+    from ark_relay.features import okww_overlay
+
+    ns = {"__name__": "ark_overrides_atomic_test"}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+    ns["_applied"][:] = ["FarmEchoTask.incr_drop"]
+    ns["_skipped"][:] = []
+    ns["_adapted"][:] = []
+
+    d = tmpdir()
+    report = d / "ark-okww-overlay.json"
+    report.write_text('{"applied": ["OLD"], "skipped": [], "adapted": [], "error": ""}', encoding="utf-8")
+
+    print("[normal write: fsynced temp file replaced onto REPORT, no leftover .tmp]")
+    seen_fsync, seen_replace = [], []
+    real_fsync, real_replace = os.fsync, os.replace
+
+    def rec_fsync(fd):
+        seen_fsync.append(fd)
+        return real_fsync(fd)
+
+    def rec_replace(src, dst):
+        seen_replace.append((Path(src), Path(dst)))
+        # Before replace completes, REPORT still holds the previous intact JSON.
+        check("replace 前旧报告仍完整可读", json.loads(report.read_text(encoding="utf-8"))["applied"], ["OLD"])
+        return real_replace(src, dst)
+
+    ns["REPORT"] = str(report)
+    ns["os"] = types.SimpleNamespace(name="nt", fdopen=os.fdopen, fsync=rec_fsync, replace=rec_replace)
+    ns["_write_report"]("ok")
+    check("调了 fsync", len(seen_fsync), 1)
+    check("用同目录临时文件原子替换目标文件",
+          len(seen_replace) == 1 and seen_replace[0][0].parent == d and seen_replace[0][1] == report, True)
+    check("新报告内容完整", json.loads(report.read_text(encoding="utf-8")),
+          {"applied": ["FarmEchoTask.incr_drop"], "skipped": [], "adapted": [], "error": "ok"})
+    check("目录里没留 .tmp 垃圾", list(d.glob("*.tmp")), [])
+
+    print("\n[transient Windows PermissionError on replace: retries and succeeds]")
+    attempts = [0]
+
+    def flaky_replace(src, dst):
+        attempts[0] += 1
+        if attempts[0] < 3:
+            raise PermissionError(13, "sharing violation")
+        return real_replace(src, dst)
+
+    ns["os"] = types.SimpleNamespace(name="nt", fdopen=os.fdopen, fsync=real_fsync, replace=flaky_replace)
+    ns["_write_report"]("retried")
+    check("前两次冲突重试后成功", (attempts[0], json.loads(report.read_text(encoding="utf-8"))["error"]),
+          (3, "retried"))
+    check("重试成功后没留 .tmp", list(d.glob("*.tmp")), [])
+
+    print("\n[permanent replace failure: old report untouched, temp cleaned, never raises]")
+    ns["os"] = types.SimpleNamespace(
+        name="nt", fdopen=os.fdopen, fsync=real_fsync,
+        replace=lambda src, dst: (_ for _ in ()).throw(OSError("disk locked")),
+    )
+    ns["_write_report"]("lost")
+    check("替换失败时旧报告不被截断破坏", json.loads(report.read_text(encoding="utf-8"))["error"], "retried")
+    check("失败时清理了临时文件", list(d.glob("*.tmp")), [])
+
+
+def _part_echo_farm_stall_and_schtasks():
+    """Echo farm reaches STALL_MINUTES across 5-min restarts; schtasks has timeout + GBK decoding."""
+    import importlib
+    import json
+    import os
+    import subprocess
+    from datetime import datetime, timedelta
+
+    from ark_relay.core import texts
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import echofarm, preupdate, weeklyboss
+
+    echofarm = importlib.reload(echofarm)
+    ORIGINAL = {"Teleport to Boss": "Weekly Challenge", "Boss Level": "90",
+                "Which Boss Challenge to Teleport": 1, "Which Weekly Boss to Teleport": 1,
+                "Repeat Farm Count": 3, "Echo Pickup Method": "Walk"}
+
+    def fresh():
+        root = tmpdir()
+        d = root.joinpath(*echofarm._WORKING, "configs")
+        d.mkdir(parents=True)
+        (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
+        return _Cfg(root)
+
+    real_launch = echofarm._launch
+    real_stop = echofarm.stop_okww
+    real_stop_script = echofarm.stop_okww_script
+    real_no_claim = echofarm.NO_CLAIM
+    real_log = weeklyboss._okww_log
+    real_bat = echofarm.BAT
+    real_stop_bat = echofarm.STOP_BAT
+    real_sp_run = subprocess.run
+    real_quiesce = preupdate._okww_quiesce
+    real_alive = echofarm.game_alive
+    real_okww_env = os.environ.get("ARK_OKWW_DIR")
+
+    try:
+        print("[真卡死每 5 分钟重开一次：累计 30 分钟无进展必触发 STALL_MINUTES 收工，不拖到 40 次]")
+        events = []
+        echofarm._launch = lambda: (events.append("launch"), (True, ""))[1]
+        echofarm.stop_okww = lambda: (events.append("stop"), "")[1]
+        echofarm.stop_okww_script = lambda: (events.append("script"), "")[1]
+        echofarm.NO_CLAIM = str(tmpdir() / "no-claim-stall")
+        lf = tmpdir() / "ok-script.log"
+        lf.write_text("2026-09-09 04:30:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
+                      encoding="utf-8")
+        weeklyboss._okww_log = lambda: lf
+
+        c = fresh()
+        t0 = datetime(2026, 9, 9, 4, 0, tzinfo=SERVER_TZ)
+        echofarm.start(c, 1, "08:30", "天傀劫煞", now=t0)
+        events.clear()
+        # Tick every 6 minutes starting at 04:36; 04:36/04:42/04:48/04:54 relaunch, 05:00 hits 30 min.
+        for mins, want_tries in ((36, 1), (42, 2), (48, 3), (54, 4)):
+            note, failed = echofarm.tick_result(c, t0 + timedelta(minutes=mins))
+            check(f"04:{mins:02d} 重开第 {want_tries} 次后继续观察",
+                  (note, failed, echofarm.current(c.state_dir)["restarts"]), ("", False, want_tries))
+        # A brief unreadable log between ticks must not erase stalled_since.
+        weeklyboss._okww_log = lambda: None
+        check("中途日志读不到不误清卡死起点",
+              (echofarm.tick_result(c, t0 + timedelta(minutes=56)),
+               bool(echofarm.current(c.state_dir).get("stalled_since"))), (("", False), True))
+        weeklyboss._okww_log = lambda: lf
+
+        note, failed = echofarm.tick_result(c, t0 + timedelta(minutes=60))
+        check("无进展满 30 分钟（仅重开 4 次，远低于 MAX_RESTARTS=40）立即按失败收工",
+              (failed, "已经 30 分钟没刷到任何东西" in note, "重开 4 次都没救回来" in note), (True, True, True))
+        check("收工后状态清空、配置还原、不领奖标记撤销",
+              (echofarm.current(c.state_dir),
+               json.loads(echofarm._cfg_path(c.okww_dir).read_text(encoding="utf-8")) == ORIGINAL,
+               echofarm.no_claim_on()),
+              ({}, True, False))
+
+        print("\n[重开后真有新进展：清掉 stalled_since，之后再卡死从新进展重算]")
+        c2 = fresh()
+        echofarm.start(c2, 1, "08:30", "天傀劫煞", now=t0)
+        echofarm.tick_result(c2, t0 + timedelta(minutes=36))
+        check("第 1 次重开记下 stalled_since", echofarm.current(c2.state_dir).get("stalled_since"), "2026-09-09 04:30:00")
+        lf.write_text(lf.read_text(encoding="utf-8")
+                      + "2026-09-09 04:37:00,000 INFO TaskExecutor FarmEchoTask:enter combat\n",
+                      encoding="utf-8")
+        check("04:38 看到新进展清掉 stalled_since",
+              (echofarm.tick_result(c2, t0 + timedelta(minutes=38)),
+               "stalled_since" in echofarm.current(c2.state_dir)),
+              (("", False), False))
+        # Runs fine until 05:00, then stalls at 05:06 (only 6 min quiet, NOT 36 min from 04:30).
+        lf.write_text(lf.read_text(encoding="utf-8")
+                      + "2026-09-09 05:00:00,000 INFO TaskExecutor FarmEchoTask:enter combat\n",
+                      encoding="utf-8")
+        note2, failed2 = echofarm.tick_result(c2, t0 + timedelta(minutes=66))
+        check("新进展后隔 6 分钟只重开不误停，且新锚点记到 05:00",
+              (note2, failed2, echofarm.current(c2.state_dir).get("stalled_since")),
+              ("", False, "2026-09-09 05:00:00"))
+        echofarm.finish(c2, "收尾")
+
+        print("\n[schtasks 全部带 timeout=，且中文 Windows GBK 报错不乱码]")
+        echofarm._launch = real_launch
+        echofarm.stop_okww = real_stop
+        root = tmpdir()
+        py = root / "data" / "apps" / "ok-ww" / "python" / "pythonw.exe"
+        main = root.joinpath(*echofarm._WORKING, "main.py")
+        py.parent.mkdir(parents=True)
+        main.parent.mkdir(parents=True)
+        py.write_text("", encoding="utf-8")
+        main.write_text("", encoding="utf-8")
+        os.environ["ARK_OKWW_DIR"] = str(root)
+        echofarm.BAT = str(tmpdir() / "farm.bat")
+        echofarm.STOP_BAT = str(tmpdir() / "stop.bat")
+
+        seen_timeouts = []
+
+        class _Res:
+            def __init__(self, rc=0, stdout=b"", stderr=b""):
+                self.returncode = rc
+                self.stdout = stdout
+                self.stderr = stderr
+
+        # 1) GBK stderr on /create
+        gbk_err = "错误: 拒绝访问。".encode("gbk")
+        subprocess.run = lambda cmd, **kw: (
+            seen_timeouts.append((cmd[1], kw.get("timeout"))),
+            _Res(1, stderr=gbk_err) if cmd[1] == "/create" else _Res(0),
+        )[1]
+        ok, why = echofarm._launch()
+        check("_launch /create GBK stderr 正确解码无乱码",
+              (ok, "错误: 拒绝访问。" in why, "\ufffd" in why), (False, True, False))
+        check("_launch 的 schtasks 全部带超时",
+              all(t == echofarm.SCHTASKS_TIMEOUT for _sub, t in seen_timeouts), True)
+
+        # 2) GBK stdout (empty stderr) on /run
+        gbk_out = "信息: 任务已在运行。".encode("gbk")
+        subprocess.run = lambda cmd, **kw: _Res(1, stdout=gbk_out) if cmd[1] == "/run" else _Res(0)
+        ok, why = echofarm._launch()
+        check("_launch /run GBK stdout 正确解码无乱码",
+              (ok, "信息: 任务已在运行。" in why, "\ufffd" in why), (False, True, False))
+
+        # 3) TimeoutExpired on /create and /run -> returns plain Chinese failure, no crash
+        for fail_sub in ("/create", "/run"):
+            def _to(cmd, _fail=fail_sub, **kw):
+                if cmd[1] == _fail:
+                    raise subprocess.TimeoutExpired(cmd, kw.get("timeout", 0))
+                return _Res(0)
+            subprocess.run = _to
+            ok, why = echofarm._launch()
+            check(f"_launch {fail_sub} 超时优雅失败且为人话",
+                  (ok, "没回应" in why, texts.plain(why)), (False, True, []))
+
+        # 4) _kill_on_desktop and stop_okww pass timeout= and survive TimeoutExpired
+        kill_timeouts = []
+        subprocess.run = lambda cmd, **kw: (
+            kill_timeouts.append((cmd[1], kw.get("timeout"))),
+            (_ for _ in ()).throw(subprocess.TimeoutExpired(cmd, kw.get("timeout", 0))),
+        )[1]
+        echofarm._kill_on_desktop([1234])
+        check("_kill_on_desktop 带 timeout 且超时不抛异常",
+              bool(kill_timeouts) and all(t == echofarm.SCHTASKS_TIMEOUT for _s, t in kill_timeouts), True)
+
+        end_timeouts = []
+        preupdate._okww_quiesce = lambda **kw: None
+        echofarm.game_alive = lambda timeout=None: []
+        subprocess.run = lambda cmd, **kw: (
+            end_timeouts.append((cmd[1], kw.get("timeout"))),
+            (_ for _ in ()).throw(subprocess.TimeoutExpired(cmd, kw.get("timeout", 0))),
+        )[1]
+        check("stop_okww schtasks /end 带 timeout 且超时后继续收工",
+              (echofarm.stop_okww(sleep=lambda _s: None), end_timeouts),
+              ("", [("/end", echofarm.SCHTASKS_TIMEOUT)]))
+    finally:
+        echofarm._launch = real_launch
+        echofarm.stop_okww = real_stop
+        echofarm.stop_okww_script = real_stop_script
+        echofarm.NO_CLAIM = real_no_claim
+        weeklyboss._okww_log = real_log
+        echofarm.BAT = real_bat
+        echofarm.STOP_BAT = real_stop_bat
+        subprocess.run = real_sp_run
+        preupdate._okww_quiesce = real_quiesce
+        echofarm.game_alive = real_alive
+        if real_okww_env is None:
+            os.environ.pop("ARK_OKWW_DIR", None)
+        else:
+            os.environ["ARK_OKWW_DIR"] = real_okww_env
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_okww_alive_cache, _part_okww_drift, _part_okww_error_event, _part_okww_error_reason, _part_okww_exit_race, _part_okww_failed_reason, _part_okww_i18n, _part_okww_landed, _part_okww_names_not_numbers, _part_okww_python_filter, _part_okww_quiesce_order, _part_okww_report, _part_okww_structured, _part_okww_battle_pass, _part_okww_battle_pass_claim, _part_okww_claim_readback, _part_okww_daily_chests, _part_okww_farm_hook, _part_okww_merge_step, _part_okww_plan_bits, _part_okww_revive_and_retry, _part_okww_stamina_end, _part_okww_stamina_nest_verdict, _part_okww_upstream_no_farm, _part_okww_nest_capture, _part_okww_nest_expected, _part_okww_nest_fought_then_full, _part_okww_nest_names, _part_okww_nest_travel_retry, _part_okww_nest_v373, _part_okww_no_challenge_window, _part_okww_weekly_boss_step, _part_okww_weekly_entry_paths, _part_okww_weekly_spend, _part_okww_overlay_main, _part_okww_overlay_faults, _part_okww_overlay_install_guard, _part_okww_overlay_pending, _part_okww_overlay_param_start, _part_okww_overlay_copies, _part_echo_farm_main, _part_echo_farm_stop_and_backlog]))
+    sys.exit(run_parts([_part_okww_alive_cache, _part_okww_drift, _part_okww_error_event, _part_okww_error_reason, _part_okww_exit_race, _part_okww_failed_reason, _part_okww_i18n, _part_okww_landed, _part_okww_names_not_numbers, _part_okww_python_filter, _part_okww_quiesce_order, _part_okww_report, _part_okww_structured, _part_okww_battle_pass, _part_okww_battle_pass_claim, _part_okww_claim_readback, _part_okww_daily_chests, _part_okww_farm_hook, _part_okww_merge_step, _part_okww_plan_bits, _part_okww_revive_and_retry, _part_okww_stamina_end, _part_okww_stamina_nest_verdict, _part_okww_upstream_no_farm, _part_okww_nest_capture, _part_okww_nest_expected, _part_okww_nest_fought_then_full, _part_okww_nest_names, _part_okww_nest_travel_retry, _part_okww_nest_v373, _part_okww_no_challenge_window, _part_okww_weekly_boss_step, _part_okww_weekly_entry_paths, _part_okww_weekly_spend, _part_okww_overlay_main, _part_okww_overlay_faults, _part_okww_overlay_install_guard, _part_okww_overlay_pending, _part_okww_overlay_param_start, _part_okww_overlay_copies, _part_okww_battle_pass_alt_finally, _part_okww_report_atomic, _part_echo_farm_main, _part_echo_farm_stop_and_backlog, _part_echo_farm_stall_and_schtasks]))

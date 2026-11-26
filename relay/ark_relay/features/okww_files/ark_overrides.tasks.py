@@ -26,8 +26,12 @@ import os
 import pathlib
 import re
 import sys
+import tempfile
 import textwrap
+import time
 import traceback
+
+_OS = os
 
 # The copied method bodies below reach these as module globals. They are filled in by
 # _install_copies() rather than imported here, because nothing in OK-WW is importable
@@ -560,6 +564,9 @@ def _weekly(task) -> bool:
     return str(task.config.get("Teleport to Boss") or "") == "Weekly Challenge"
 
 
+_WEEKLY_COMBAT_RESUME_MAX = 5
+
+
 def _install_claim():
     """Weekly boss (战歌重奏): take the reward instead of cancelling it.
 
@@ -713,8 +720,13 @@ def _install_claim():
         # combat_once exits during a boss phase transition or brief target loss, walk_until_f
         # sees self.in_combat() again (setting self._in_combat = True) and returns early so
         # combat can resume. Finish the fight before looking for the reward crystal.
-        while getattr(self, "_in_combat", False):
+        # Clear _in_combat before combat_once and cap retries so an already-finished fight
+        # or stuck combat flag cannot spin forever.
+        for _ in range(_WEEKLY_COMBAT_RESUME_MAX):
+            if not getattr(self, "_in_combat", False):
+                break
             self.log_info("周本领奖：拾取阶段已重新进入战斗（Boss 未打完），继续打完再领奖")
+            self._in_combat = False
             self.combat_once(wait_combat_time=5, raise_if_not_found=False)
             if getattr(self, "is_revived", False):
                 return
@@ -724,6 +736,9 @@ def _install_claim():
                 self._ark_claimed = False
                 _after_claim(self)
                 return
+        if getattr(self, "_in_combat", False):
+            self.log_info(f"周本领奖：连续补打 {_WEEKLY_COMBAT_RESUME_MAX} 次后仍标记在战斗中，不再循环补打")
+            self._in_combat = False
         # Upstream's own test for a treasure to walk to (walk_to_treasure_and_restart,
         # and the 5 s wait for it in do_run). No crystal, or a walk that does not get
         # there, used to go back to upstream (a8cc86b6, after 10-12 09:52:20). Its
@@ -1843,9 +1858,11 @@ def _battle_pass_open(task):
     """Upstream's open: Alt + click on the podcast icon, then up to 10 s for a level number.
     Returns the number read, or None."""
     task.send_key_down('alt')
-    task.sleep(0.05)
-    task.click_relative(0.86, 0.05)
-    task.send_key_up('alt')
+    try:
+        task.sleep(0.05)
+        task.click_relative(0.86, 0.05)
+    finally:
+        task.send_key_up('alt')
     boxes = task.wait_ocr(*BATTLE_PASS_LEVEL_BOX, match=re.compile(r'\d+'), settle_time=1,
                           raise_if_not_found=False)
     if not boxes:
@@ -2866,12 +2883,38 @@ def _install_param_start():
 def _write_report(error=""):
     if os.name != "nt":
         return          # the relay's tests exec this file on a Mac; no report there
+    target = pathlib.Path(REPORT)
+    # Tests stub `os` with SimpleNamespace(name="nt"); resolve file ops from `os` when
+    # present, falling back to the real os module captured at load time.
+    fdopen = getattr(os, "fdopen", _OS.fdopen)
+    fsync = getattr(os, "fsync", _OS.fsync)
+    replace = getattr(os, "replace", _OS.replace)
+    payload = json.dumps(
+        {"applied": _applied, "skipped": _skipped, "adapted": _adapted, "error": error},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    tmp = None
     try:
-        with open(REPORT, "w", encoding="utf-8") as fh:
-            json.dump({"applied": _applied, "skipped": _skipped, "adapted": _adapted, "error": error},
-                      fh, ensure_ascii=False)
+        fd, name = tempfile.mkstemp(dir=target.parent, prefix=target.name + ".", suffix=".tmp")
+        tmp = pathlib.Path(name)
+        with fdopen(fd, "wb") as fh:
+            fh.write(payload)
+            fh.flush()
+            fsync(fh.fileno())
+        for attempt in range(6):
+            try:
+                replace(tmp, target)
+                break
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.01)
     except OSError:
-        pass
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 # The launch-argument hook (-krqlv=hd, 2026-10-01) is gone: OK-WW v3.7.4 passes

@@ -101,13 +101,17 @@ def _stamp(text) -> datetime | None:
         return None
 
 
+def _stamp_s(text) -> datetime | None:
+    try:
+        return datetime.strptime(str(text), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+    except (TypeError, ValueError):
+        return _stamp(text)
+
+
 def _started_at(rec: dict) -> datetime | None:
     # "started_s" (to the second, 2026-11-20): drops are counted from it, and a farm stopped
     # and started again within one minute must not count the earlier one's last drops.
-    try:
-        return datetime.strptime(str(rec.get("started_s")), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
-    except (TypeError, ValueError):
-        return _stamp(rec.get("started"))
+    return _stamp_s(rec.get("started_s")) or _stamp(rec.get("started"))
 
 
 def resolve_until(hhmm: str, now: datetime | None = None) -> datetime | None:
@@ -130,6 +134,32 @@ def _write_cfg(path: Path, values: dict) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+SCHTASKS_TIMEOUT = 30
+
+
+def _decode_cli(raw: bytes | str | None) -> str:
+    """Decode Windows CLI output: UTF-8 when valid, otherwise Chinese Windows GBK/CP936."""
+    if not raw:
+        return ""
+    if isinstance(raw, str):
+        return raw.strip()
+    try:
+        return raw.decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return raw.decode("gbk", "replace").strip()
+
+
+def _run_schtasks(args: list[str]) -> tuple[subprocess.CompletedProcess | None, str]:
+    """Run schtasks with a timeout guard. Returns (result, '') or (None, plain_reason)."""
+    try:
+        return subprocess.run(["schtasks", *args], capture_output=True, timeout=SCHTASKS_TIMEOUT), ""
+    except subprocess.TimeoutExpired:
+        return None, f"超过 {SCHTASKS_TIMEOUT} 秒没回应"
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.warning("调用计划任务命令失败（%s）：%s", " ".join(args[:2]), exc)
+        return None, "计划任务命令没能运行"
+
+
 def _launch() -> tuple[bool, str]:
     """Start OK-WW's FarmEchoTask on the interactive desktop."""
     root = okww_root()
@@ -146,14 +176,22 @@ def _launch() -> tuple[bool, str]:
         f'@echo off\r\ncd /d "{main.parent}"\r\n'
         f'start "" "{py}" "{main}" -t {OKWW_TASK_INDEX} -e\r\n',
         encoding="utf-8")
-    subprocess.run(["schtasks", "/delete", "/tn", TASK_NAME, "/f"], capture_output=True)
-    mk = subprocess.run(["schtasks", "/create", "/tn", TASK_NAME, "/tr", BAT, "/sc", "once",
-                         "/st", "00:00", "/ru", "Administrator", "/it", "/f"], capture_output=True)
+    _, del_err = _run_schtasks(["/delete", "/tn", TASK_NAME, "/f"])
+    if del_err:
+        log.warning("开刷声骸：删旧计划任务失败（%s），继续重建", del_err)
+    mk, mk_err = _run_schtasks(["/create", "/tn", TASK_NAME, "/tr", BAT, "/sc", "once",
+                                "/st", "00:00", "/ru", "Administrator", "/it", "/f"])
+    if mk is None:
+        return False, f"建计划任务失败：{mk_err}"
     if mk.returncode != 0:
-        return False, f"建计划任务失败：{mk.stderr.decode('utf-8', 'replace')[:120]}"
-    run = subprocess.run(["schtasks", "/run", "/tn", TASK_NAME], capture_output=True)
+        why = _decode_cli(getattr(mk, "stderr", None)) or _decode_cli(getattr(mk, "stdout", None))
+        return False, f"建计划任务失败：{why[:120]}"
+    run, run_err = _run_schtasks(["/run", "/tn", TASK_NAME])
+    if run is None:
+        return False, f"启动计划任务失败：{run_err}"
     if run.returncode != 0:
-        return False, f"启动计划任务失败：{run.stderr.decode('utf-8', 'replace')[:120]}"
+        why = _decode_cli(getattr(run, "stderr", None)) or _decode_cli(getattr(run, "stdout", None))
+        return False, f"启动计划任务失败：{why[:120]}"
     return True, ""
 
 
@@ -208,7 +246,8 @@ def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) 
     Measured from the newest line that says something actually happened, not from
     the file's mtime: a stuck game is noisy, and noise is not progress.
 
-    `since` is when this launch began (the run record's `restarted`, else `started`).
+    `since` is the floor of the silence window (the current stall episode's `stalled_since`,
+    else the run record's `restarted` or `started`).
     When the tail holds no progress line since then, the farm has got nowhere since
     at least then, so the quiet time is measured from it. The file's mtime cannot stand
     in: a game stuck in a retry loop logs 20-39 KB a minute, so the 300 KB tail spans
@@ -520,13 +559,24 @@ def _kill_on_desktop(pids=()) -> None:
     except OSError:
         log.warning("收工：写不出 %s，没法从桌面那边关游戏", STOP_BAT)
         return
-    subprocess.run(["schtasks", "/delete", "/tn", STOP_TASK, "/f"], capture_output=True)
-    mk = subprocess.run(["schtasks", "/create", "/tn", STOP_TASK, "/tr", STOP_BAT, "/sc", "once",
-                         "/st", "00:00", "/ru", "Administrator", "/it", "/f"], capture_output=True)
-    if mk.returncode != 0:
-        log.warning("收工：建不了关游戏的计划任务")
+    _, del_err = _run_schtasks(["/delete", "/tn", STOP_TASK, "/f"])
+    if del_err:
+        log.warning("收工：删旧的关游戏计划任务失败（%s），继续重建", del_err)
+    mk, mk_err = _run_schtasks(["/create", "/tn", STOP_TASK, "/tr", STOP_BAT, "/sc", "once",
+                                "/st", "00:00", "/ru", "Administrator", "/it", "/f"])
+    if mk is None:
+        log.warning("收工：建不了关游戏的计划任务（%s）", mk_err)
         return
-    subprocess.run(["schtasks", "/run", "/tn", STOP_TASK], capture_output=True)
+    if mk.returncode != 0:
+        why = _decode_cli(getattr(mk, "stderr", None)) or _decode_cli(getattr(mk, "stdout", None))
+        log.warning("收工：建不了关游戏的计划任务%s", f"：{why[:120]}" if why else "")
+        return
+    run, run_err = _run_schtasks(["/run", "/tn", STOP_TASK])
+    if run is None:
+        log.warning("收工：启动关游戏的计划任务失败（%s）", run_err)
+    elif run.returncode != 0:
+        why = _decode_cli(getattr(run, "stderr", None)) or _decode_cli(getattr(run, "stdout", None))
+        log.warning("收工：启动关游戏的计划任务失败%s", f"：{why[:120]}" if why else "")
 
 
 STOP_OKWW_SECONDS = 60
@@ -546,7 +596,9 @@ def stop_okww(sleep=time.sleep, clock=time.monotonic) -> str:
     def left() -> float:
         return max(1.0, end - clock())
 
-    subprocess.run(["schtasks", "/end", "/tn", TASK_NAME], capture_output=True)
+    _, end_err = _run_schtasks(["/end", "/tn", TASK_NAME])
+    if end_err:
+        log.warning("收工：结束刷声骸计划任务失败（%s），继续停进程", end_err)
     from ark_relay.features.preupdate import _okww_quiesce, okww_python_pids  # noqa: PLC0415
     _okww_quiesce(sleep=sleep, left=left)
     still = game_alive(left())
@@ -853,8 +905,24 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
                            judge_progress=True, drops=drops)
     elif now >= until:
         return _finish(cfg, f"到点了（{user_clock(until, now)}）", judge_progress=True)
-    quiet = quiet_minutes(now, _stamp(rec.get("restarted")) or _started_at(rec))
-    if quiet is None or quiet < RESTART_QUIET_MINUTES:
+    return _check_stall(cfg, rec, now)
+
+
+def _check_stall(cfg, rec: dict, now: datetime) -> "tuple[str, bool]":
+    """Restart a quiet farm after RESTART_QUIET_MINUTES; stop once STALL_MINUTES
+    pass without progress across restarts (or after MAX_RESTARTS)."""
+    # Anchor silence at the current stall episode's start (stalled_since), not at
+    # `restarted`: `restarted` moves forward on every 5-min relaunch, which clamped
+    # quiet_minutes back to 0..5 min and made STALL_MINUTES (30 min) unreachable.
+    stalled = _stamp_s(rec.get("stalled_since"))
+    since = stalled or _stamp(rec.get("restarted")) or _started_at(rec)
+    quiet = quiet_minutes(now, since)
+    if quiet is None:
+        return "", False
+    if quiet < RESTART_QUIET_MINUTES:
+        if stalled is not None:
+            rec.pop("stalled_since", None)
+            _store(cfg.state_dir).set("queues", "echo_farm", rec)
         return "", False
     # Do not judge a run that only just started, and leave a relaunch time to write
     # its first line before deciding it is quiet again.
@@ -864,6 +932,9 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
             if (now - when).total_seconds() / 60.0 < RESTART_QUIET_MINUTES:
                 return "", False
             break
+    quiet_from = (now - timedelta(minutes=quiet) + timedelta(microseconds=500_000)).replace(microsecond=0)
+    if stalled is None or quiet_from > stalled + timedelta(seconds=1):
+        stalled = quiet_from
     tries = int(rec.get("restarts") or 0)
     if tries >= MAX_RESTARTS or (tries and quiet >= STALL_MINUTES):
         return _finish(cfg, f"已经 {quiet:.0f} 分钟没刷到任何东西"
@@ -889,6 +960,7 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
     ok, why = _launch()
     rec["restarts"] = tries + 1
     rec["restarted"] = now.strftime("%Y-%m-%d %H:%M")
+    rec["stalled_since"] = stalled.strftime("%Y-%m-%d %H:%M:%S")
     _store(cfg.state_dir).set("queues", "echo_farm", rec)
     if ok:
         log.warning("刷声骸：OK-WW 停了 %.0f 分钟，已经重开第 %d 次", quiet, tries + 1)
