@@ -115,7 +115,7 @@ def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
     if str(msg.get("pin") or "") != pin:
         return None
     ts = msg.get("ts")
-    if not isinstance(ts, int):
+    if not isinstance(ts, int) or isinstance(ts, bool):
         return None
     age = (now if now is not None else time.time()) - ts
     if abs(age) > MAX_AGE:
@@ -143,7 +143,7 @@ def stale_cmd(pin: str, raw: str, *, now: "float | None" = None) -> bool:
     if not isinstance(msg, dict) or str(msg.get("pin") or "") != pin or msg.get("kind") != "cmd":
         return False
     ts = msg.get("ts")
-    if not isinstance(ts, int):
+    if not isinstance(ts, int) or isinstance(ts, bool):
         return False
     return abs((now if now is not None else time.time()) - ts) > MAX_AGE
 
@@ -172,7 +172,8 @@ def stamp(msg: dict, env: dict, via: str) -> dict:
     mailbox read (acted on later than sent), "live" for the held connection.
     run_phone_cmd strips "_meta" before apply_command, so no command sees it.
     """
-    body = dict(msg.get("body") or {})
+    raw_body = msg.get("body")
+    body = dict(raw_body) if isinstance(raw_body, dict) else {}
     ts, ntime, mid = msg.get("ts"), env.get("time"), str(env.get("id") or "")
     body["_meta"] = {"sent": ts, "ntfy_time": ntime, "ntfy_id": mid, "via": via}
     action = str(body.get("action") or "")
@@ -665,7 +666,8 @@ class Heartbeat:
         req = urllib.request.Request(self.url, data=payload, method="POST",
                                      headers={"User-Agent": _UA, "Title": title})
         try:
-            urllib.request.urlopen(req, timeout=10).read()
+            with urllib.request.urlopen(req, timeout=10) as r:
+                r.read()
         except urllib.error.HTTPError as exc:
             code, text = _ntfy_code(exc)
             if code == 42908:
@@ -875,6 +877,7 @@ class Heartbeat:
 
 
 _log_monthcard = logging.getLogger("ark.monthcard")
+_MONTHCARD_LOCK = threading.RLock()
 
 # Days added by one purchase, per game.
 DAYS = {
@@ -900,25 +903,48 @@ def _today() -> date:
     return datetime.now(tz=SERVER_TZ).date()
 
 
-def _load(state_dir) -> dict:
-    try:
-        return json.loads((Path(state_dir) / FILE).read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError):
-        # Keep the unreadable file beside it: the next registration rewrites FILE, and his
-        # earlier entries would otherwise be gone without a trace.
-        bad = Path(state_dir) / (FILE + ".bad")
+def _load(state_dir, *, strict: bool = False) -> dict:
+    from ark_relay.core import statestore  # noqa: PLC0415
+    path = Path(state_dir) / FILE
+    with _MONTHCARD_LOCK:
+        raw = b""
+        for wait in (*statestore.LOCK_WAITS, None):
+            try:
+                raw = path.read_bytes()
+                break
+            except FileNotFoundError:
+                return {}
+            except OSError as exc:
+                if wait is not None and statestore.locked(exc):
+                    time.sleep(wait)
+                    continue
+                if strict:
+                    raise
+                _log_monthcard.warning("月卡记录 monthcard.json 暂时读不到，本次按空的读、不改原文件", exc_info=True)
+                return {}
         try:
-            atomic_write_bytes(bad, (Path(state_dir) / FILE).read_bytes())
-        except OSError:
-            pass
-        _log_monthcard.error("monthcard.json unreadable, treated as empty; copy kept as %s", bad, exc_info=True)
-        return {}
+            data = json.loads(raw.decode("utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError("monthcard.json root is not a JSON object")
+            return data
+        except ValueError:
+            # Keep the unreadable file beside it: the next registration rewrites FILE, and his
+            # earlier entries would otherwise be gone without a trace.
+            bad = Path(state_dir) / (FILE + ".bad")
+            try:
+                atomic_write_bytes(bad, raw)
+            except OSError:
+                pass
+            _log_monthcard.error("月卡记录 monthcard.json 内容损坏，按空的记\n旧内容另存为 %s", bad, exc_info=True)
+            return {}
 
 
 def _save(state_dir, data: dict) -> None:
-    atomic_write_text(Path(state_dir) / FILE, json.dumps(data, ensure_ascii=False, indent=1))
+    from ark_relay.core import statestore  # noqa: PLC0415
+    path = Path(state_dir) / FILE
+    with _MONTHCARD_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        statestore.write_waiting(path, json.dumps(data, ensure_ascii=False, indent=1), write=atomic_write_text)
 
 
 def _md(d: date) -> str:
@@ -953,74 +979,108 @@ def _when(v) -> "datetime | None":
     return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
 
 
-def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]:
-    """The phone's `monthcard` order: `{"game", "add": N}` or `{"game", "left": X}`."""
-    today = today or _today()
+def _iso_date(v) -> "date | None":
+    if not isinstance(v, str) or not v.strip():
+        return None
+    try:
+        return date.fromisoformat(v.strip())
+    except ValueError:
+        return None
+
+
+def _parse_monthcard_cmd(cmd: dict, today: date) -> "tuple[str, tuple | None]":
     game = str(cmd.get("game") or "").strip()
     if game not in DAYS:
-        return False, f"月卡：不认识的游戏 {game!r}，只认 明日方舟 / 终末地 / 鸣潮"
+        return f"月卡：不认识的游戏 {game!r}，只认 明日方舟 / 终末地 / 鸣潮", None
     has_add, has_left = cmd.get("add") is not None, cmd.get("left") is not None
     if has_add == has_left:
-        return False, "月卡：add（充值次数）和 left（还剩几天）要填且只填一个"
-    data = _load(state_dir)
-    rec = dict(data.get(game) or {})
+        return "月卡：add（充值次数）和 left（还剩几天）要填且只填一个", None
     at = _when(cmd.get("at"))
     if cmd.get("at") is not None and at is None:
-        return False, f"月卡：登记时间看不懂，收到 {cmd.get('at')!r}"
-    stored = _when(rec.get("set"))
+        return f"月卡：登记时间看不懂，收到 {cmd.get('at')!r}", None
     phone_last = None
     if cmd.get("last") is not None:
         try:
             phone_last = date.fromisoformat(str(cmd.get("last")).strip())
         except ValueError:
-            return False, f"月卡：最后领取日要是 YYYY-MM-DD，收到 {cmd.get('last')!r}"
+            return f"月卡：最后领取日要是 YYYY-MM-DD，收到 {cmd.get('last')!r}", None
         if (phone_last - today).days > MAX_AHEAD:
-            return False, f"月卡：最后领取日 {phone_last.isoformat()} 离今天超过 {MAX_AHEAD} 天，没记"
+            return f"月卡：最后领取日 {phone_last.isoformat()} 离今天超过 {MAX_AHEAD} 天，没记", None
+    left, n = None, None
     if has_left:
         left = _int(cmd.get("left"), 0, MAX_LEFT)
         if left is None:
-            return False, f"月卡：还剩天数要是 0 到 {MAX_LEFT} 的整数，收到 {cmd.get('left')!r}"
-        last = today + timedelta(days=left)
+            return f"月卡：还剩天数要是 0 到 {MAX_LEFT} 的整数，收到 {cmd.get('left')!r}", None
     else:
         n = _int(cmd.get("add"), 1, MAX_ADD)
         if n is None:
-            return False, f"月卡：充值次数要是 1 到 {MAX_ADD} 的整数，收到 {cmd.get('add')!r}"
-    if at is not None and stored is not None and at < stored:
-        return True, _line(game, date.fromisoformat(rec["last"]), today) + "（已有更晚的登记，这条没改）"
-    if phone_last is not None:
-        last = phone_last
-    elif not has_left:
-        base_day = at.astimezone(SERVER_TZ).date() if at is not None else today
-        prev = date.fromisoformat(rec["last"]) if rec.get("last") else None
-        if prev is not None and prev >= base_day:
-            last = prev + timedelta(days=DAYS[game] * n)
-        else:
-            # Never registered, or lapsed: the purchase day is day 1.
-            last = base_day + timedelta(days=DAYS[game] * n - 1)
-    rec.update(last=last.isoformat(),
-               set=(at or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ).isoformat(timespec="milliseconds"))
-    # milliseconds: the page compares 登记于 with its own registration time, which has them
-    data[game] = rec
-    _save(state_dir, data)
-    return True, _line(game, last, today)
+            return f"月卡：充值次数要是 1 到 {MAX_ADD} 的整数，收到 {cmd.get('add')!r}", None
+    return "", (game, has_left, at, phone_last, left, n)
 
 
-def status(state_dir, today: "date | None" = None) -> dict:
-    """`relay.月卡` for the phone page: registered games only."""
+def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]:
+    """The phone's `monthcard` order: `{"game", "add": N}` or `{"game", "left": X}`."""
     today = today or _today()
+    err, parsed = _parse_monthcard_cmd(cmd, today)
+    if err or parsed is None:
+        return False, err
+    game, has_left, at, phone_last, left, n = parsed
+    with _MONTHCARD_LOCK:
+        try:
+            data = _load(state_dir, strict=True)
+        except OSError:
+            _log_monthcard.warning("月卡记录 monthcard.json 暂时读不到，本次登记没写进去", exc_info=True)
+            return False, "月卡：记录文件 monthcard.json 暂时读不到，这次没改动"
+        raw_rec = data.get(game)
+        rec = dict(raw_rec) if isinstance(raw_rec, dict) else {}
+        stored = _when(rec.get("set"))
+        prev = _iso_date(rec.get("last"))
+        if at is not None and stored is not None and at < stored and prev is not None:
+            return True, _line(game, prev, today) + "（已有更晚的登记，这条没改）"
+        if phone_last is not None:
+            last = phone_last
+        elif has_left:
+            last = today + timedelta(days=left)
+        else:
+            base_day = at.astimezone(SERVER_TZ).date() if at is not None else today
+            if prev is not None and prev >= base_day:
+                last = prev + timedelta(days=DAYS[game] * n)
+            else:
+                # Never registered, or lapsed: the purchase day is day 1.
+                last = base_day + timedelta(days=DAYS[game] * n - 1)
+        rec.update(last=last.isoformat(),
+                   set=(at or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ).isoformat(timespec="milliseconds"))
+        # milliseconds: the page compares 登记于 with its own registration time, which has them
+        data[game] = rec
+        try:
+            _save(state_dir, data)
+        except OSError:
+            _log_monthcard.warning("月卡记录 monthcard.json 暂时写不进去，本次登记没保存", exc_info=True)
+            return False, "月卡：记录文件 monthcard.json 暂时写不进去，这次没保存"
+        return True, _line(game, last, today)
+
+
+def _status_from(data: dict, today: date) -> dict:
     out = {}
-    for game, rec in _load(state_dir).items():
+    for game, rec in data.items():
         if game not in DAYS or not isinstance(rec, dict) or not rec.get("last"):
             continue
-        try:
-            last = date.fromisoformat(rec["last"])
-        except ValueError:
+        last = _iso_date(rec.get("last"))
+        if last is None:
             continue
         left = (last - today).days
         out[game] = {"最后领取": last.isoformat(), "还剩": left, "已过期": left < 0}
         if rec.get("set"):
             out[game]["登记于"] = rec["set"]   # the phone keeps whichever registration is newer
     return out
+
+
+def status(state_dir, today: "date | None" = None) -> dict:
+    """`relay.月卡` for the phone page: registered games only."""
+    today = today or _today()
+    with _MONTHCARD_LOCK:
+        data = _load(state_dir)
+    return _status_from(data, today)
 
 
 def due_notice(state_dir, today: "date | None" = None) -> "tuple[str, str] | None":
@@ -1030,11 +1090,12 @@ def due_notice(state_dir, today: "date | None" = None) -> "tuple[str, str] | Non
     is tried again on the next tick instead of being lost for the day.
     """
     today = today or _today()
-    due = [(g, v) for g, v in status(state_dir, today).items() if 0 <= v["还剩"] <= WARN_DAYS]
-    if not due:
-        return None
-    data = _load(state_dir)
+    with _MONTHCARD_LOCK:
+        data = _load(state_dir)
     if data.get("_notified") == today.isoformat():
+        return None
+    due = [(g, v) for g, v in _status_from(data, today).items() if 0 <= v["还剩"] <= WARN_DAYS]
+    if not due:
         return None
     due.sort(key=lambda gv: gv[1]["还剩"])
     lines = [f"{g}月卡还剩 {v['还剩']} 天，最后一次领取是 {_md(date.fromisoformat(v['最后领取']))}"
@@ -1043,9 +1104,17 @@ def due_notice(state_dir, today: "date | None" = None) -> "tuple[str, str] | Non
 
 
 def mark_sent(state_dir, today: "date | None" = None) -> None:
-    data = _load(state_dir)
-    data["_notified"] = (today or _today()).isoformat()
-    _save(state_dir, data)
+    with _MONTHCARD_LOCK:
+        try:
+            data = _load(state_dir, strict=True)
+        except OSError:
+            _log_monthcard.warning("月卡记录 monthcard.json 暂时读不到，本次不记已提醒以免盖掉登记", exc_info=True)
+            return
+        data["_notified"] = (today or _today()).isoformat()
+        try:
+            _save(state_dir, data)
+        except OSError:
+            _log_monthcard.warning("月卡已提醒标记暂时写不进 monthcard.json", exc_info=True)
 
 
 # same logger as phone.py: log lines keep their name
@@ -1120,12 +1189,26 @@ class CmdQueue:
     def __init__(self, state_dir):
         self.path = Path(state_dir) / CMD_QUEUE_FILE
 
-    def _read(self) -> dict:
+    def _read(self, *, strict: bool = False) -> dict:
+        from ark_relay.core import statestore  # noqa: PLC0415
+        text = ""
+        for wait in (*statestore.LOCK_WAITS, None):
+            try:
+                text = self.path.read_text(encoding="utf-8")
+                break
+            except FileNotFoundError:
+                return {"items": [], "done": []}
+            except OSError as exc:
+                if wait is not None and statestore.locked(exc):
+                    time.sleep(wait)
+                    continue
+                if strict:
+                    raise
+                log.warning("手机指令排队文件读不出来，按空的处理：%s", self.path, exc_info=True)
+                return {"items": [], "done": []}
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
-            return {"items": [], "done": []}
-        except (OSError, ValueError):
+            data = json.loads(text)
+        except ValueError:
             log.warning("手机指令排队文件读不出来，按空的处理：%s", self.path, exc_info=True)
             return {"items": [], "done": []}
         if not isinstance(data, dict):
@@ -1135,10 +1218,10 @@ class CmdQueue:
         return {"items": items, "done": done}
 
     def _write(self, data: dict) -> None:
-        from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+        from ark_relay.core import statestore  # noqa: PLC0415
         self.path.parent.mkdir(parents=True, exist_ok=True)
         data["done"] = data["done"][-CMD_QUEUE_DONE_KEEP:]
-        atomic_write_text(self.path, json.dumps(data, ensure_ascii=False))
+        statestore.write_waiting(self.path, json.dumps(data, ensure_ascii=False), write=atomic_write_text)
 
     def add(self, body: dict, now: "float | None" = None) -> str:
         """Queue one order. QUEUED when it went in. SAME when this very message is
@@ -1149,7 +1232,7 @@ class CmdQueue:
         「开 → 关 → 开」 still ends on 开."""
         key = cmd_key(body)
         with _CMD_QUEUE_LOCK:
-            data = self._read()
+            data = self._read(strict=True)
             if key in data["done"] or any(key in _item_keys(i) for i in data["items"]):
                 return SAME
             action = (body or {}).get("action")
@@ -1182,7 +1265,7 @@ class CmdQueue:
     def pop(self) -> "dict | None":
         """Take the oldest order off the queue (and remember its key); None when empty."""
         with _CMD_QUEUE_LOCK:
-            data = self._read()
+            data = self._read(strict=True)
             if not data["items"]:
                 return None
             item = data["items"].pop(0)
@@ -1607,6 +1690,7 @@ class Mailbox:
         # Why the last publish() returned False, in words for the log line the
         # caller writes (boot_stages.publish_state): one WARNING per state the
         # phone cannot see, with its reason, instead of one per piece / try.
+        self._publish_lock = threading.RLock()
         self.last_error = ""
         # The boot read of the mailbox failed (fetch): listen() reads it again
         # once ntfy answers, so presses made while the machine was off are not
@@ -1738,6 +1822,10 @@ class Mailbox:
         sets `last_error` to why, in words, for the caller's one log line. A
         state stored on COS is True even when the one-line notice after it is
         refused."""
+        with self._publish_lock:
+            return self._publish_locked(body, kind)
+
+    def _publish_locked(self, body: dict, kind: str = "state") -> bool:
         self.last_error = ""
         self.last_route = ""
         if not self.enabled:
@@ -1973,7 +2061,7 @@ class Mailbox:
             elif mid and stale_cmd(self.pin, raw_msg):
                 fresh.append(mid)          # dropped for its age: handled for good
         if fresh:
-            self._seen = [*self._seen, *fresh]
+            self._seen = [*self._seen, *fresh][-SEEN_KEEP:]
             self._save_seen()
         # Read up to here: the stream asks for what came after. ntfy's own
         # clock when a message gave it; else ours, five minutes back for skew.
@@ -2110,45 +2198,49 @@ class Mailbox:
                 # only on a stalled connection; the outer loop reconnects.
                 with urllib.request.urlopen(req, timeout=90) as r:
                     self._resp = r
-                    self._connected(down_since, fault, warned)
-                    down_since, warned, delay, fault = None, False, 5, ""
-                    self.connected, self.down_since = True, None
-                    streaming = True
-                    for line in r:
-                        if stop():
-                            return
-                        line = line.decode("utf-8", "replace").strip()
-                        if not line:
-                            continue
-                        try:
-                            env = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        if not isinstance(env, dict):
-                            continue
-                        if isinstance(env.get("time"), int):
-                            self._mark = env["time"]      # keepalives too: read up to here
-                            self._save_mark()             # on disk every MARK_SAVE_SEC
-                        if env.get("event") != "message":
-                            continue
-                        mid = str(env.get("id") or "")
-                        if mid and mid in set(self._seen):
-                            continue
-                        raw_msg = str(env.get("message") or "")
-                        msg = unpack(self.pin, raw_msg)
-                        if not msg or msg.get("kind") != "cmd":
-                            if mid and stale_cmd(self.pin, raw_msg):
-                                # Dropped for its age: handled for good.
-                                self._seen = [*self._seen, mid]
+                    try:
+                        self._connected(down_since, fault, warned)
+                        down_since, warned, delay, fault = None, False, 5, ""
+                        self.connected, self.down_since = True, None
+                        streaming = True
+                        for line in r:
+                            if stop():
+                                return
+                            line = line.decode("utf-8", "replace").strip()
+                            if not line:
+                                continue
+                            try:
+                                env = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
+                            if not isinstance(env, dict):
+                                continue
+                            if isinstance(env.get("time"), int):
+                                self._mark = env["time"]      # keepalives too: read up to here
+                                self._save_mark()             # on disk every MARK_SAVE_SEC
+                            if env.get("event") != "message":
+                                continue
+                            mid = str(env.get("id") or "")
+                            if mid and mid in set(self._seen):
+                                continue
+                            raw_msg = str(env.get("message") or "")
+                            msg = unpack(self.pin, raw_msg)
+                            if not msg or msg.get("kind") != "cmd":
+                                if mid and stale_cmd(self.pin, raw_msg):
+                                    # Dropped for its age: handled for good.
+                                    self._seen = [*self._seen[-(SEEN_KEEP - 1):], mid]
+                                    self._save_seen()
+                                continue
+                            if mid:
+                                self._seen = [*self._seen[-(SEEN_KEEP - 1):], mid]
                                 self._save_seen()
-                            continue
-                        if mid:
-                            self._seen = [*self._seen, mid]
-                            self._save_seen()
-                        try:
-                            on_cmd(stamp(msg, env, "live"))
-                        except Exception:
-                            log.exception("手机指令处理出错，连接继续")
+                            try:
+                                on_cmd(stamp(msg, env, "live"))
+                            except Exception:
+                                log.exception("手机指令处理出错，连接继续")
+                    finally:
+                        if self._resp is r:
+                            self._resp = None
             except Exception as exc:  # noqa: BLE001 - any drop: reconnect
                 if stop():
                     return
@@ -2536,14 +2628,15 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # heartbeat once it exists: what the machine checks of the phone channel
     # read at the end of a shift (machinechecks/phone_banners.py, #39-#56).
     tally: dict = {"since": time.time(), "n": 0, "ok": 0, "routes": {}, "failed": []}
+    tally_lock = threading.RLock()
     beat: list = []
 
-    def _judge_state(why: str, payload, ok: bool) -> None:
+    def _judge_state(why: str, payload, ok: bool, last_error: str, tally_snap: dict) -> None:
         try:
             from ark_relay.features import maintenance as _maint  # noqa: PLC0415
             quota = box.quota
             hb_now = beat[0] if beat else None
-            ctx = {"state": payload, "why": why, "ok": ok, "error": box.last_error, "tally": tally,
+            ctx = {"state": payload, "why": why, "ok": ok, "error": last_error, "tally": tally_snap,
                    "mailbox": box.report() if hasattr(box, "report") else {},
                    "heartbeat": hb_now.cos_report() if hasattr(hb_now, "cos_report") else {},
                    "quota": {"day": quota.day(), "total": quota.total(), "own": quota.own(),
@@ -2558,26 +2651,30 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
         if why == "关机前":
             # The shift is judged; a machine that stays on starts the next one afresh
             # (the heartbeat's and the bulletins' own counts run on: their base moves).
-            tally.update(since=time.time(), n=0, ok=0, routes={}, failed=[],
-                         base={"heartbeat": ctx["heartbeat"], "maintenance": ctx["maintenance"]})
+            with tally_lock:
+                tally.update(since=time.time(), n=0, ok=0, routes={}, failed=[],
+                             base={"heartbeat": ctx["heartbeat"], "maintenance": ctx["maintenance"]})
 
     def publish_state(why: str) -> bool:
         if not box.enabled:
             return False
-        tally["n"] += 1
-        stamp = datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S")
-        # The state, the send and its log line are phone.send_state, shared with the
-        # watchdog's push at a Windows shutdown (app_main.py stop-push).
-        pass
-        ok, payload, why_not = send_state(box, cfg, why, log)
-        if ok:
-            tally["ok"] += 1
-            route = getattr(box, "last_route", "") or "没说走哪条"
-            tally["routes"][route] = tally["routes"].get(route, 0) + 1
-        else:
-            tally["failed"].append((stamp, why, why_not))
-        _judge_state(why, payload, ok)
-        return ok
+        with tally_lock:
+            tally["n"] += 1
+            stamp = datetime.now(tz=SERVER_TZ).strftime("%H:%M:%S")
+            # The state, the send and its log line are phone.send_state, shared with the
+            # watchdog's push at a Windows shutdown (app_main.py stop-push).
+            ok, payload, why_not = send_state(box, cfg, why, log)
+            if ok:
+                tally["ok"] += 1
+                route = getattr(box, "last_route", "") or "没说走哪条"
+                tally["routes"][route] = tally["routes"].get(route, 0) + 1
+                last_error = ""
+            else:
+                tally["failed"].append((stamp, why, why_not))
+                last_error = why_not
+            tally_snap = {**tally, "routes": dict(tally["routes"]), "failed": list(tally["failed"])}
+            _judge_state(why, payload, ok, last_error, tally_snap)
+            return ok
 
     pass
     # Callable like the old push_state(why); also skips refreshes a state
@@ -2668,6 +2765,7 @@ class StatePusher:
     def __init__(self, publish):
         self._publish = publish
         self._lock = threading.Lock()
+        self._publish_lock = threading.RLock()
         self._done = 0.0               # when the last state that got out finished
         self._held = 0
         self._pending: list[str] = []
@@ -2694,11 +2792,12 @@ class StatePusher:
             if self._held and why not in self.NEVER_HELD:
                 self._pending.append(why)
                 return False
-        ok = bool(self._publish(why))
-        if ok:
-            with self._lock:
-                self._done = time.time()
-        return ok
+        with self._publish_lock:
+            ok = bool(self._publish(why))
+            if ok:
+                with self._lock:
+                    self._done = time.time()
+            return ok
 
     @contextlib.contextmanager
     def held(self):
@@ -2893,10 +2992,13 @@ def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
     from ark_relay.features import snapshot  # noqa: PLC0415
     # The last state before a stop / power-off must not wait on the process list.
     quiet = snapshot.no_process_query() if why in StatePusher.NEVER_HELD else contextlib.nullcontext()
+    box_lock = getattr(box, "_publish_lock", None)
     try:
         with quiet:
             payload = state_payload(cfg, cfg.state_dir)
-        ok = box.publish(payload)
+        with (box_lock if box_lock is not None else contextlib.nullcontext()):
+            ok = box.publish(payload)
+            err = getattr(box, "last_error", "") or ""
     except Exception as exc:
         log.warning("状态没能上报到手机（%s）", why, exc_info=True)
         return False, payload, f"{type(exc).__name__}: {exc}"[:160]
@@ -2914,7 +3016,7 @@ def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
             except OSError:
                 log.warning("停止前那份送到了，记号没写下，关机时看门服务会再发一次", exc_info=True)
         return True, payload, ""
-    log.warning("状态没能上报到手机（%s）：%s；手机上留着上一份状态", why, box.last_error or "原因没说")
-    return False, payload, box.last_error or "原因没说"
+    log.warning("状态没能上报到手机（%s）：%s；手机上留着上一份状态", why, err or "原因没说")
+    return False, payload, err or "原因没说"
 
 __all__ = ['log', '_last_error', 'REFRESH_ANSWERED_SEC', 'StatePusher', 'mailbox_status', 'state_payload', 'BLIND_KEEP', 'MARK_SAVE_SEC', 'MAX_AGE', 'NTFY', 'NTFY_CACHE_SEC', 'SEEN_KEEP', '_QUIET_ACTIONS', '_UA', '_bj', 'pack', 'pack_chunks', 'stamp', 'unpack', 'HB_CRAWL_SEC', 'HB_FAST_UNTIL', 'HB_KICK_GAP', 'HB_SLOW_SEC', 'HB_SLOW_UNTIL', 'HB_STOP_AT', 'HEARTBEAT_SEC', 'NOTICE_STOP_AT', 'NTFY_ACCOUNT', 'NTFY_DAILY_LIMIT', 'QUOTA_SYNC_SEC', 'WATCH_LEASE_SEC', 'Quota', '_idle_timeout', '_ntfy_code', '_retry_after', '_why', 'ntfy_account', 'STATE_PREFIX', 'cos_get', 'cos_put', 'hb_key', 'state_cos', 'state_key', 'Mailbox', 'HB_COS_SEC', 'Heartbeat', 'CMD_QUEUE_DONE_KEEP', 'CMD_QUEUE_FILE', 'DISPATCHING_ACTIONS', 'QUEUED', 'RESENT', 'SAME', '_CMD_QUEUE_LOCK', '_content', '_item_keys', 'CmdQueue', 'cmd_expired', 'cmd_key', 'item_sent']

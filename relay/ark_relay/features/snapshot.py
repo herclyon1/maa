@@ -12,6 +12,8 @@ AUTO-MAS's reach, so that one can only be read from file.
 from __future__ import annotations
 
 import contextlib
+import csv
+import io
 import json
 import logging
 import os
@@ -40,11 +42,12 @@ _no_query = threading.local()
 @contextlib.contextmanager
 def no_process_query():
     """Inside it, _runtime does not ask for OK-WW's python (the 停止前 / 关机前 pushes)."""
+    prev = getattr(_no_query, "on", False)
     _no_query.on = True
     try:
         yield
     finally:
-        _no_query.on = False
+        _no_query.on = prev
 
 
 def _okww_python_cached() -> "bool | None":
@@ -55,7 +58,8 @@ def _okww_python_cached() -> "bool | None":
         return _okww_alive["alive"] if at is not None else None
     if at is None or time.monotonic() - at >= OKWW_ALIVE_TTL:
         from ark_relay.features.redbutton import _okww_python_alive  # noqa: PLC0415
-        _okww_alive.update(alive=_okww_python_alive(), at=time.monotonic())
+        _okww_alive["alive"] = _okww_python_alive()
+        _okww_alive["at"] = time.monotonic()
     return _okww_alive["alive"]
 
 # Read the **master copy**, not OK-WW's own. Before every run AUTO-MAS copies the
@@ -267,19 +271,40 @@ def _relay_state() -> str:
     return "STOPPED" if "STOPPED" in q.stdout or q.returncode == 1060 else "?"
 
 
+def _tasklist_names(text: str) -> "set[str] | None":
+    """Lowercased image names from `tasklist /FO CSV /NH`, or None for non-CSV text."""
+    csv_lines = [ln for ln in text.splitlines() if ln.lstrip().startswith('"')]
+    if not csv_lines:
+        return None
+    out: set[str] = set()
+    for row in csv.reader(io.StringIO("\n".join(csv_lines))):
+        if row and row[0].strip():
+            out.add(row[0].strip().lower())
+    return out
+
+
 def _runtime(out: dict) -> None:
     try:
         out["ark-relay"] = _relay_state()
     except Exception:  # noqa: BLE001
         out["ark-relay"] = "?"
     try:
-        tl = subprocess.run(["tasklist"], capture_output=True, text=True,
-                            errors="replace", timeout=20).stdout
+        res = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True,
+                             errors="replace", timeout=20)
+        if getattr(res, "returncode", 0) != 0:
+            raise RuntimeError(f"tasklist exited {res.returncode}")
+        raw = res.stdout
+        tl = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw or "")
         # One list of busy processes, in config.py (it includes Wuthering Waves'
         # own process and the emulator), shared with the rest of the relay.
         from ark_relay.core.config import BUSY_PROCS, ORCHESTRATOR_PROC  # noqa: PLC0415
         names = (ORCHESTRATOR_PROC,) + BUSY_PROCS
-        progs = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
+        have = _tasklist_names(tl)
+        if have is not None:
+            progs = {n[:-4] if n.endswith(".exe") else n: n.lower() in have for n in names}
+        else:
+            low = tl.lower()
+            progs = {n[:-4] if n.endswith(".exe") else n: n.lower() in low for n in names}
         # OK-WW runs as pythonw.exe (config.py, "process names"), so the names above
         # are blind to it: the red button's check asks the command lines, and an
         # unread list counts as running there and here (audit 11 #3).

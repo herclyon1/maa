@@ -4971,5 +4971,438 @@ def _part_inbox_poll():
           route_of("⚙️ 配置已更新：x", alert=True), "log")
 
 
+def _part_monthcard_concurrency_and_io():
+    """monthcard.json: locked RMW, transient lock retries, persistent OSError never wipes entries."""
+    import json
+    import threading
+    from datetime import date
+    from unittest import mock
+
+    from ark_relay.core import statestore, texts
+    from ark_relay.features import phone
+
+    D = date(2026, 9, 26)
+    sd = tmpdir()
+    for game, left in (("明日方舟", 3), ("终末地", 4), ("鸣潮", 2)):
+        ok, _ = phone.apply(sd, {"game": game, "left": left}, today=D)
+        check(f"初始登记 {game}", ok, True)
+    before_bytes = (sd / phone.FILE).read_bytes()
+
+    print("[瞬时 PermissionError：重试后读到原文件，三家月卡一个不少]")
+    real_read_bytes = Path.read_bytes
+    attempts = {"n": 0}
+
+    def flaky_read(self):
+        if self.name == phone.FILE and attempts["n"] < 2:
+            attempts["n"] += 1
+            raise PermissionError(13, "locked")
+        return real_read_bytes(self)
+
+    with mock.patch.object(statestore, "LOCK_WAITS", (0.001, 0.001, 0.001)), \
+            mock.patch.object(Path, "read_bytes", flaky_read):
+        ok, msg = phone.apply(sd, {"game": "鸣潮", "left": 5}, today=D)
+    check("重试后登记成功", (ok, attempts["n"]), (True, 2))
+    st = phone.status(sd, today=D)
+    check("三家月卡都在", sorted(st), sorted(["明日方舟", "终末地", "鸣潮"]))
+    check("鸣潮已更新", st["鸣潮"]["还剩"], 5)
+
+    print("\n[持续 OSError：不写 .bad、不清空原文件，apply 失败、mark_sent 放弃写回]")
+    saved_bytes = (sd / phone.FILE).read_bytes()
+
+    def locked_read(self):
+        if self.name == phone.FILE:
+            raise PermissionError(13, "still locked")
+        return real_read_bytes(self)
+
+    with mock.patch.object(statestore, "LOCK_WAITS", (0.001,)), \
+            mock.patch.object(Path, "read_bytes", locked_read):
+        ok_a, msg_a = phone.apply(sd, {"game": "鸣潮", "left": 10}, today=D)
+        phone.mark_sent(sd, today=D)
+        st_ro = phone.status(sd, today=D)
+        dn_ro = phone.due_notice(sd, today=D)
+    check("apply 明确失败且文案通白话", (ok_a, texts.plain(msg_a)), (False, []))
+    check("读接口不抛", (st_ro, dn_ro), ({}, None))
+    check("没有生成 .bad", (sd / (phone.FILE + ".bad")).exists(), False)
+    check("原文件一字节没动（三家月卡未清空）", (sd / phone.FILE).read_bytes(), saved_bytes)
+    check("恢复可读后三家都在", sorted(phone.status(sd, today=D)), sorted(["明日方舟", "终末地", "鸣潮"]))
+
+    print("\n[坏 JSON 仍照旧另存 .bad 并恢复]")
+    bad_dir = tmpdir()
+    (bad_dir / phone.FILE).write_bytes(before_bytes[:5])
+    check("坏 JSON 读成空", phone.status(bad_dir, today=D), {})
+    check("生成 .bad 备份", (bad_dir / (phone.FILE + ".bad")).read_bytes(), before_bytes[:5])
+
+    print("\n[并发 apply / due_notice / mark_sent：三家月卡和已提醒标记不互相覆盖]")
+    cd = tmpdir()
+    phone.apply(cd, {"game": "明日方舟", "left": 2}, today=D)
+    phone.apply(cd, {"game": "终末地", "left": 3}, today=D)
+    phone.apply(cd, {"game": "鸣潮", "left": 4}, today=D)
+    errs: list[Exception] = []
+    barrier = threading.Barrier(4)
+
+    def worker(fn):
+        try:
+            barrier.wait(5)
+            for i in range(15):
+                fn(i)
+        except Exception as exc:  # noqa: BLE001
+            errs.append(exc)
+
+    threads = [
+        threading.Thread(target=worker, args=(lambda i: phone.apply(cd, {"game": "明日方舟", "left": 2 + (i % 3)}, today=D),)),
+        threading.Thread(target=worker, args=(lambda i: phone.apply(cd, {"game": "终末地", "left": 3 + (i % 3)}, today=D),)),
+        threading.Thread(target=worker, args=(lambda i: phone.apply(cd, {"game": "鸣潮", "left": 4 + (i % 3)}, today=D),)),
+        threading.Thread(target=worker, args=(lambda i: (phone.due_notice(cd, today=D), phone.mark_sent(cd, today=D)),)),
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    check("并发无异常", errs, [])
+    final_raw = json.loads((cd / phone.FILE).read_text(encoding="utf-8"))
+    check("三家月卡和 _notified 全部保住",
+          (sorted(g for g in final_raw if g in phone.DAYS), final_raw.get("_notified")),
+          (sorted(["明日方舟", "终末地", "鸣潮"]), D.isoformat()))
+
+    print("\n[CmdQueue 持续 OSError：add 抛错而不清空排队文件]")
+    qd = tmpdir()
+    q = phone.CmdQueue(qd)
+    q.add({"action": "set_config", "value": "1-7", "_meta": {"ntfy_id": "keep-1"}})
+    q_before = q.path.read_bytes()
+    real_read_text = Path.read_text
+
+    def locked_q_read(self, *a, **k):
+        if self.name == phone.CMD_QUEUE_FILE:
+            raise PermissionError(13, "queue locked")
+        return real_read_text(self, *a, **k)
+
+    with mock.patch.object(statestore, "LOCK_WAITS", (0.001,)), \
+            mock.patch.object(Path, "read_text", locked_q_read):
+        check("持续锁死时 add 拒绝写回",
+              _raises(lambda: q.add({"action": "set_config", "value": "TO-5", "_meta": {"ntfy_id": "new-2"}})),
+              True)
+    check("原排队文件未被清空", q.path.read_bytes(), q_before)
+
+
+def _part_state_pusher_concurrency():
+    """StatePusher, Mailbox.publish, send_state and publish_state stay serialized across threads."""
+    import logging
+    import threading
+    import time
+    import types
+
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
+                "win32con", "win32file", "servicemanager", "win32process",
+                "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
+                "win32com", "win32com.client")
+
+    import boot_stages
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import phone
+
+    print("[StatePusher 并发 __call__ 串行执行 _publish，且不阻塞 answered / 停止前]")
+    active = {"n": 0, "max": 0}
+    seen_whys: list[str] = []
+    started_first = threading.Event()
+    release_first = threading.Event()
+
+    def slow_publish(why: str) -> bool:
+        active["n"] += 1
+        active["max"] = max(active["max"], active["n"])
+        try:
+            seen_whys.append(why)
+            if why == "first":
+                started_first.set()
+                release_first.wait(5)
+            else:
+                time.sleep(0.02)
+            return True
+        finally:
+            active["n"] -= 1
+
+    pusher = phone.StatePusher(slow_publish)
+    t1 = threading.Thread(target=pusher, args=("first",))
+    t2 = threading.Thread(target=pusher, args=("second",))
+    t1.start()
+    check("first 已进入 _publish", started_first.wait(5), True)
+    t2.start()
+    time.sleep(0.05)
+    check("answered 在 _publish 期间不死锁", pusher.answered(time.time()), False)
+    check("second 在锁外等待，并发数为 1", active["max"], 1)
+    release_first.set()
+    t1.join(5)
+    t2.join(5)
+    check("两条都发完且从未重叠", (active["max"], seen_whys), (1, ["first", "second"]))
+
+    print("\n[send_state + Mailbox.publish 并发：不串写 last_error / last_route]")
+    sd = tmpdir()
+    mb = phone.Mailbox("topic-lock", "8964", sd)
+    mb.RETRY_AFTER = 0
+    post_entered = threading.Event()
+    post_release = threading.Event()
+    post_count = {"n": 0}
+
+    def fake_post(data: bytes, kind: str) -> bool:
+        post_count["n"] += 1
+        idx = post_count["n"]
+        if idx == 1:
+            mb.last_error = "第一路超时（试了 2 次）"
+            post_entered.set()
+            post_release.wait(5)
+            return False
+        mb.last_error = ""
+        return True
+
+    mb._post = fake_post
+    cfg = types.SimpleNamespace(state_dir=sd, automas_dir=str(tmpdir()),
+                                maaend_dir=str(tmpdir()), okww_dir=str(tmpdir()))
+    res_a: list = []
+    res_b: list = []
+    saved_payload = phone.state_payload
+    phone.state_payload = lambda c, d: {"at": 1}
+    try:
+        ta = threading.Thread(target=lambda: res_a.append(phone.send_state(mb, cfg, "第一路")))
+        tb = threading.Thread(target=lambda: res_b.append(phone.send_state(mb, cfg, "第二路")))
+        ta.start()
+        check("第一路已进入 publish", post_entered.wait(5), True)
+        tb.start()
+        time.sleep(0.05)
+        post_release.set()
+        ta.join(5)
+        tb.join(5)
+    finally:
+        phone.state_payload = saved_payload
+    check("第一路拿到自己的真实失败原因，没被第二路清成空",
+          (res_a[0][0], res_a[0][2]), (False, "第一路超时（试了 2 次）"))
+    check("第二路成功", res_b[0][0], True)
+
+    print("\n[_start_phone_channel 并发 publish_state：tally 计数与 #39 始终一致]")
+
+    class SlowBox:
+        def __init__(self, topic, pin, state_dir, cos=None):
+            self.topic, self.cos, self.enabled = topic, cos, True
+            self.quota = phone.Quota(state_dir)
+            self.last_error, self.last_route = "", ""
+            self._n = 0
+
+        def publish(self, body):
+            self._n += 1
+            if self._n == 2:
+                time.sleep(0.03)
+                self.last_route = ""
+                self.last_error = "ntfy 回 502（试了 2 次）"
+                return False
+            time.sleep(0.02)
+            self.last_error = ""
+            self.last_route = "腾讯云"
+            return True
+
+        def report(self):
+            return {"connected": True, "down_since": None, "drops": [], "backlog_missed": False,
+                    "backlog_why": "", "backlog_late": None}
+
+        def fetch(self):
+            return []
+
+        def listen(self, on_cmd, stop, **kw):
+            return None
+
+    class QuietHb:
+        def __init__(self, *a, **k):
+            pass
+
+        def loop(self, stop):
+            return None
+
+        def cos_report(self):
+            return {"cos": False}
+
+    saved = (phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas)
+    phone.Mailbox, phone.Heartbeat = SlowBox, QuietHb
+    phone.state_payload = lambda c, d: {"at": 1}
+    boot_stages.ensure_automas = lambda *a, **k: True
+    try:
+        sd2 = tmpdir()
+        cfg2 = types.SimpleNamespace(phone_topic="t-conc", phone_pin="8964", state_dir=sd2,
+                                     cos_secret_id="", cos_secret_key="", cos_bucket="", cos_region="")
+        svc = types.SimpleNamespace(stop_event=None)
+        eng = types.SimpleNamespace(scripts_running=lambda: False)
+        notifier = types.SimpleNamespace(send=lambda *a, **k: [])
+        lg = logging.getLogger("ark.test_phone_conc")
+        lg.addHandler(logging.NullHandler())
+        lg.propagate = False
+        push = phone._start_phone_channel(svc, cfg2, eng, notifier, lg)  # 开机 = 1st (ok)
+        # 3 concurrent publishes (2nd fails, 3rd/4th succeed), then 关机前 (5th ok)
+        workers = [threading.Thread(target=push, args=(f"并发{i}",)) for i in range(3)]
+        for t in workers:
+            t.start()
+        for t in workers:
+            t.join(5)
+        push("关机前")
+        row = mc.read(sd2).get("#39") or {}
+        ev = str(row.get("evidence") or "")
+        check("#39 记录精确：上报 5 次、送到 4 次、失败 1 次带真实原因",
+              ("上报状态 5 次，送到 4 次（腾讯云 4）" in ev, "1 份没送到" in ev, "ntfy 回 502" in ev),
+              (True, True, True))
+    finally:
+        phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas = saved
+
+
+def _part_stage_paths_v57_and_estop_kill():
+    """commands._STAGE_PATHS covers AUTO-MAS v5.7+ Stage.*; redbutton._estop_kill bounds taskkill."""
+    import os
+    import subprocess
+    from unittest import mock
+
+    from ark_relay.core import config as _config
+    from ark_relay.features import commands, preupdate, redbutton, okww_overlay
+
+    print("[commands._STAGE_PATHS 包含 v5.7+ 的 Stage.Stage / Stage.Stage_1..3]")
+    for p in ("Info.Stage", "Info.Stage_1", "Info.Stage_2", "Info.Stage_3",
+              "Stage.Stage", "Stage.Stage_1", "Stage.Stage_2", "Stage.Stage_3"):
+        check(f"{p} 在 _STAGE_PATHS 里", p in commands._STAGE_PATHS, True)
+
+    api_calls: list = []
+    orig_refusal = commands._stage_refusal
+    orig_api = commands._user_item_via_api
+    orig_automas = os.environ.get("ARK_AUTOMAS_DIR")
+    os.environ["ARK_AUTOMAS_DIR"] = str(tmpdir())
+    commands._stage_refusal = lambda s: (f"「{s}」MAA 走不到，修改失败" if s == "YW-4" else "")
+    commands._user_item_via_api = lambda s, p, v: (api_calls.append((s, p, v)), ("", "1-7", v))[1]
+    try:
+        for p in ("Stage.Stage", "Stage.Stage_1", "Stage.Stage_2", "Stage.Stage_3"):
+            api_calls.clear()
+            ok, msg = commands._set_config({"script": "MAA", "path": p, "value": "YW-4"})
+            check(f"{p} 写不可达关卡被闸门拦下", (ok, "MAA 走不到" in msg, api_calls), (False, True, []))
+        api_calls.clear()
+        ok_ok, _ = commands._set_config({"script": "MAA", "path": "Stage.Stage", "value": "1-7"})
+        check("Stage.Stage 写可达关卡放行", (ok_ok, api_calls), (True, [("MAA", "Stage.Stage", "1-7")]))
+        api_calls.clear()
+        ok_dash, _ = commands._set_config({"script": "MAA", "path": "Stage.Stage_1", "value": "-"})
+        check("Stage.Stage_1 写 '-' 放行", (ok_dash, api_calls), (True, [("MAA", "Stage.Stage_1", "-")]))
+        api_calls.clear()
+        ok_star, _ = commands._set_config({"script": "MAA", "path": "Stage.Stage", "value": "*"})
+        check("Stage.Stage 写 '*' 放行", (ok_star, api_calls), (True, [("MAA", "Stage.Stage", "*")]))
+        api_calls.clear()
+        ok_other, _ = commands._set_config({"script": "MaaEnd", "path": "Stage.Stage", "value": "YW-4"})
+        check("非 MAA 脚本不拦", (ok_other, api_calls), (True, [("MaaEnd", "Stage.Stage", "YW-4")]))
+    finally:
+        commands._stage_refusal = orig_refusal
+        commands._user_item_via_api = orig_api
+        if orig_automas is None:
+            os.environ.pop("ARK_AUTOMAS_DIR", None)
+        else:
+            os.environ["ARK_AUTOMAS_DIR"] = orig_automas
+
+    check("理智药拒绝布尔和浮点",
+          (commands._set_medicine(True)[0], commands._set_medicine(3.5)[0]), (False, False))
+    check("等待秒数拒绝布尔和浮点",
+          (commands._set_wait_time(True)[0], commands._set_wait_time(60.5)[0]), (False, False))
+
+    print("\n[redbutton._estop_kill 带 timeout 且单进程超时/异常不阻断其余 taskkill 与 _okww_quiesce]")
+    seen_kills: list[tuple[list[str], object]] = []
+    quiesced: list[int] = []
+
+    def fake_run(cmd, **kw):
+        seen_kills.append((list(cmd), kw.get("timeout")))
+        if cmd[2] == "MAA.exe":
+            raise subprocess.TimeoutExpired(cmd, kw.get("timeout") or 0)
+        if cmd[2] == "Endfield.exe":
+            raise OSError("access denied")
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    with mock.patch.object(subprocess, "run", fake_run), \
+            mock.patch.object(preupdate, "_okww_quiesce", lambda: quiesced.append(1)):
+        redbutton._estop_kill()
+
+    check("每个目标程序都跑了 taskkill", [c[2] for c, _ in seen_kills], list(redbutton._ESTOP_EXES))
+    check("每次 taskkill 都带正数 timeout", all(isinstance(t, (int, float)) and t > 0 for _, t in seen_kills), True)
+    check("前面超时/OSError 后仍执行了 _okww_quiesce", quiesced, [1])
+
+    print("\n[redbutton._estop_alive 非零退出码不误报清空，CSV 精确匹配防子串误判]")
+    with mock.patch.object(_config, "IS_WINDOWS", True), \
+            mock.patch.object(okww_overlay, "okww_running", lambda: False):
+        with mock.patch.object(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a[0], 1, b"", b"err")):
+            check("tasklist 非零退出码按读不到处理", redbutton._estop_alive(), ["读不到正在运行的程序列表"])
+        csv_out = b'"EpicGames.exe","10","Console","1","10 K"\r\n"client-win64-shipping.exe","20","Console","1","20 K"\r\n'
+        with mock.patch.object(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a[0], 0, csv_out, b"")):
+            check("EpicGames.exe 不误判为 Games.exe，大小写无关匹配鸣潮",
+                  redbutton._estop_alive(), ["Client-Win64-Shipping.exe"])
+
+
+def _part_snapshot_runtime_csv():
+    """snapshot._runtime uses tasklist /FO CSV /NH with case-insensitive matching and stub compat."""
+    import types
+    from unittest import mock
+
+    from ark_relay.features import redbutton, snapshot
+
+    print("[snapshot._runtime 走 tasklist /FO CSV /NH，大小写不敏感、不截断长进程名、不误判子串]")
+    cmds: list[tuple[list[str], object]] = []
+    csv_stdout = (
+        '"auto-mas.exe","100","Console","1","80,000 K"\r\n'
+        '"client-win64-shipping.exe","200","Console","1","2,000,000 K"\r\n'
+        '"WUTHERING WAVES.EXE","201","Console","1","50,000 K"\r\n'
+        '"FakeMAA.exe","300","Console","1","10,000 K"\r\n'
+    )
+
+    def fake_run(cmd, **kw):
+        cmds.append((list(cmd), kw.get("timeout")))
+        return types.SimpleNamespace(stdout=csv_stdout, stderr="", returncode=0)
+
+    saved_cache = dict(snapshot._okww_alive)
+    try:
+        snapshot._okww_alive.update(at=None, alive=None)
+        with mock.patch.object(snapshot, "_relay_state", lambda: "RUNNING"), \
+                mock.patch.object(snapshot.subprocess, "run", fake_run), \
+                mock.patch.object(redbutton, "_okww_python_alive", lambda: False):
+            out: dict = {}
+            snapshot._runtime(out)
+        check("调用 tasklist /FO CSV /NH 且带超时", cmds, [(["tasklist", "/FO", "CSV", "/NH"], 20)])
+        progs = out.get("程序") or {}
+        check("小写 AUTO-MAS / 25 字符鸣潮 / 大写启动器全部命中",
+              (progs.get("AUTO-MAS"), progs.get("Client-Win64-Shipping"), progs.get("Wuthering Waves")),
+              (True, True, True))
+        check("FakeMAA.exe 不误判成 MAA", progs.get("MAA"), False)
+
+        print("\n[兼容既有无引号测试桩、bytes 输出与非零退出码]")
+        snapshot._okww_alive.update(at=None, alive=None)
+        with mock.patch.object(snapshot, "_relay_state", lambda: "RUNNING"), \
+                mock.patch.object(snapshot.subprocess, "run",
+                                  lambda *a, **k: types.SimpleNamespace(stdout="auto-mas.exe 1 Console\nmaa.exe 2 Console\n")), \
+                mock.patch.object(redbutton, "_okww_python_alive", lambda: False):
+            out2: dict = {}
+            snapshot._runtime(out2)
+        check("无引号旧测试桩大小写不敏感照样识别",
+              (out2["程序"]["AUTO-MAS"], out2["程序"]["MAA"]), (True, True))
+
+        snapshot._okww_alive.update(at=None, alive=None)
+        with mock.patch.object(snapshot, "_relay_state", lambda: "RUNNING"), \
+                mock.patch.object(snapshot.subprocess, "run",
+                                  lambda *a, **k: types.SimpleNamespace(stdout=b'"Endfield.exe","5","Console"\n', returncode=0)), \
+                mock.patch.object(redbutton, "_okww_python_alive", lambda: False):
+            out3: dict = {}
+            snapshot._runtime(out3)
+        check("bytes 输出也能解析", out3["程序"]["Endfield"], True)
+
+        snapshot._okww_alive.update(at=None, alive=None)
+        with mock.patch.object(snapshot, "_relay_state", lambda: "RUNNING"), \
+                mock.patch.object(snapshot.subprocess, "run",
+                                  lambda *a, **k: types.SimpleNamespace(stdout="", returncode=1)), \
+                mock.patch.object(redbutton, "_okww_python_alive", lambda: False):
+            out4: dict = {}
+            snapshot._runtime(out4)
+        check("tasklist 非零退出码不伪造全 False 程序表", "程序" in out4, False)
+
+        with snapshot.no_process_query():
+            with snapshot.no_process_query():
+                check("嵌套 no_process_query 生效", getattr(snapshot._no_query, "on", False), True)
+            check("内层退出后外层仍生效", getattr(snapshot._no_query, "on", False), True)
+        check("外层退出后恢复", getattr(snapshot._no_query, "on", False), False)
+    finally:
+        snapshot._okww_alive.clear()
+        snapshot._okww_alive.update(saved_cache)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_phone_main, _part_phone_channel_boot, _part_phone_cmd_gate, _part_phone_cmd_queue, _part_phone_drained_failure_pushed, _part_phone_gzip, _part_phone_order_failed_pushed, _part_phone_quiet, _part_phone_receipts, _part_phone_sent, _part_phone_silent, _part_phone_stale_cmd, _part_phone_state, _part_phone_state_cos, _part_receipt_target, _part_channel_down, _part_cli_commands, _part_cmd_test_channels, _part_command_table, _part_commands_gates, _part_mailbox_close_windows, _part_payload_roundtrip, _part_test_windows, _part_heartbeat_main, _part_heartbeat_cos, _part_resources, _part_snapshot, _part_inbox_poll]))
+    sys.exit(run_parts([_part_phone_main, _part_phone_channel_boot, _part_phone_cmd_gate, _part_phone_cmd_queue, _part_phone_drained_failure_pushed, _part_phone_gzip, _part_phone_order_failed_pushed, _part_phone_quiet, _part_phone_receipts, _part_phone_sent, _part_phone_silent, _part_phone_stale_cmd, _part_phone_state, _part_phone_state_cos, _part_receipt_target, _part_channel_down, _part_cli_commands, _part_cmd_test_channels, _part_command_table, _part_commands_gates, _part_mailbox_close_windows, _part_payload_roundtrip, _part_test_windows, _part_heartbeat_main, _part_heartbeat_cos, _part_resources, _part_snapshot, _part_inbox_poll, _part_monthcard_concurrency_and_io, _part_state_pusher_concurrency, _part_stage_paths_v57_and_estop_kill, _part_snapshot_runtime_csv]))

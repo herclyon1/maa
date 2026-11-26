@@ -168,8 +168,12 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
 
 # ---------- the actions ----------
 
-# The stage items of an MAA user that AUTO-MAS hands to MAA's Fight task.
-_STAGE_PATHS = ("Info.Stage", "Info.Stage_1", "Info.Stage_2", "Info.Stage_3")
+# The stage items of an MAA user that AUTO-MAS hands to MAA's Fight task
+# (Info.* before AUTO-MAS v5.7.0-beta.3, Stage.* from v5.7.0-beta.3 on).
+_STAGE_PATHS = (
+    "Info.Stage", "Info.Stage_1", "Info.Stage_2", "Info.Stage_3",
+    "Stage.Stage", "Stage.Stage_1", "Stage.Stage_2", "Stage.Stage_3",
+)
 
 
 def _stage_refusal(stage: str) -> str:
@@ -229,6 +233,8 @@ def _set_stage(value: str) -> tuple[bool, str]:
 
 
 def _set_medicine(value: Any) -> tuple[bool, str]:
+    if isinstance(value, (bool, float)):
+        return False, f"理智药数量不是整数: {value!r}"
     try:
         n = int(value)
     except (TypeError, ValueError):
@@ -265,6 +271,8 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
     early handle and dies within seconds (docs/PITFALLS.md). Waiting past the
     recreation window avoids it.
     """
+    if isinstance(value, (bool, float)):
+        return False, f"等待秒数不是整数: {value!r}"
     try:
         n = int(value)
     except (TypeError, ValueError):
@@ -462,7 +470,7 @@ Three things are mandatory here and none may be skipped:
     if "value" not in cmd:
         return False, "set_config 需要 value"
     value = cmd["value"]
-    # Same gate as _set_stage: the phone's stage picker writes Info.Stage through here.
+    # Same gate as _set_stage: the phone's stage picker writes Info.Stage / Stage.Stage through here.
     if path in _STAGE_PATHS and isinstance(value, str) and value.strip() not in ("-", "") and _is_maa(script):
         if why := _stage_refusal("" if value.strip() == "*" else value.strip()):
             return False, why
@@ -544,7 +552,7 @@ def _item_days(item: dict) -> list[str]:
 def _queue_item(qid: str, uid: str = "", sid: str = "") -> tuple[str | None, int, dict]:
     """(item uid, position, item) by item uid, else by script id; (None, -1, {}) when absent."""
     items = _mas("/api/queue/item/get", {"queueId": qid})
-    order = [i["uid"] for i in items["index"]]
+    order = [i["uid"] for i in items.get("index") or []]
     data = items.get("data") or {}
     if uid and uid in order:
         return uid, order.index(uid), data.get(uid) or {}
@@ -870,7 +878,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # "sent" (the phone's send time, put in by run_phone_cmd) makes a
             # backlog order mean the deadline its sender meant - see echofarm.start.
             sent = cmd.get("sent")
-            sent = datetime.fromtimestamp(sent, tz=SERVER_TZ) if isinstance(sent, int) else None
+            sent = (datetime.fromtimestamp(sent, tz=SERVER_TZ)
+                    if isinstance(sent, int) and not isinstance(sent, bool) else None)
             weekly = cmd.get("weekly") is True
             name = str(cmd.get("name") or "") or (f"周本第 {cmd.get('boss')} 个" if weekly
                                                   else label(cmd.get("boss")))

@@ -5,6 +5,8 @@ commands.py re-exports `_mas` and `mas_post`; tests that fake the backend replac
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import urllib.request
 import logging
@@ -90,6 +92,18 @@ def _okww_python_alive() -> bool:
         return True
 
 
+def _tasklist_names(text: str) -> "set[str] | None":
+    """Lowercased image names from `tasklist /FO CSV /NH`, or None for non-CSV text."""
+    csv_lines = [ln for ln in text.splitlines() if ln.lstrip().startswith('"')]
+    if not csv_lines:
+        return None
+    out: set[str] = set()
+    for row in csv.reader(io.StringIO("\n".join(csv_lines))):
+        if row and row[0].strip():
+            out.add(row[0].strip().lower())
+    return out
+
+
 def _estop_alive() -> list[str]:
     """Which of those are still alive, and OK-WW's python (_OKWW_PYTHON). Empty
     means nothing is left.
@@ -101,12 +115,20 @@ def _estop_alive() -> list[str]:
     if not config.IS_WINDOWS:
         return []
     try:
-        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
-                             capture_output=True, timeout=20).stdout.decode("utf-8", "replace")
+        r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
+                           capture_output=True, timeout=20)
+        if getattr(r, "returncode", 0) != 0:
+            return ["读不到正在运行的程序列表"]
+        raw = r.stdout
+        out = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw or "")
     except (OSError, subprocess.SubprocessError):
         return ["读不到正在运行的程序列表"]
-    low = out.lower()
-    alive = [e for e in _ESTOP_EXES if e.lower() in low]
+    have = _tasklist_names(out)
+    if have is not None:
+        alive = [e for e in _ESTOP_EXES if e.lower() in have]
+    else:
+        low = out.lower()
+        alive = [e for e in _ESTOP_EXES if e.lower() in low]
     if _okww_python_alive():
         alive.append(_OKWW_PYTHON)
     return alive
@@ -180,12 +202,22 @@ def _estop_stop_via_mas() -> list[str]:
     return stopped
 
 
+_ESTOP_KILL_TIMEOUT = 15
+
+
 def _estop_kill() -> None:
     import subprocess  # noqa: PLC0415
     from ark_relay.features.preupdate import _okww_quiesce  # noqa: PLC0415
     for exe in _ESTOP_EXES:
-        subprocess.run(["taskkill", "/IM", exe, "/T", "/F"], capture_output=True)
-    _okww_quiesce()
+        try:
+            subprocess.run(["taskkill", "/IM", exe, "/T", "/F"],
+                           capture_output=True, timeout=_ESTOP_KILL_TIMEOUT)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.info("红按钮：结束 %s 未完成（%s），继续停其余程序", exe, exc)
+    try:
+        _okww_quiesce()
+    except Exception:
+        log.info("红按钮：收尾鸣潮脚本没完成，继续复查还在跑的程序", exc_info=True)
 
 
 # When the red button was pressed. handle._handle reads it back so that the run
