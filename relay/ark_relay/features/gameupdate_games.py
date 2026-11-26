@@ -114,6 +114,10 @@ _EF_BUSY = ("正在下载", "安装中", "校验中")
 # Extra clicks of 「开始游戏」 when Endfield's window still has not appeared and the
 # launcher is still sitting on 「开始游戏」 (e.g. an earlier click missed the button).
 _EF_START_RETRIES = 2
+# Consecutive missing-window reads during the download wait before re-spawning the
+# launcher to bring it back from the tray (and cap on re-spawns per update).
+_EF_MISSING_RESPAWN = 2
+_EF_RESPAWN_TRIES = 3
 
 
 def _read_quiet(desk, focus: str):
@@ -121,6 +125,13 @@ def _read_quiet(desk, focus: str):
     if isinstance(desk, Desktop):
         return desk.read(focus=focus, warn_missing=False)
     return desk.read(focus=focus)
+
+
+def _click_text_quiet(desk, text: str, focus: str) -> bool:
+    """Click `text` in `focus` without firing a WARNING when the window is not up yet."""
+    if isinstance(desk, Desktop):
+        return desk.click_text(text, focus=focus, warn_missing=False)
+    return desk.click_text(text, focus=focus)
 
 _EF_SPACE_WORDS = ("系统提示", "所需空间", "剩余空间")
 # Neither OCR pass reads 「确认」 (white button, dark text; nor 「取消」), so the button is
@@ -191,7 +202,7 @@ def _wait_endfield_title(desk, launcher: Path, *, poll_s: float,
             sleep(8)
             kill("Endfield.exe")
             sleep(3)
-            if not desk.click_text("开始游戏", focus="Games"):
+            if not _click_text_quiet(desk, "开始游戏", "Games"):
                 _spawn(launcher)
                 sleep(25)
                 if not desk.click_text("开始游戏", focus="Games"):
@@ -209,6 +220,50 @@ def _wait_endfield_title(desk, launcher: Path, *, poll_s: float,
     _note(problems, f"终末地：更新后 15 分钟没走到标题画面，中继不再等（最后一屏截图 {shot}）")
     kill("Endfield.exe", "Games.exe")
     return False
+
+
+def _wait_endfield_download(desk: Desktop, launcher: Path, *, budget_s: float, poll_s: float,
+                            confirms: int, problems: list[str] | None,
+                            sleep) -> tuple[bool, object | None, bool]:
+    """Wait up to `budget_s` for 「开始游戏」 on the launcher.
+    Reads quietly so a launcher briefly restarting or sitting in the tray does not
+    fire per-poll warnings, and re-spawns it after consecutive missing-window polls.
+    Returns (ready, last_scr, aborted_on_dialog)."""
+    deadline = time.monotonic() + budget_s
+    missing_runs = 0
+    respawns = 0
+    scr = None
+    while time.monotonic() < deadline:
+        sleep(poll_s)
+        scr = _read_quiet(desk, "Games")
+        _launcher_note(desk, "终末地", "wait", scr, _EF_BUSY, ("开始游戏",), _EF_SPACE_WORDS)
+        if not _unread(scr) and scr.has("开始游戏"):
+            return True, scr, False
+        if _focus_missing(scr):
+            missing_runs += 1
+            if missing_runs >= _EF_MISSING_RESPAWN and respawns < _EF_RESPAWN_TRIES:
+                respawns += 1
+                missing_runs = 0
+                ok = _spawn(launcher)
+                log.info("游戏更新：终末地启动器连续 %d 次没找到窗口，尝试拉回（第 %d 次%s）",
+                         _EF_MISSING_RESPAWN, respawns, "" if ok else "，没拉起来")
+                continue
+        else:
+            missing_runs = 0
+        if _space_dialog(scr):
+            if confirms >= _EF_CONFIRM_TRIES:
+                _note(problems, f"终末地：「系统提示」点了 {confirms} 次「确认」还在（{_space_line(scr)}），"
+                                f"没开始下载，启动器没关（截图 {scr.shot}）")
+                return False, scr, True
+            confirms += 1
+            how = _confirm_space(desk, scr)
+            log.info("游戏更新：终末地启动器弹「系统提示」（%s），%s", _space_line(scr),
+                     f"已点「确认」（{how}），等它下载" if how else "「确认」没点上，下一轮再点")
+            continue
+        log.info("游戏更新：终末地启动器 %s", _unread(scr) or
+                 (next((ln for w in _EF_BUSY if (ln := scr.find(w))), None)
+                  or f"这一帧没认出下载 / 安装的字（截图 {scr.shot}）"))
+    return False, scr, False
 
 
 def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
@@ -254,28 +309,13 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         return ""
     else:
         log.info("游戏更新：终末地已点「更新游戏」，等它下载安装")
-    deadline = time.monotonic() + budget_s
-    ready = False
-    while time.monotonic() < deadline:
-        sleep(poll_s)
-        scr = desk.read(focus="Games")
-        _launcher_note(desk, "终末地", "wait", scr, _EF_BUSY, ("开始游戏",), _EF_SPACE_WORDS)
-        if not _unread(scr) and scr.has("开始游戏"):
-            ready = True
-            break
-        if _space_dialog(scr):
-            if confirms >= _EF_CONFIRM_TRIES:
-                _note(problems, f"终末地：「系统提示」点了 {confirms} 次「确认」还在（{_space_line(scr)}），"
-                                f"没开始下载，启动器没关（截图 {scr.shot}）")
-                return ""
-            confirms += 1
-            how = _confirm_space(desk, scr)
-            log.info("游戏更新：终末地启动器弹「系统提示」（%s），%s", _space_line(scr),
-                     f"已点「确认」（{how}），等它下载" if how else "「确认」没点上，下一轮再点")
-            continue
-        log.info("游戏更新：终末地启动器 %s", _unread(scr) or
-                 (next((ln for w in _EF_BUSY if (ln := scr.find(w))), None)
-                  or f"这一帧没认出下载 / 安装的字（截图 {scr.shot}）"))
+    ready, last_scr, aborted = _wait_endfield_download(
+        desk, launcher, budget_s=budget_s, poll_s=poll_s,
+        confirms=confirms, problems=problems, sleep=sleep)
+    if aborted:
+        return ""
+    if last_scr is not None:
+        scr = last_scr
     if not ready:
         _note(problems, f"终末地：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，启动器留在后台继续下，下次开机再确认")
         return ""

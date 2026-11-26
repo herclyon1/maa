@@ -1049,6 +1049,148 @@ def _part_endfield_start_retry():
     check("没干等满 15 分钟", sum(slept) < 900, True)
 
 
+def _part_endfield_launcher_quiet():
+    """Endfield launcher missing-window handling: quiet restart probe and download respawn."""
+    import json
+    import logging
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import desktop as dk
+    from ark_relay.core.desktop import Desktop
+    from ark_relay.features import gameupdate_games as gug
+
+    slept, clock = [], {"t": 0.0}
+
+    def fake_sleep(s):
+        slept.append(s)
+        clock["t"] += s
+
+    gug.time = types.SimpleNamespace(sleep=fake_sleep, monotonic=lambda: clock["t"])
+    gug.kill = lambda *names: True
+    spawns = []
+    gug._spawn = lambda exe, cwd=None: spawns.append(exe.name) or True
+    EF = (Path("Endfield.exe"), Path("Launcher.exe"))
+
+    def make_desk(responses):
+        """Real Desktop backed by scripted agent JSON responses so WARNINGs are exercised."""
+        queue = list(responses)
+
+        def spawn_agent(exe, cwd, args):
+            res = Path(args[-1])
+            ans = queue.pop(0) if len(queue) > 1 else queue[0]
+            res.write_text(json.dumps(ans, ensure_ascii=False), encoding="utf-8")
+            return True
+
+        return Desktop(tmpdir() / "state", spawn=spawn_agent, timeout=5)
+
+    def ok_ocr(*words):
+        return {"ok": True, "clicked": [], "log": ["focus: Games 「Launcher」"],
+                "ocr": [{"text": w, "x": 100, "y": 100 + 30 * i, "w": 80, "h": 20} for i, w in enumerate(words)]}
+
+    def ok_click(word):
+        return {"ok": True, "clicked": [[140, 110]], "ocr": [], "log": [f"click_text: 点了「{word}」"]}
+
+    def miss(focus):
+        return {"ok": True, "focus_missing": True, "clicked": [], "ocr": [],
+                "log": [f"focus: 没有 {focus} 的窗口", "skip click: focus missing"]}
+
+    warns = []
+
+    class _W(logging.Handler):
+        def emit(self, rec):
+            if rec.levelno >= logging.WARNING:
+                warns.append(rec.getMessage())
+
+    wh = _W()
+    dk.log.addHandler(wh)
+    try:
+        print("[请重启游戏：首次试探点击启动器缺窗（缩进托盘）→ 静默不发 WARNING，拉回后正常点上]")
+        slept.clear(); clock["t"] = 0.0; spawns.clear(); warns.clear(); probs = []
+        d = make_desk([
+            ok_ocr("更新游戏"),
+            ok_click("更新游戏"),
+            ok_ocr("开始游戏"),
+            ok_click("开始游戏"),
+            ok_ocr("资源初始化更新完成，请重启游戏", "确认"),
+            ok_click("确认"),
+            miss("Games"),
+            ok_click("开始游戏"),
+            ok_ocr("点击任意位置继续"),
+        ])
+        out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+        check("重启路径更新成功", out, "终末地 客户端已通过启动器更新")
+        check("拉回了一次启动器（开头 + 重启后）", len(spawns), 2)
+        check("试探缺窗不发桌面读屏/点击 WARNING", warns, [])
+        check("没有问题", probs, [])
+
+        print("\n[请重启游戏：拉回后第二次点击启动器仍缺窗 → 照常发 WARNING]")
+        slept.clear(); clock["t"] = 0.0; spawns.clear(); warns.clear(); probs = []
+        d = make_desk([
+            ok_ocr("更新游戏"),
+            ok_click("更新游戏"),
+            ok_ocr("开始游戏"),
+            ok_click("开始游戏"),
+            ok_ocr("资源初始化更新完成，请重启游戏", "确认"),
+            ok_click("确认"),
+            miss("Games"),
+            miss("Games"),
+            ok_ocr("点击任意位置继续"),
+        ])
+        out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+        check("第二次正式点击仍缺窗时照常发 1 条 WARNING", len(warns), 1)
+        check("仍等到了标题画面", out, "终末地 客户端已通过启动器更新")
+
+        print("\n[下载等待循环：连续 2 帧缺窗不刷 WARNING，并 _spawn(launcher) 拉回后恢复完成]")
+        slept.clear(); clock["t"] = 0.0; spawns.clear(); warns.clear(); probs = []
+        d = make_desk([
+            ok_ocr("更新游戏"),
+            ok_click("更新游戏"),
+            miss("Games"),
+            miss("Games"),
+            ok_ocr("正在下载 50%"),
+            ok_ocr("开始游戏"),
+            ok_click("开始游戏"),
+            ok_ocr("点击任意位置继续"),
+        ])
+        out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+        check("拉回后下载完成", out, "终末地 客户端已通过启动器更新")
+        check("连续 2 帧缺窗触发拉回启动器（开头 + 拉回）", len(spawns), 2)
+        check("下载等待缺窗不发 WARNING", warns, [])
+        check("没有问题", probs, [])
+
+        print("\n[下载等待循环：仅缺窗 1 帧就恢复 → 不发 WARNING、不额外 _spawn]")
+        slept.clear(); clock["t"] = 0.0; spawns.clear(); warns.clear(); probs = []
+        d = make_desk([
+            ok_ocr("更新游戏"),
+            ok_click("更新游戏"),
+            miss("Games"),
+            ok_ocr("正在下载 80%"),
+            ok_ocr("开始游戏"),
+            ok_click("开始游戏"),
+            ok_ocr("点击任意位置继续"),
+        ])
+        out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+        check("正常完成", out, "终末地 客户端已通过启动器更新")
+        check("单帧缺窗不多拉启动器", len(spawns), 1)
+        check("不发 WARNING", warns, [])
+
+        print("\n[下载等待循环：持续缺窗拉回达上限后不再狂拉，超时照常报问题]")
+        slept.clear(); clock["t"] = 0.0; spawns.clear(); warns.clear(); probs = []
+        d = make_desk([
+            ok_ocr("更新游戏"),
+            ok_click("更新游戏"),
+            miss("Games"),
+        ])
+        out = gug.update_endfield(d, *EF, budget_s=600, poll_s=30, problems=probs, sleep=fake_sleep)
+        check("超时返回空", out, "")
+        check("拉回次数有上限（开头 1 + 最多拉回 _EF_RESPAWN_TRIES）", len(spawns), 1 + gug._EF_RESPAWN_TRIES)
+        check("循环内不刷桌面读屏 WARNING", warns, [])
+        check("超时仍记问题", any("没等到「开始游戏」" in p for p in probs), True)
+    finally:
+        dk.log.removeHandler(wh)
+
+
 def _part_procs_wmi():
     """procs.python_processes on the machine as it was after 2026-10-10 16:05."""
     import gc
@@ -3595,4 +3737,4 @@ ask Tailscale says so (audit 11-08 A-25; dispatch relay-opt-round5-1108 R5-02).
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_apphost_covers_service, _part_estop_verifies, _part_farm_launcher, _part_hidden_launch_quoting, _part_launcher_states, _part_endfield_start_retry, _part_procs_wmi, _part_relaunch, _part_rollback_stop_failed, _part_unknown_process_list, _part_wait_network, _part_watch_handle_close, _part_procwatch_cancel, _part_procwatch_drop, _part_wmi_listener, _part_procnames, _part_watchdog_copy, _part_watchdog_crashloop, _part_watchdog_guard, _part_watchdog_guard_missing, _part_watchdog_push_delivery, _part_gh_watchdog]))
+    sys.exit(run_parts([_part_apphost_covers_service, _part_estop_verifies, _part_farm_launcher, _part_hidden_launch_quoting, _part_launcher_states, _part_endfield_start_retry, _part_endfield_launcher_quiet, _part_procs_wmi, _part_relaunch, _part_rollback_stop_failed, _part_unknown_process_list, _part_wait_network, _part_watch_handle_close, _part_procwatch_cancel, _part_procwatch_drop, _part_wmi_listener, _part_procnames, _part_watchdog_copy, _part_watchdog_crashloop, _part_watchdog_guard, _part_watchdog_guard_missing, _part_watchdog_push_delivery, _part_gh_watchdog]))

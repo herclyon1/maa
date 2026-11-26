@@ -702,7 +702,8 @@ def _rerun_script(cfg, now: datetime, dispatch, script: str,
 
 
 def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = None,
-                 dispatch=None, sleep=time.sleep, clock=None) -> tuple[list[str], list[str], list[str]]:
+                 dispatch=None, sleep=time.sleep, clock=None,
+                 stopping=None) -> tuple[list[str], list[str], list[str]]:
     """Work through everything registered. Returns (update notices, problems, scripts
     that were re-run).
 
@@ -715,6 +716,8 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
     """
     now = now or datetime.now(tz=SERVER_TZ)
     clock = clock or (lambda: datetime.now(tz=SERVER_TZ))
+    if stopping is None:
+        from ark_relay.features.preupdate import going_down as stopping  # noqa: PLC0415
     notes: list[str] = []
     problems: list[str] = []
     reran: list[str] = []
@@ -725,7 +728,8 @@ def run_deferred(cfg, *, now: datetime | None = None, desk: Desktop | None = Non
             log.info("游戏更新：已把跳过的改回队列：%s", "、".join(done))
         return notes, problems, reran
     try:
-        _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran)
+        _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran,
+                       stopping=stopping)
     finally:
         if done := restore_skips(cfg.state_dir, manual_too=False):
             log.info("游戏更新：已把跳过的改回队列：%s", "、".join(done))
@@ -742,12 +746,31 @@ def last_trace() -> list[dict]:
     return list(getattr(_LAST_DESK[0], "trace", None) or [])
 
 
-def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran) -> None:
+def _wait_for_open(end: datetime, clock, sleep, stopping) -> bool:
+    """Wait until `end` (polling once a minute) plus a 2-minute settle.
+    Returns False if `stopping()` becomes true before the wait finishes."""
+    if stopping():
+        return False
+    while clock() < end:
+        sleep(60)
+        if stopping():
+            return False
+    sleep(120)
+    return not stopping()
+
+
+def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems, reran,
+                   stopping=None) -> None:
     desk = desk or Desktop(cfg.state_dir)
     _LAST_DESK[0] = desk
     wins = windows(cfg.state_dir)
     from ark_relay.features import maintenance  # noqa: PLC0415
+    if stopping is None:
+        from ark_relay.features.preupdate import going_down as stopping  # noqa: PLC0415
     for game, why in list(todo.items()):
+        if stopping():
+            log.info("游戏更新：中继正在停止，不再处理 %s", game)
+            return
         script = maintenance.SCRIPT_OF.get(game, "")
         if not relay_updates_client(game) and not needs_rerun(cfg.state_dir, clock(), script):
             # Nothing to prepare (AUTO-MAS updates this client before its next
@@ -767,18 +790,27 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
             notes.append(note + f"（依据：{why}）")
         if not ready:
             problems.append(f"{game}：到 {deadline:%m-%d %H:%M} 仍没准备好客户端，今天不补跑")
+            # Pending carries no date: clear it once this deadline gives up, or a
+            # restart (deadline < now -> budget_s 0) and later days keep retrying and
+            # alarming until cleared by hand. Next boot / failure re-registers if needed.
+            clear_pending(cfg.state_dir, game)
             continue
-        # Ready. Servers still down: close the game when they are more than 10
-        # minutes away, wait for them, then re-run.
-        if end and clock() < end:
-            # Only Endfield is opened here (_prepare_client): 明日方舟 and 鸣潮 open
-            # nothing, so any client of theirs is one the owner opened (s18 F2).
-            if game == "终末地" and end - clock() > timedelta(minutes=10):
-                kill("Endfield.exe")
-            log.info("游戏更新：%s 客户端已就绪，等 %s 开服再补跑", game, end.strftime("%H:%M"))
-            while clock() < end:
-                sleep(60)
-            sleep(120)
+        # Ready. Servers still down: only wait when the script actually needs a
+        # re-run; otherwise finish now instead of holding the shift's power-off.
+        if end:
+            at = clock()
+            if at < end:
+                if not needs_rerun(cfg.state_dir, at, script):
+                    log.info("游戏更新：%s 客户端已就绪，%s 不用补跑，不等开服", game, script)
+                else:
+                    # Only Endfield is opened here (_prepare_client): 明日方舟 and 鸣潮 open
+                    # nothing, so any client of theirs is one the owner opened (s18 F2).
+                    if game == "终末地" and end - at > timedelta(minutes=10):
+                        kill("Endfield.exe")
+                    log.info("游戏更新：%s 客户端已就绪，等 %s 开服再补跑", game, end.strftime("%H:%M"))
+                    if not _wait_for_open(end, clock, sleep, stopping):
+                        log.info("游戏更新：中继正在停止，不再等 %s 开服", game)
+                        return
         _rerun_script(cfg, now, dispatch, script, reran, problems, notes)
         clear_pending(cfg.state_dir, game)
 

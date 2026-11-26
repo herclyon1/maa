@@ -2183,6 +2183,177 @@ def _part_gameupdate_main():  # noqa: C901
     check("报的是那一轮的问题，不是「0 分钟内没等到」", _pr, ["终末地：15 分钟内没等到下载完"])
 
 
+def _part_gameupdate_wait_open():
+    """Endfield ready but no rerun needed skips open wait; open wait stops on going_down."""
+    import json
+    import types
+    from datetime import datetime as _dt, timedelta as _td
+
+    from ark_relay.core.desktop import Line, Screen
+    from ark_relay.features import errwatch, gameupdate as gu, gameupdate_games as gug
+
+    class FakeDesk:
+        def __init__(self, screens):
+            self.screens = list(screens)
+            self.clicks = []
+
+        def read(self, focus=None, settle_ms=0):
+            texts = self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
+            return Screen([Line(t, 100, 100 + 30 * i, 80, 20) for i, t in enumerate(texts)], Path("x.png"))
+
+        def click_text(self, text, focus=None):
+            self.clicks.append(text)
+            return True
+
+    ST = tmpdir()
+    cfg = types.SimpleNamespace(state_dir=ST, automas_dir=None, maa_dir=None,
+                                maaend_dir=ST / "maaend", okww_dir=None)
+    (cfg.maaend_dir / "config").mkdir(parents=True, exist_ok=True)
+    game = ST / "hg" / "games" / "Endfield Game" / "Endfield.exe"
+    game.parent.mkdir(parents=True, exist_ok=True)
+    game.write_bytes(b"")
+    (ST / "hg" / "Launcher.exe").write_bytes(b"")
+    (cfg.maaend_dir / "config" / "mxu-MaaEnd.json").write_text(
+        json.dumps({"connectedProgramPath": str(game)}), encoding="utf-8")
+
+    saved = (gug._spawn, gug.kill, gu.kill, gu.restore_skips)
+    gug._spawn = lambda exe, cwd=None: True
+    gug.kill = lambda *names: None
+    gu.kill = lambda *names: None
+    restored = []
+    real_restore = gu.restore_skips
+    gu.restore_skips = lambda sd, restorer=None, **kw: real_restore(
+        sd, restorer=lambda rec: restored.append(rec["script"]) or True, **kw)
+    try:
+        win = (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ),
+               _dt(2026, 9, 4, 16, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–16:00")
+        now = _dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)
+
+        print("[终末地客户端更新就绪但今天已跑成（needs_rerun=False）：不等 5.5 小时开服]")
+        (ST / "ledger-2026-09-04.jsonl").write_text(
+            json.dumps({"script": "MaaEnd", "ok": True, "raw": {}}) + "\n", encoding="utf-8")
+        gu.save_windows(ST, {"终末地": win})
+        gu.mark_pending(ST, "终末地", "官方公告")
+        slept, dispatched = [], []
+        t_cur = [now]
+
+        def clk():
+            t_cur[0] += _td(minutes=1)
+            return t_cur[0]
+
+        d = FakeDesk([["更新游戏"], ["正在下载"], ["开始游戏"], ["点击任意位置继续"]])
+        notes, probs, reran = gu.run_deferred(
+            cfg, now=now, desk=d,
+            dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+            sleep=slept.append, clock=clk, stopping=lambda: False)
+        check("客户端照常更新并出通知", any("已通过启动器更新" in n for n in notes), True)
+        check("不等开服（没有 60 秒轮询，也没有 120 秒开服缓冲）", (60 in slept, 120 in slept), (False, False))
+        check("不补跑、没问题", (dispatched, reran, probs), ([], [], []))
+        check("登记已清", gu.pending(ST), {})
+
+        print("\n[终末地客户端更新就绪但今天被停一切停过：不等开服，仍写「已停，未补」]")
+        (ST / "ledger-2026-09-04.jsonl").write_text(
+            json.dumps({"script": "MaaEnd", "ok": False,
+                        "raw": {"maintenance": "官方公告", "manual_stop": "09:46 停一切"}}) + "\n",
+            encoding="utf-8")
+        gu.save_windows(ST, {"终末地": win})
+        gu.mark_pending(ST, "终末地", "官方公告")
+        slept.clear(); dispatched.clear(); t_cur[0] = now
+        notes, probs, reran = gu.run_deferred(
+            cfg, now=now, desk=FakeDesk([["开始游戏"]]),
+            dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+            sleep=slept.append, clock=clk, stopping=lambda: False)
+        check("不等开服", (60 in slept, 120 in slept), (False, False))
+        check("通知写已停未补、不补跑", (any("已停，未补" in n for n in notes), dispatched, reran), (True, [], []))
+        check("登记已清", gu.pending(ST), {})
+
+        print("\n[等开服循环期间 stopping() 变真：立刻退出、不补跑、保留登记、改回队列跳过]")
+        (ST / "ledger-2026-09-04.jsonl").write_text(
+            json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n",
+            encoding="utf-8")
+        gu.save_windows(ST, {"终末地": win})
+        gu.mark_pending(ST, "终末地", "官方公告")
+        gu._add_skip(ST, {"queue": "早班", "queueId": "Q", "script": "MaaEnd", "scriptId": "S",
+                          "position": 0, "queueItemId": "I", "days": ["Friday"], "day": "2026-09-04"})
+        slept.clear(); dispatched.clear(); restored.clear(); t_cur[0] = now
+        stop_after = [0]
+
+        def fake_sleep_stop(s):
+            slept.append(s)
+            if s == 60:
+                stop_after[0] += 1
+
+        notes, probs, reran = gu.run_deferred(
+            cfg, now=now, desk=FakeDesk([["开始游戏"]]),
+            dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+            sleep=fake_sleep_stop, clock=clk, stopping=lambda: stop_after[0] >= 2)
+        check("睡两次 60 秒后感应到停机即停，不睡 120 秒", (slept.count(60), 120 in slept), (2, False))
+        check("不补跑、不记故障", (dispatched, reran, probs), ([], [], []))
+        check("未完成补跑故保留待更新登记", "终末地" in gu.pending(ST), True)
+        check("队列跳过仍安全改回", restored, ["MaaEnd"])
+
+        print("\n[默认不传 stopping：感应 errwatch.going_down() 立即退出等开服]")
+        gu.save_windows(ST, {"终末地": win})
+        gu.mark_pending(ST, "终末地", "官方公告")
+        slept.clear(); dispatched.clear(); t_cur[0] = now
+        errwatch.clear_stopping()
+        try:
+            def sleep_sets_stopping(s):
+                slept.append(s)
+                if s == 60:
+                    errwatch.mark_stopping()
+
+            notes, probs, reran = gu.run_deferred(
+                cfg, now=now, desk=FakeDesk([["开始游戏"]]),
+                dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+                sleep=sleep_sets_stopping, clock=clk)
+            check("默认 stopping 绑定 going_down：睡 1 次 60 秒即停、不睡 120 秒",
+                  (slept.count(60), 120 in slept, dispatched), (1, False, []))
+        finally:
+            errwatch.clear_stopping()
+
+        print("\n[客户端超截止未就绪放弃（今天不补跑）：清掉待更新登记，重启和次日不再重复拉起刷告警]")
+        win_short = (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ),
+                     _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")
+        (ST / "ledger-2026-09-04.jsonl").write_text(
+            json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n",
+            encoding="utf-8")
+        gu.save_windows(ST, {"终末地": win_short})
+        gu.mark_pending(ST, "终末地", "官方公告")
+        slept.clear(); dispatched.clear()
+        late = _dt(2026, 9, 4, 13, 55, tzinfo=gu.SERVER_TZ)
+        t_late = [late]
+
+        def clk_late():
+            t_late[0] += _td(minutes=1)
+            return t_late[0]
+
+        notes, probs, reran = gu.run_deferred(
+            cfg, now=late, desk=FakeDesk([["登录", "公告"]]),
+            dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+            sleep=slept.append, clock=clk_late, stopping=lambda: False)
+        check("超截止放弃记入问题", any("仍没准备好客户端，今天不补跑" in p for p in probs), True)
+        check("不补跑", (dispatched, reran), ([], []))
+        check("放弃后已清掉待更新登记", gu.pending(ST), {})
+        # 当天重启（已过 14:00 截止）及次日再调 run_deferred：不再拉起、不再刷告警
+        again_reads = []
+
+        class _NoReadDesk:
+            def read(self, *a, **k):
+                again_reads.append(1)
+                return Screen([], Path("x.png"))
+
+        after_restart = _dt(2026, 9, 4, 14, 5, tzinfo=gu.SERVER_TZ)
+        check("重启后再调 run_deferred 直接空返",
+              gu.run_deferred(cfg, now=after_restart, desk=_NoReadDesk(),
+                              dispatch=lambda s: dispatched.append(s) or (True, "ok"),
+                              sleep=slept.append, clock=lambda: after_restart, stopping=lambda: False),
+              ([], [], []))
+        check("重启后没有再去读启动器", again_reads, [])
+    finally:
+        gug._spawn, gug.kill, gu.kill, gu.restore_skips = saved
+
+
 def _part_gameupdate_restore_paths():
     """A script pulled from a queue for a game update goes back on every path."""
     import types
@@ -4874,4 +5045,4 @@ def _part_masuser_beta3():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3]))
+    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_wait_open, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3]))

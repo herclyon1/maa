@@ -169,6 +169,13 @@ write the result JSON the way agent.ps1 does.
     check("click_text 两字以下要整行相等", "if ($want.Length -le 2) { $t -eq $want }" in ps, True)
     check("旧的纯子串匹配没了", "Where-Object { ($_.text -replace '\\s', '') -like \"*$want*\" }" in ps, False)
     check("OCR 坐标按 TextAngle 旋回原图", "$result.TextAngle" in ps and "[Math]::Cos($rad)" in ps, True)
+    check("AGENT_PS 定义 InWin 过滤聚焦窗口外文字", "function InWin($e)" in ps and "$mx -ge $win.L" in ps, True)
+    ocr_blk = ps.split("'ocr' {", 1)[1].split("'ocrfile' {", 1)[0]
+    click_blk = ps.split("'click_text' {", 1)[1].split("default {", 1)[0]
+    check("ocr 分支窗口增强排在整屏前面", ocr_blk.index("OcrWindow") < ocr_blk.index("Ocr $shot"), True)
+    check("ocr 分支整屏行按 InWin 过滤", "if (InWin $e)" in ocr_blk, True)
+    check("click_text 分支窗口增强排在整屏前面", click_blk.index("OcrWindow") < click_blk.index("Ocr $shot"), True)
+    check("click_text 分支整屏行按 InWin 过滤", "if (InWin $e)" in click_blk, True)
 
     print("\n[等待窗口时 warn_missing=False：照样返回 focus_missing 和 trace，但不刷 WARNING]")
     import logging
@@ -190,6 +197,13 @@ write the result JSON the way agent.ps1 does.
         check("warn_missing=False 不发 WARNING", warns, [])
         d_q.read(focus="Endfield")
         check("默认 warn_missing=True 照常发 1 条 WARNING", len(warns), 1)
+        warns.clear()
+        ok_q = d_q.click_text("开始游戏", focus="Games", warn_missing=False)
+        check("click_text warn_missing=False 返回 False", ok_q, False)
+        check("click_text warn_missing=False trace 仍记 focus_missing", d_q.trace[-1].get("focus_missing"), True)
+        check("click_text warn_missing=False 不发 WARNING", warns, [])
+        ok_w = d_q.click_text("开始游戏", focus="Games")
+        check("click_text 默认 warn_missing=True 返回 False 且发 1 条 WARNING", (ok_w, len(warns)), (False, 1))
     finally:
         dk.log.removeHandler(wh)
 
