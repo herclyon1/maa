@@ -258,6 +258,14 @@ MOVED = {
     "InfrastMode": "Task", "InfrastName": "Task",
 }
 
+# (kind, group, new_key) -> legacy key in pre-v5.8 AUTO-MAS.
+# AUTO-MAS v5.8 split MaaEndUserConfig Task.IfSanity into Task.IfProtocolSpace
+# and Task.IfAutoEssence (app/models/config/script.py, shared.py: task.pop("IfSanity")).
+SPLIT_USER_KEYS: dict[tuple[str, str, str], str] = {
+    ("MaaEnd", "Task", "IfProtocolSpace"): "IfSanity",
+    ("MaaEnd", "Task", "IfAutoEssence"): "IfSanity",
+}
+
 
 def group_of(user: dict, key: str) -> str:
     """The group that holds `key` for this user: its new group when the user has it there,
@@ -470,7 +478,10 @@ CONTRACT: tuple[Item, ...] = tuple([
     *_items("MAA", "user", "Task", ("IfActivityFirst", "ActivityStageIndex"), "activity",
             "snapshot.py:maa_fields, phone.py:state_payload"),
     # ---- MaaEnd user: the items the phone shows and changes (mas_labels.SHOWN)
-    *_items("MaaEnd", "user", "Task", ("IfSanity", "IfAutoUseSpMedication", "SanityTaskType",
+    # AUTO-MAS v5.8 split Task.IfSanity into Task.IfProtocolSpace + Task.IfAutoEssence;
+    # pre-v5.8 configs keeping only Task.IfSanity stay accepted via SPLIT_USER_KEYS.
+    *_items("MaaEnd", "user", "Task", ("IfProtocolSpace", "IfAutoEssence",
+                                       "IfAutoUseSpMedication", "SanityTaskType",
                                        "AutoEssenceSpecifiedLocation"), "maaend_phone",
             "snapshot.py:_mas, mas_labels.py:SHOWN, commands.py:_set_config (write)"),
     # ---- OK-WW user: the quick config the plan shows instead of OK-WW's own file
@@ -549,7 +560,15 @@ def _has(node: dict, group: str, key: str) -> bool:
 def _user_has(user: dict, item: Item) -> bool:
     if MOVED.get(item.key) == item.group:
         return _has(user, group_of(user, item.key), item.key)
-    return _has(user, item.group, item.key)
+    if _has(user, item.group, item.key):
+        return True
+    legacy_key = SPLIT_USER_KEYS.get((item.kind, item.group, item.key))
+    if legacy_key and _has(user, item.group, legacy_key):
+        siblings = [k for (kd, g, k), lk in SPLIT_USER_KEYS.items()
+                    if kd == item.kind and g == item.group and lk == legacy_key]
+        if not any(_has(user, item.group, k) for k in siblings):
+            return True
+    return False
 
 
 def nodes_by_level(cfg_dir: Path, unreadable: list) -> dict[tuple[str, str], list[dict]]:

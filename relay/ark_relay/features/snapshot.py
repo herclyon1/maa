@@ -98,15 +98,29 @@ def _mas(out: dict) -> None:
                 # down: MaaEnd runs from its own mxu-MaaEnd.json and this section
                 # is a dead copy, so it is not printed under the 「真实生效」 heading.
                 quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
-                out["MaaEnd"] = {
+                # AUTO-MAS v5.8 split Task.IfSanity into Task.IfProtocolSpace + Task.IfAutoEssence.
+                has_split = "IfProtocolSpace" in t or "IfAutoEssence" in t
+                if has_split:
+                    if_ps = t.get("IfProtocolSpace")
+                    if_ae = t.get("IfAutoEssence")
+                    sanity_on = None if (if_ps is None and if_ae is None) else (bool(if_ps) or bool(if_ae))
+                else:
+                    if_ps = None
+                    if_ae = None
+                    sanity_on = t.get("IfSanity")
+                maaend_snap = {
                     "这些设置生效吗": "生效" if quick else
                         "❌ 不生效：快速配置是关的，真正跑的是 mxu-MaaEnd.json（母本）",
                     "理智任务": st,
                     "详细": t.get(st) if st else None,
-                    "开理智": t.get("IfSanity"),
-                    "自动吃药": t.get("IfAutoUseSpMedication"),
-                    "基质地点": t.get("AutoEssenceSpecifiedLocation"),
+                    "开理智": sanity_on,
                 }
+                if has_split:
+                    maaend_snap["协议空间"] = if_ps
+                    maaend_snap["自动刷基质"] = if_ae
+                maaend_snap["自动吃药"] = t.get("IfAutoUseSpMedication")
+                maaend_snap["基质地点"] = t.get("AutoEssenceSpecifiedLocation")
+                out["MaaEnd"] = maaend_snap
             elif "OK-WW" in str(name) or "ok-ww" in str(name):
                 quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
                 task = dict(u.get("Task", {}) or {})

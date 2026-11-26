@@ -5151,5 +5151,427 @@ def _part_preupdate_pack_vanished():
         P.time = real_time
 
 
+def _part_maaend_v58_sanity_split():
+    """AUTO-MAS v5.8 split MaaEndUserConfig Task.IfSanity into Task.IfProtocolSpace + Task.IfAutoEssence:
+    mastercfg contract, selfcheck boot check, phone labels/SHOWN/set_config, snapshot, and R-09 guard."""
+    import json
+    import os
+    import types
+
+    from ark_relay.core import mastercfg, texts
+    from ark_relay.features import commands, phone, selfcheck, snapshot
+
+    def _v58_scripts_yaml(task_yaml: str) -> str:
+        return f"""\
+order:
+- uid: s-maa
+  type: MaaConfig
+- uid: s-end
+  type: MaaEndConfig
+data:
+  s-maa:
+    Info:
+      Name: MAA
+      Path: D:\\ark\\maa
+    Run:
+      IfCheckGameUpdate: true
+      IfAutoInstallGameApk: true
+    UserData:
+      order:
+      - uid: u-maa
+        type: MaaUserConfig
+      data:
+        u-maa:
+          Info:
+            Name: arknights
+            Status: true
+            RemainedDay: -1
+          Stage:
+            Stage: 1-7
+            Stage_1: '-'
+            Stage_2: '-'
+            Stage_3: '-'
+            StageMode: Fixed
+            MedicineNumb: 0
+            SeriesNumb: '0'
+          Task:
+            IfFight: true
+            Annihilation: Annihilation
+            IfActivityFirst: true
+            ActivityStageIndex: 1
+          Data:
+            AnnihilationCompletedWeek: 2026-W48
+  s-end:
+    Info:
+      Name: MaaEnd
+      Path: D:\\ark\\maaend
+    Game:
+      WaitTime: 60
+      Path: D:\\endfield\\Endfield.exe
+      LaunchMode: Launcher
+      LauncherPath: D:\\endfield\\Launcher.exe
+      ControllerType: Win32-Front
+      SetResolution: false
+      CloseOnFinish: true
+      RestoreDisplayType: Window
+      RestoreResolution: Off
+    Update:
+      TakeoverEnabled: true
+      Channel: beta
+    UserData:
+      order:
+      - uid: u-end
+        type: MaaEndUserConfig
+      data:
+        u-end:
+          Info:
+            Name: endfield
+            IfQuickConfig: false
+          Task:
+{task_yaml}
+"""
+
+    V58_QUEUES_YAML = """\
+order:
+- uid: q-am
+  type: QueueConfig
+data:
+  q-am:
+    Info:
+      Name: 早班
+      TimeEnabled: true
+      CycleEnabled: false
+      AfterAccomplish: NoAction
+      StartUpMode: Never
+    TimeSet:
+      order:
+      - uid: t1
+        type: TimeSet
+      data:
+        t1:
+          Info:
+            Enabled: true
+            Time: '2000-01-01T01:00:00Z'
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+    QueueItem:
+      order:
+      - uid: i1
+        type: QueueItem
+      data:
+        i1:
+          Info:
+            ScriptId: s-end
+          Schedule:
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+"""
+
+    REAL_V58_TASK_YAML = """\
+            IfProtocolSpace: false
+            IfAutoEssence: true
+            IfAutoUseSpMedication: true
+            SanityTaskType: OperatorProgression
+            AutoEssenceSpecifiedLocation: VFTheHub"""
+
+    def _make_v58_dir(task_yaml: str) -> Path:
+        root = tmpdir("v58-sanity-")
+        cfg_dir = root / "config"
+        cfg_dir.mkdir(parents=True)
+        (cfg_dir / "scripts.yaml").write_text(_v58_scripts_yaml(task_yaml), encoding="utf-8")
+        (cfg_dir / "queues.yaml").write_text(V58_QUEUES_YAML, encoding="utf-8")
+        return root
+
+    print("[1. mastercfg.check contract on real AUTO-MAS v5.8 MaaEnd Task (no IfSanity)]")
+    v58_dir = _make_v58_dir(REAL_V58_TASK_YAML)
+    res_v58 = mastercfg.check(v58_dir, version="v5.8.0")
+    check("v5.8.0 real Task (IfProtocolSpace=false, IfAutoEssence=true, no IfSanity) passes",
+          (res_v58.missing, res_v58.unreadable, res_v58.judged >= 20), ([], [], True))
+    res_nov = mastercfg.check(v58_dir)
+    check("v5.8 real Task with empty version also passes", res_nov.missing, [])
+
+    miss_ps = mastercfg.check(_make_v58_dir("""\
+            IfAutoEssence: true
+            IfAutoUseSpMedication: true
+            SanityTaskType: OperatorProgression
+            AutoEssenceSpecifiedLocation: VFTheHub"""), version="v5.8.0")
+    check("v5.8 missing IfProtocolSpace is flagged",
+          [(i.kind, i.path) for i in miss_ps.missing], [("MaaEnd", "Task.IfProtocolSpace")])
+    check("plain contract line names MaaEnd sanity/essence",
+          any("终末地的理智用途和基质设置" in ln for ln in texts.mas_contract_lines(miss_ps.missing)), True)
+
+    miss_ae = mastercfg.check(_make_v58_dir("""\
+            IfProtocolSpace: false
+            IfAutoUseSpMedication: true
+            SanityTaskType: OperatorProgression
+            AutoEssenceSpecifiedLocation: VFTheHub"""), version="v5.8.0")
+    check("v5.8 missing IfAutoEssence is flagged",
+          [(i.kind, i.path) for i in miss_ae.missing], [("MaaEnd", "Task.IfAutoEssence")])
+
+    miss_both = mastercfg.check(_make_v58_dir("""\
+            IfAutoUseSpMedication: true
+            SanityTaskType: OperatorProgression
+            AutoEssenceSpecifiedLocation: VFTheHub"""), version="v5.8.0")
+    check("v5.8 missing both split switches flags both",
+          [(i.kind, i.path) for i in miss_both.missing],
+          [("MaaEnd", "Task.IfProtocolSpace"), ("MaaEnd", "Task.IfAutoEssence")])
+
+    half_broken = mastercfg.check(_make_v58_dir("""\
+            IfSanity: true
+            IfProtocolSpace: false
+            IfAutoUseSpMedication: true
+            SanityTaskType: OperatorProgression
+            AutoEssenceSpecifiedLocation: VFTheHub"""), version="v5.8.0")
+    check("half-migrated config (IfProtocolSpace + stale IfSanity, missing IfAutoEssence) still flags IfAutoEssence",
+          [(i.kind, i.path) for i in half_broken.missing], [("MaaEnd", "Task.IfAutoEssence")])
+
+    legacy_only = mastercfg.check(_make_v58_dir("""\
+            IfSanity: true
+            IfAutoUseSpMedication: true
+            SanityTaskType: OperatorProgression
+            AutoEssenceSpecifiedLocation: VFTheHub"""), version="v5.7.0-beta.4")
+    check("legacy pre-v5.8 config keeping only IfSanity stays smoothly compatible",
+          legacy_only.missing, [])
+
+    print("\n[2. selfcheck boot contract check & report_contract on real v5.8 layout]")
+    state_dir = v58_dir / "state"
+    state_dir.mkdir()
+    cfg = types.SimpleNamespace(automas_dir=str(v58_dir), state_dir=state_dir, history_dir=str(v58_dir),
+                                phone_topic="t-v58", phone_pin="1234")
+    saved_env = {k: os.environ.get(k) for k in ("ARK_LOG_FILE", "ARK_STATE_DIR")}
+    os.environ["ARK_LOG_FILE"] = str(v58_dir / "log" / "relay.log")
+    orig_mas = commands._mas
+    orig_gaps = selfcheck._handed_updates_gaps
+    orig_live_ver = selfcheck._live_automas_version
+    commands._mas = lambda *a, **k: {"data": {}}
+    selfcheck._handed_updates_gaps = lambda scripts: []
+    selfcheck._live_automas_version = lambda: "v5.8.0"
+    try:
+        checks = selfcheck.run(
+            cfg,
+            procs=lambda: [(1, r"D:\ark\automas\repo\main.py")],
+            mas_up=lambda: True,
+            schedule=lambda: [{"name": "早班", "times": ["09:00"]}],
+            channels=lambda: ["群"],
+            run_ok=lambda cmd: (True, ""),
+            has_module=lambda m: True,
+            virt=lambda: "VBS=0 HV=False",
+        )
+        c_contract = [c for c in checks if c.name == texts.MAS_CONTRACT_CHECK]
+        check("selfcheck.run MAS_CONTRACT_CHECK passes on v5.8",
+              [(c.ok, c.detail) for c in c_contract], [(True, "")])
+
+        sent = []
+        notifier = types.SimpleNamespace(channels=["群"], send=lambda t, b, alert=False: (sent.append((t, b, alert)), [])[1])
+        rc = selfcheck.report_contract(cfg, notifier, "v5.8.0")
+        check("selfcheck.report_contract passes with 0 alarms on v5.8", (rc.ok, sent), (True, []))
+
+        bad_cfg = types.SimpleNamespace(automas_dir=str(_make_v58_dir("""\
+            IfProtocolSpace: false
+            IfAutoUseSpMedication: true
+            SanityTaskType: OperatorProgression
+            AutoEssenceSpecifiedLocation: VFTheHub""")))
+        bad_chk = selfcheck.contract_check(bad_cfg)
+        check("selfcheck.contract_check fails when IfAutoEssence missing",
+              (bad_chk.ok, "终末地的理智用途和基质设置" in bad_chk.detail), (False, True))
+    finally:
+        commands._mas = orig_mas
+        selfcheck._handed_updates_gaps = orig_gaps
+        selfcheck._live_automas_version = orig_live_ver
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    print("\n[3. phone SHOWN, v5.8 package labels (config/script.py + shared.py), receipt_target, and set_config]")
+    check("SHOWN contains IfProtocolSpace, IfAutoEssence, and legacy IfSanity",
+          all(k in phone.SHOWN for k in ("Task.IfProtocolSpace", "Task.IfAutoEssence", "Task.IfSanity")), True)
+    check("receipt_target for Task.IfProtocolSpace & Task.IfAutoEssence",
+          (phone.receipt_target({"action": "set_config", "script": "MaaEnd", "path": "Task.IfProtocolSpace"}),
+           phone.receipt_target({"action": "set_config", "script": "MaaEnd", "path": "Task.IfAutoEssence"})),
+          ("MaaEnd:Task.IfProtocolSpace", "MaaEnd:Task.IfAutoEssence"))
+
+    pkg_root = tmpdir("v58-models-")
+    mod_cfg = pkg_root / "app" / "models" / "config"
+    mod_cfg.mkdir(parents=True)
+    (mod_cfg / "shared.py").write_text('''\
+def init_maaend_task_config(config) -> None:
+    ## 理智任务类型
+    config.Task_SanityTaskType = ConfigItem("Task", "SanityTaskType", "OperatorProgression")
+    ## 基质刷取地点
+    config.Task_AutoEssenceSpecifiedLocation = ConfigItem("Task", "AutoEssenceSpecifiedLocation", "VFTheHub")
+    ## 自动使用应急理智加强剂
+    config.Task_IfAutoUseSpMedication = ConfigItem("Task", "IfAutoUseSpMedication", True)
+''', encoding="utf-8")
+    (mod_cfg / "script.py").write_text('''\
+class MaaEndUserConfig(ConfigBase):
+    def __init__(self):
+        ## 协议空间开关
+        self.Task_IfProtocolSpace = ConfigItem("Task", "IfProtocolSpace", False)
+        ## 自动刷基质开关
+        self.Task_IfAutoEssence = ConfigItem("Task", "IfAutoEssence", True)
+        init_maaend_task_config(self)
+''', encoding="utf-8")
+    opts = phone._options(types.SimpleNamespace(automas_dir=pkg_root))
+    lbls = opts.get("_labels") or {}
+    check("phone._options extracts v5.8 split labels across app/models/config/{script,shared}.py",
+          {k: lbls.get(k) for k in (
+              "MaaEnd|Task.IfProtocolSpace", "MaaEnd|Task.IfAutoEssence",
+              "MaaEnd|Task.IfAutoUseSpMedication", "MaaEnd|Task.SanityTaskType",
+              "MaaEnd|Task.AutoEssenceSpecifiedLocation",
+          )},
+          {
+              "MaaEnd|Task.IfProtocolSpace": "协议空间开关",
+              "MaaEnd|Task.IfAutoEssence": "自动刷基质开关",
+              "MaaEnd|Task.IfAutoUseSpMedication": "自动使用应急理智加强剂",
+              "MaaEnd|Task.SanityTaskType": "理智任务类型",
+              "MaaEnd|Task.AutoEssenceSpecifiedLocation": "基质刷取地点",
+          })
+
+    live_user = {
+        "Info": {"Name": "endfield", "IfQuickConfig": True},
+        "Task": {
+            "IfProtocolSpace": False,
+            "IfAutoEssence": True,
+            "IfAutoUseSpMedication": True,
+            "SanityTaskType": "OperatorProgression",
+            "AutoEssenceSpecifiedLocation": "VFTheHub",
+        },
+    }
+
+    def fake_mas(path, body=None, timeout=15):
+        if path == "/api/scripts/get":
+            return {"data": {"s-end": {"Info": {"Name": "MaaEnd", "Path": r"D:\ark\maaend"}}}}
+        if path == "/api/scripts/user/get":
+            return {"data": {"u-end": live_user}}
+        if path == "/api/scripts/user/update":
+            for grp, kv in (body.get("data") or {}).items():
+                live_user.setdefault(grp, {}).update(kv)
+            return {"code": 200, "status": "success"}
+        raise AssertionError(path)
+
+    orig_mas2 = commands._mas
+    orig_snap_post = snapshot._post
+    commands._mas = fake_mas
+    snapshot._post = fake_mas
+    try:
+        print("\n[4. snapshot._mas on real v5.8 MaaEnd Task + legacy v5.7 Task]")
+        snap_out: dict = {}
+        snapshot._mas(snap_out)
+        ef_snap = snap_out.get("MaaEnd") or {}
+        check("snapshot._mas on v5.8 exposes 开理智=True, 协议空间=False, 自动刷基质=True and essence/meds",
+              (ef_snap.get("开理智"), ef_snap.get("协议空间"), ef_snap.get("自动刷基质"),
+               ef_snap.get("自动吃药"), ef_snap.get("理智任务"), ef_snap.get("基质地点")),
+              (True, False, True, True, "OperatorProgression", "VFTheHub"))
+
+        # Phone modification through commands._set_config on v5.8
+        ok_ps, _ = commands._set_config({"script": "MaaEnd", "path": "Task.IfProtocolSpace", "value": True})
+        ok_ae, _ = commands._set_config({"script": "MaaEnd", "path": "Task.IfAutoEssence", "value": False})
+        ok_loc, _ = commands._set_config({"script": "MaaEnd", "path": "Task.AutoEssenceSpecifiedLocation", "value": "WLQingboStockade"})
+        ok_old, msg_old = commands._set_config({"script": "MaaEnd", "path": "Task.IfSanity", "value": False})
+        check("set_config updates Task.IfProtocolSpace / Task.IfAutoEssence / Location and rejects absent IfSanity",
+              (ok_ps, ok_ae, ok_loc, ok_old, "没有 Task.IfSanity" in msg_old,
+               live_user["Task"]["IfProtocolSpace"], live_user["Task"]["IfAutoEssence"],
+               live_user["Task"]["AutoEssenceSpecifiedLocation"]),
+              (True, True, True, False, True, True, False, "WLQingboStockade"))
+
+        # Both split switches off -> snapshot 开理智 is False
+        live_user["Task"]["IfProtocolSpace"] = False
+        live_user["Task"]["IfAutoEssence"] = False
+        snap_off: dict = {}
+        snapshot._mas(snap_off)
+        check("snapshot._mas when both v5.8 switches False -> 开理智=False",
+              (snap_off["MaaEnd"]["开理智"], snap_off["MaaEnd"]["协议空间"], snap_off["MaaEnd"]["自动刷基质"]),
+              (False, False, False))
+
+        # Legacy v5.7 Task (IfSanity only) -> snapshot & set_config stay compatible
+        live_user["Task"] = {
+            "IfSanity": True, "IfAutoUseSpMedication": False,
+            "SanityTaskType": "ProtocolSpace", "AutoEssenceSpecifiedLocation": "",
+        }
+        snap_v57: dict = {}
+        snapshot._mas(snap_v57)
+        ok_v57, _ = commands._set_config({"script": "MaaEnd", "path": "Task.IfSanity", "value": False})
+        check("legacy v5.7 Task keeps snapshot 开理智=True and set_config Task.IfSanity working",
+              (snap_v57["MaaEnd"]["开理智"], "协议空间" in snap_v57["MaaEnd"], ok_v57, live_user["Task"]["IfSanity"]),
+              (True, False, True, False))
+    finally:
+        commands._mas = orig_mas2
+        snapshot._post = orig_snap_post
+
+    print("\n[5. R-09 guard_maaend_protocol_space works alongside v5.8 scripts.yaml]")
+    cfg_dir_m = v58_dir / "data" / "s-end" / "Default" / "ConfigFile"
+    cfg_dir_m.mkdir(parents=True)
+    master = cfg_dir_m / "mxu-MaaEnd.json"
+
+    def _write_m(ps_on: bool, ae_on: bool, ps_ctl: bool | None = None):
+        doc = {
+            "instances": [{
+                "id": "automas",
+                "name": "AUTO-MAS",
+                "controllerName": "Win32",
+                "tasks": [
+                    {
+                        "taskName": "ProtocolSpace",
+                        "enabled": ps_on,
+                        "enabledByController": {"Win32": ps_on if ps_ctl is None else ps_ctl},
+                        "optionValues": {},
+                    },
+                    {
+                        "taskName": "AutoEssence",
+                        "enabled": ae_on,
+                        "enabledByController": {"Win32": ae_on},
+                        "optionValues": {},
+                    },
+                ],
+            }]
+        }
+        master.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    saved_sd = os.environ.get("ARK_STATE_DIR")
+    os.environ["ARK_STATE_DIR"] = str(state_dir)
+    try:
+        _write_m(ps_on=True, ae_on=False)
+        ch1, _ = mastercfg.guard_maaend_protocol_space(v58_dir, state_dir)
+        check("healthy ProtocolSpace records intent without changes", ch1, [])
+
+        # External rewrite unticks both ProtocolSpace and AutoEssence -> auto-restored
+        _write_m(ps_on=False, ae_on=False, ps_ctl=False)
+        ch2, note2 = mastercfg.guard_maaend_protocol_space(v58_dir, state_dir)
+        ps_after = mastercfg._maaend_task(json.loads(master.read_text(encoding="utf-8")), "ProtocolSpace")
+        check("accidental external untick restored to ProtocolSpace=True with controller sync",
+              (bool(ch2), "协议空间" in note2, ps_after["enabled"], ps_after["enabledByController"]["Win32"]),
+              (True, True, True, True))
+
+        # Intentional switch via write_maaend to AutoEssence is respected
+        ok_w1, _ = mastercfg.write_maaend(v58_dir, None, "AutoEssence/@enabled", True)
+        ok_w2, _ = mastercfg.write_maaend(v58_dir, None, "ProtocolSpace/@enabled", False)
+        ch3, _ = mastercfg.guard_maaend_protocol_space(v58_dir, state_dir)
+        doc_final = json.loads(master.read_text(encoding="utf-8"))
+        check("intentional write_maaend switch to AutoEssence is never reverted",
+              (ok_w1, ok_w2, ch3,
+               mastercfg._maaend_task(doc_final, "ProtocolSpace")["enabled"],
+               mastercfg._maaend_task(doc_final, "AutoEssence")["enabled"]),
+              (True, True, [], False, True))
+    finally:
+        if saved_sd is None:
+            os.environ.pop("ARK_STATE_DIR", None)
+        else:
+            os.environ["ARK_STATE_DIR"] = saved_sd
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_wait_open, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3, _part_preupdate_pack_vanished]))
+    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_wait_open, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3, _part_preupdate_pack_vanished, _part_maaend_v58_sanity_split]))

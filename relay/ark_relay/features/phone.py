@@ -521,13 +521,23 @@ def _mas_labels(automas_dir) -> dict:
     if not models.is_dir():
         log.warning("找不到 AUTO-MAS 的 models 目录，手机上只能显示英文字段名")
         return out
-    for f in sorted(models.glob("*.py")):
+    # AUTO-MAS v5.8 split app/models/config.py into app/models/config/{script,shared,...}.py,
+    # so scan recursively and resolve cross-file helper calls (e.g. init_maaend_task_config).
+    files: list[tuple[str, dict[str, str]]] = []
+    all_helpers: dict[str, str] = {}
+    for f in sorted(models.rglob("*.py")):
+        if any(p.startswith(".") or p == "__pycache__" for p in f.relative_to(models).parts):
+            continue
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        marks = list(_CLASS.finditer(text))
         helpers = _helpers(text)
+        files.append((text, helpers))
+        for name, src in helpers.items():
+            all_helpers.setdefault(name, src)
+    for text, helpers in files:
+        marks = list(_CLASS.finditer(text))
         for i, cm in enumerate(marks):
             game = _CLASS_OF.get(cm.group(1))
             if not game:
@@ -537,7 +547,8 @@ def _mas_labels(automas_dir) -> dict:
             found = _items(body)
             # Module-level helpers the class calls with itself declare fields too.
             for name in dict.fromkeys(re.findall(r"\b(\w+)\(self\)", body)):
-                for path, info in _items(helpers.get(name, "")).items():
+                src = helpers.get(name) or all_helpers.get(name, "")
+                for path, info in _items(src).items():
                     found.setdefault(path, info)
             out[game].update(found)
     return out
@@ -606,7 +617,10 @@ SHOWN = (
     "Stage.Stage", "Stage.StageMode", "Stage.MedicineNumb", "Stage.SeriesNumb",
     "Task.Annihilation", "Task.IfFight", "Task.IfActivityFirst",
     "Task.ActivityStageIndex", "Task.ActivityMedicineNumb",
-    "Task.IfSanity", "Task.IfAutoUseSpMedication", "Task.SanityTaskType",
+    # AUTO-MAS v5.8 split Task.IfSanity into Task.IfProtocolSpace + Task.IfAutoEssence;
+    # Task.IfSanity stays listed for pre-v5.8 compatibility.
+    "Task.IfSanity", "Task.IfProtocolSpace", "Task.IfAutoEssence",
+    "Task.IfAutoUseSpMedication", "Task.SanityTaskType",
     "Task.AutoEssenceSpecifiedLocation",
     "Task.WhichToFarm", "Task.WhichTacetSuppressionToFarm",
     "Task.WhichForgeryChallengeToFarm", "Task.MaterialSelection",
