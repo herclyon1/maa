@@ -358,6 +358,12 @@ def _announce_banners(eng, now: datetime,
              if not eng.state.banner_announced(f"{d[0]}-{d[1]:%Y%m%d%H%M}")]
     if not fresh:
         return
+    from ark_relay.features import hardlock  # noqa: PLC0415
+    sd = getattr(getattr(eng, "cfg", None), "state_dir", None) or getattr(getattr(eng, "state", None), "dir", None)
+    if hardlock.active(sd, "wechat"):
+        log.info("明天开新卡池播报暂缓（微信推送硬锁中，解锁后补发）：%s",
+                 "、".join(g for g, _, _ in fresh))
+        return
     title, body = banners.group_notice(fresh)
     if not title:
         return

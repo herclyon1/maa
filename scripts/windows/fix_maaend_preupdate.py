@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import importlib.util
 import json
 import os
 import re
@@ -32,11 +33,56 @@ if str(_RELAY) not in sys.path:
     sys.path.insert(0, str(_RELAY))
 
 from ark_relay.core import mastercfg  # noqa: E402
+from ark_relay.features import hardlock as _relay_hardlock  # noqa: E402
 
 DEFAULT_SCRIPTS_YAML = Path(r"D:\ark\automas\config\scripts.yaml")
 DEFAULT_HARDLOCK = Path(r"C:\ProgramData\ark-relay\state\HARDLOCK.json")
+_MAC_HARDLOCK_SCRIPT = Path("/Users/herclyon/Money/审批记录/硬锁/hardlock.py")
 WANT_TAKEOVER = True
 WANT_CHANNEL = mastercfg.MAAEND_PREUPDATE_WANT_CHANNEL
+
+
+def _check_mac_hardlock() -> str:
+    if os.name == "nt" or not _MAC_HARDLOCK_SCRIPT.is_file():
+        return ""
+    try:
+        spec = importlib.util.spec_from_file_location("hardlock_1126", str(_MAC_HARDLOCK_SCRIPT))
+        if spec is None or spec.loader is None:
+            return "Mac 硬锁模块无法加载，按锁定处理"
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        locked, msg = mod.check("relay")
+        return str(msg or "Mac 硬锁中") if locked else ""
+    except Exception as exc:  # noqa: BLE001 - fail-closed on hardlock check error
+        return f"Mac 硬锁检查异常（{type(exc).__name__}），按锁定处理"
+
+
+def check_hardlock(hardlock_file: Path = DEFAULT_HARDLOCK, *, explicit: bool | None = None) -> str:
+    """Return non-empty lock reason if writes are forbidden; '' when unlocked.
+
+    Delegates directly to `ark_relay.features.hardlock.active(state_dir, "relay")`
+    so sticky state.json locks, corrupt files, and forged `locked:false`/`unlocked:true`
+    files are all refused fail-closed. Also enforces `LOCKED_UNAVAILABLE.flag` and
+    (when using the default path on Mac) the Mac hardlock module.
+    """
+    state_dir = hardlock_file.parent
+    flag = state_dir.parent / "LOCKED_UNAVAILABLE.flag"
+    if flag.exists():
+        return f"不可用标记 {flag} 存在，禁止写入"
+    try:
+        if _relay_hardlock.active(state_dir, "relay"):
+            return f"中继硬锁生效中（{state_dir}），拒绝写入"
+        if hardlock_file.name != _relay_hardlock.LOCK_FILE and hardlock_file.exists():
+            data = json.loads(hardlock_file.read_text(encoding="utf-8-sig"))
+            if not (isinstance(data, dict) and _relay_hardlock.released_ok(data.get("release"), "relay")):
+                return f"硬锁文件 {hardlock_file} 未含合规解锁记录，拒绝写入"
+    except Exception as exc:  # noqa: BLE001 - fail-closed on any hardlock check error
+        return f"硬锁检查异常（{type(exc).__name__}），按锁定处理"
+    use_explicit = (hardlock_file != DEFAULT_HARDLOCK) if explicit is None else explicit
+    if not use_explicit:
+        if mac_why := _check_mac_hardlock():
+            return mac_why
+    return ""
 
 
 def _mas_base() -> str:
@@ -210,8 +256,8 @@ def patch_yaml_text(text: str) -> str:
 
 def apply_yaml_file(path: Path, *, hardlock_file: Path = DEFAULT_HARDLOCK) -> dict:
     """Backup and atomically patch `scripts.yaml` (refuses while hardlocked)."""
-    if hardlock_file.exists():
-        raise PermissionError(f"硬锁文件存在（{hardlock_file}），禁止写入 {path}")
+    if why := check_hardlock(hardlock_file):
+        raise PermissionError(f"{why}，禁止写入 {path}")
     raw = path.read_text(encoding="utf-8")
     before = inspect_yaml_text(raw, name=path.name)
     if before["ok"]:
@@ -239,8 +285,8 @@ def apply_yaml_file(path: Path, *, hardlock_file: Path = DEFAULT_HARDLOCK) -> di
 
 def apply_via_api(*, hardlock_file: Path = DEFAULT_HARDLOCK, post=None) -> dict:
     """Update MaaEnd's Update.TakeoverEnabled/Channel through live AUTO-MAS API."""
-    if hardlock_file.exists():
-        raise PermissionError(f"硬锁文件存在（{hardlock_file}），禁止修改运行中的 AUTO-MAS")
+    if why := check_hardlock(hardlock_file):
+        raise PermissionError(f"{why}，禁止修改运行中的 AUTO-MAS")
     post = post or _mas_post
     scripts = post("/api/scripts/get").get("data") or {}
     before = inspect_scripts_dict(scripts)

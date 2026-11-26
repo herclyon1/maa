@@ -546,7 +546,8 @@ def step(eng, now: datetime | None = None, *, cache_path: Path | None = None,
          friend_post=None, friend_sync: bool = False) -> list[AkActivity]:
     """Check for newly opened Arknights activities, notify group + friend queue once each."""
     from ark_relay.features import hardlock  # noqa: PLC0415
-    if hardlock.active(getattr(eng.cfg, "state_dir", None)):
+    sd = getattr(eng.cfg, "state_dir", None) or getattr(getattr(eng, "state", None), "dir", None)
+    if hardlock.active(sd, "relay") or hardlock.active(sd, "wechat"):
         return []
     now_bj = _as_bj(now)
     cache_acts = read_local_activities(

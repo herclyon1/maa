@@ -107,32 +107,31 @@ def _check_mac_hardlock() -> str:
 
 
 def check_hardlock(hardlock_path: Path | None = None, *, explicit: bool = False) -> str:
-    """Return non-empty lock reason if writes are forbidden; '' when unlocked."""
+    """Return non-empty lock reason if writes are forbidden; '' when unlocked.
+
+    Delegates directly to `ark_relay.features.hardlock.active(state_dir, "relay")`
+    so sticky state.json locks, corrupt files, and forged `locked:false`/`unlocked:true`
+    files are all refused fail-closed. Also enforces `LOCKED_UNAVAILABLE.flag` and
+    (unless `explicit` overrides the path for isolated tests) the Mac hardlock module.
+    """
     path = hardlock_path or (_default_state_dir() / "HARDLOCK.json")
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return f"硬锁文件 {path} 存在且不可读，按锁定处理"
-        if not isinstance(data, dict):
-            return f"硬锁文件 {path} 格式异常，按锁定处理"
-        if data.get("locked") is not False and data.get("unlocked") is not True:
-            released = False
-            if isinstance(data.get("release"), dict):
-                try:
-                    relay_root = Path(__file__).resolve().parents[2] / "relay"
-                    if str(relay_root) not in sys.path:
-                        sys.path.insert(0, str(relay_root))
-                    from ark_relay.features import hardlock as _hl  # noqa: PLC0415
-                    released = _hl.released_ok(data.get("release"), "relay")
-                except Exception:  # noqa: BLE001 - fail-closed when release check fails
-                    released = False
-            if not released:
-                reason = str(data.get("reason") or "").strip()
-                return f"HARDLOCK 生效中（{reason}）" if reason else f"HARDLOCK 生效中（{path}）"
-    flag = path.parent.parent / "LOCKED_UNAVAILABLE.flag"
+    state_dir = path.parent
+    flag = state_dir.parent / "LOCKED_UNAVAILABLE.flag"
     if flag.exists():
         return f"不可用标记 {flag} 存在，禁止写入"
+    try:
+        relay_root = Path(__file__).resolve().parents[2] / "relay"
+        if str(relay_root) not in sys.path:
+            sys.path.insert(0, str(relay_root))
+        from ark_relay.features import hardlock as _hl  # noqa: PLC0415
+        if _hl.active(state_dir, "relay"):
+            return f"中继硬锁生效中（{state_dir}），拒绝写入"
+        if path.name != _hl.LOCK_FILE and path.exists():
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+            if not (isinstance(data, dict) and _hl.released_ok(data.get("release"), "relay")):
+                return f"硬锁文件 {path} 未含合规解锁记录，拒绝写入"
+    except Exception as exc:  # noqa: BLE001 - fail-closed on any hardlock check error
+        return f"硬锁检查异常（{type(exc).__name__}），按锁定处理"
     if not explicit:
         if mac_why := _check_mac_hardlock():
             return mac_why

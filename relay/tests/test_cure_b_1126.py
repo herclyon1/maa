@@ -255,7 +255,28 @@ def _part_r02_maaend_preupdate():
           (False, False, "stable"))
     check("read-only check leaves file byte-identical", yaml_path.read_bytes(), orig_bytes)
 
-    hardlock = root / "HARDLOCK.json"
+    from ark_relay.features import hardlock as hl_mod
+    valid_rel = {
+        "release": {
+            "problems": [
+                {"ledger_id": x, "problem": "p", "fix": "f", "test": "t", "evidence": "/e", "rc": 0}
+                for x in hl_mod.LEDGERS["relay"]
+            ],
+            "unresolved": 0,
+            "confirmed_root_cured": True,
+            "fixed_by": ["fixer-1"],
+            "main_sessions": ["main-1"],
+            "verifier": {
+                "agent_id": "verifier-9",
+                "question": hl_mod.QUESTION,
+                "verdict": hl_mod.VERDICT,
+                "transcript": "/t",
+            },
+        }
+    }
+    hl_state = root / "hl_state"
+    hl_state.mkdir()
+    hardlock = hl_state / "HARDLOCK.json"
     hardlock.write_text('{"locked": true}', encoding="utf-8")
     buf2 = io.StringIO()
     with redirect_stdout(buf2):
@@ -263,7 +284,25 @@ def _part_r02_maaend_preupdate():
     check("--apply refused with exit 4 while HARDLOCK.json exists", rc_lock, 4)
     check("file still byte-identical after hardlock refusal", yaml_path.read_bytes(), orig_bytes)
 
+    # Adversarial 1: deleting HARDLOCK.json while state.json holds sticky lock MUST still refuse RC=4.
     hardlock.unlink()
+    buf2b = io.StringIO()
+    with redirect_stdout(buf2b):
+        rc_sticky = fx.main(["--apply", "--file", str(yaml_path), "--hardlock-file", str(hardlock), "--json"])
+    check("--apply refused with exit 4 after deleting HARDLOCK.json (sticky state.json lock)", rc_sticky, 4)
+    check("file still byte-identical after sticky lock refusal", yaml_path.read_bytes(), orig_bytes)
+
+    # Adversarial 2: forged {"locked": false} and {"unlocked": true} MUST still refuse RC=4.
+    for fake_lbl, fake_obj in (("locked=false", {"locked": False}), ("unlocked=true", {"unlocked": True})):
+        hardlock.write_text(json.dumps(fake_obj), encoding="utf-8")
+        buf_fk = io.StringIO()
+        with redirect_stdout(buf_fk):
+            rc_fk = fx.main(["--apply", "--file", str(yaml_path), "--hardlock-file", str(hardlock), "--json"])
+        check(f"--apply refused with exit 4 on forged {fake_lbl}", rc_fk, 4)
+        check(f"file byte-identical after forged {fake_lbl}", yaml_path.read_bytes(), orig_bytes)
+
+    # Valid release unlocks sticky lock and allows --apply.
+    hardlock.write_text(json.dumps(valid_rel, ensure_ascii=False), encoding="utf-8")
     buf3 = io.StringIO()
     with redirect_stdout(buf3):
         rc_apply = fx.main(["--apply", "--file", str(yaml_path), "--hardlock-file", str(hardlock), "--json"])

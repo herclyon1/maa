@@ -582,6 +582,25 @@ def _part_set_maa_os4_medicine999():
               any(p == "/api/scripts/user/update" for p, _ in state["calls"]), False)
 
         # 2. --apply under HARDLOCK.json -> RC=4, ZERO HTTP calls!
+        from ark_relay.features import hardlock as hl
+        valid_rel = {
+            "release": {
+                "problems": [
+                    {"ledger_id": x, "problem": "p", "fix": "f", "test": "t", "evidence": "/e", "rc": 0}
+                    for x in hl.LEDGERS["relay"]
+                ],
+                "unresolved": 0,
+                "confirmed_root_cured": True,
+                "fixed_by": ["fixer-1"],
+                "main_sessions": ["main-1"],
+                "verifier": {
+                    "agent_id": "verifier-9",
+                    "question": hl.QUESTION,
+                    "verdict": hl.VERDICT,
+                    "transcript": "/t",
+                },
+            }
+        }
         state["calls"].clear()
         hl_file.write_text(json.dumps({"locked": True, "reason": "11-26 硬锁"}), encoding="utf-8")
         r_lk = subprocess.run(
@@ -593,6 +612,27 @@ def _part_set_maa_os4_medicine999():
         check("HARDLOCK 锁态零 API 请求", len(state["calls"]), 0)
         check("HARDLOCK 锁态不建备份", bak_dir.exists(), False)
 
+        # 2b. Deleting HARDLOCK.json while state.json holds sticky mark -> STILL RC=4!
+        hl_file.unlink()
+        r_sticky = subprocess.run(
+            [py, str(script_path), "--apply", "--mas-url", base_url,
+             "--hardlock", str(hl_file), "--backup-dir", str(bak_dir)],
+            capture_output=True, text=True, check=False,
+        )
+        check("删掉 HARDLOCK.json 保留 state.json 粘性锁仍拒写 RC=4", r_sticky.returncode, 4)
+        check("粘性锁态零 API 请求", len(state["calls"]), 0)
+
+        # 2c. Forged {"locked": false} and {"unlocked": true} -> STILL RC=4!
+        for fake_name, fake_body in (("locked=false", {"locked": False}), ("unlocked=true", {"unlocked": True})):
+            hl_file.write_text(json.dumps(fake_body), encoding="utf-8")
+            r_fake = subprocess.run(
+                [py, str(script_path), "--apply", "--mas-url", base_url,
+                 "--hardlock", str(hl_file), "--backup-dir", str(bak_dir)],
+                capture_output=True, text=True, check=False,
+            )
+            check(f"伪造 {fake_name} 仍拒写 RC=4", r_fake.returncode, 4)
+            check(f"伪造 {fake_name} 零 API 请求", len(state["calls"]), 0)
+
         # 3. Corrupt HARDLOCK.json -> fail-closed RC=4, zero calls.
         hl_file.write_text("not-json", encoding="utf-8")
         r_bad = subprocess.run(
@@ -603,8 +643,8 @@ def _part_set_maa_os4_medicine999():
         check("损坏 HARDLOCK.json 按锁拒写 RC=4", r_bad.returncode, 4)
         check("损坏 HARDLOCK.json 零 API 请求", len(state["calls"]), 0)
 
-        # 4. Unlocked --apply -> RC=0, backup written, all 8 fields written & read-back verified!
-        hl_file.write_text(json.dumps({"locked": False}), encoding="utf-8")
+        # 4. Valid release unlocks --apply -> RC=0, backup written, all 8 fields written & read-back verified!
+        hl_file.write_text(json.dumps(valid_rel, ensure_ascii=False), encoding="utf-8")
         r_app = subprocess.run(
             [py, str(script_path), "--apply", "--mas-url", base_url,
              "--hardlock", str(hl_file), "--backup-dir", str(bak_dir)],
@@ -658,11 +698,154 @@ def _part_set_maa_os4_medicine999():
     check("run_check/run_apply 可导入", (callable(mod.run_check), callable(mod.run_apply)), (True, True))
 
 
+def _part_engine_tick_flush_and_dual_lock_transition():
+    """Real entry points: Engine.tick() drains friend-events-queue.json on unlock/recovery,
+    and relay-unlocked + wechat-locked NEVER marks unsent notices as permanently deduplicated."""
+    import os
+    import time
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import ak_activity, friend_events, hardlock as hl, phone, report
+
+    def _valid_release(kind: str) -> dict:
+        return {
+            "release": {
+                "problems": [
+                    {"ledger_id": x, "problem": "p", "fix": "f", "test": "t", "evidence": "/e", "rc": 0}
+                    for x in hl.LEDGERS[kind]
+                ],
+                "unresolved": 0,
+                "confirmed_root_cured": True,
+                "fixed_by": ["fixer-1"],
+                "main_sessions": ["main-1"],
+                "verifier": {
+                    "agent_id": "verifier-9",
+                    "question": hl.QUESTION,
+                    "verdict": hl.VERDICT,
+                    "transcript": "/t",
+                },
+            }
+        }
+
+    received: list[dict] = []
+
+    class _Receiver(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            n = int(self.headers.get("Content-Length", "0"))
+            received.append(json.loads(self.rfile.read(n).decode("utf-8")))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"ok": true}')
+
+        def log_message(self, _fmt, *_args):
+            return
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Receiver)
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{port}/friend-event"
+
+    old_url = os.environ.get("ARK_FRIEND_NOTIFY_URL")
+    try:
+        # 1. Dual-lock transition: relay UNLOCKED + wechat LOCKED -> 0 sent & 0 dedup-marked;
+        #    once wechat unlocks -> all 3 paths reliably deliver + enqueue + Engine.tick() drains!
+        tmp = tmpdir("dual-lock-trans-")
+        notifier = _FakeNotifier()
+        eng = _make_engine(tmp, notifier)
+        sd = eng.cfg.state_dir
+        now = datetime.now(tz=SERVER_TZ)
+        today = date.today()
+
+        # Seed all 3 triggers: Arknights open activity, <=5d monthcard, tomorrow banner.
+        cache_path = eng.cfg.maa_dir / "cache" / "gui" / "StageActivityV2.json"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps({
+            "Official": {
+                "sideStoryStage": {
+                    "act_dual_lock": {
+                        "Activity": {
+                            "Tip": "SideStory「双锁过渡测试活动」",
+                            "StageName": "双锁过渡测试活动",
+                            "UtcStartTime": (now - timedelta(hours=1)).strftime("%Y/%m/%d %H:%M:%S"),
+                            "UtcExpireTime": (now + timedelta(days=5)).strftime("%Y/%m/%d %H:%M:%S"),
+                            "TimeZone": 8,
+                        }
+                    }
+                }
+            }
+        }, ensure_ascii=False), encoding="utf-8")
+        phone.apply(sd, {"game": "明日方舟", "left": 2}, today=today)
+        tomorrow_noon = (now + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+        nxt = {"明日方舟": (tomorrow_noon, "测试新干员")}
+        banner_key = f"明日方舟-{tomorrow_noon:%Y%m%d%H%M}"
+
+        # Put HARDLOCK_WECHAT.json active (relay itself is unlocked!).
+        (sd / "HARDLOCK_WECHAT.json").write_text(json.dumps({"locked_at": "test"}), encoding="utf-8")
+        check("双锁过渡态：relay 未锁、wechat 锁定", (hl.active(sd, "relay"), hl.active(sd, "wechat")), (False, True))
+
+        os.environ["ARK_FRIEND_NOTIFY_URL"] = url
+        eng.tick()
+        report._announce_banners(eng, now, nxt)
+        check("wechat 锁态：群消息/月卡/卡池均 0 推送", (len(notifier.group_msgs), len(notifier.sent_msgs)), (0, 0))
+        check("wechat 锁态：明日方舟活动未被误标已通知",
+              ak_activity.already_notified(eng.state.store, ak_activity.AkActivity(
+                  activity_id="act_dual_lock", name="双锁过渡测试活动", kind="sideStoryStage",
+                  start=now - timedelta(hours=1), end=now + timedelta(days=5),
+                  rerun=False, source="cache")),
+              False)
+        check("wechat 锁态：月卡未被误标今日已发", phone.due_notice(sd, today=today) is not None, True)
+        check("wechat 锁态：明日新卡池未被误标已播报", eng.state.banner_announced(banner_key), False)
+        check("wechat 锁态：Mac 好友接收端 0 到达", len(received), 0)
+
+        # Also pre-seed one queued event while Mac was offline/locked to test Engine.tick() flush.
+        friend_events.emit_arknights_activity_open(
+            sd, "act_prequeued", "🎉 明日方舟活动开启", "离线滞留活动", now=now, url=url, sync=True
+        )
+        q = friend_events.FriendEventQueue(sd)
+        check("wechat 锁态入队事件留在本地队列且未外发", (len(q.pending()), len(received)), (1, 0))
+
+        # Unlock HARDLOCK_WECHAT.json with valid W-01..W-03 release!
+        (sd / "HARDLOCK_WECHAT.json").write_text(
+            json.dumps(_valid_release("wechat"), ensure_ascii=False), encoding="utf-8"
+        )
+        check("wechat 合规解锁后状态为未锁", hl.active(sd, "wechat"), False)
+
+        # Re-run real Engine.tick() + _announce_banners: all 3 send AND Engine._flush_pending drains queue!
+        eng.tick()
+        report._announce_banners(eng, now, nxt)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and (q.pending() or len(received) < 4):
+            eng._flush_pending()
+            time.sleep(0.05)
+
+        check("wechat 解锁后：活动开启 + 新卡池均补发到群（2 条）", len(notifier.group_msgs), 2)
+        check("wechat 解锁后：月卡提醒补发（1 条）且标记今日已发",
+              (len(notifier.sent_msgs), phone.due_notice(sd, today=today) is None), (1, True))
+        check("wechat 解锁后：明日新卡池标记已播报", eng.state.banner_announced(banner_key), True)
+        check("Engine.tick() 自动排空 friend-events-queue.json", q.pending(), [])
+        got_ids = {r["event_id"] for r in received}
+        check("离线滞留事件 + 3 类补发事件全部经 HTTP 送达 Mac 好友接收端",
+              "arknights_activity_open:act_prequeued" in got_ids
+              and "arknights_activity_open:act_dual_lock" in got_ids
+              and any(i.startswith("monthcard_expiring_5d:明日方舟:") for i in got_ids)
+              and any(i.startswith("next_day_new_banner:明日方舟:") for i in got_ids),
+              True)
+        check("送达事件全部发给 No1Urgot", all(r["recipient_wechat_id"] == "No1Urgot" for r in received), True)
+    finally:
+        if old_url is None:
+            os.environ.pop("ARK_FRIEND_NOTIFY_URL", None)
+        else:
+            os.environ["ARK_FRIEND_NOTIFY_URL"] = old_url
+        srv.shutdown()
+        srv.server_close()
+
+
 if __name__ == "__main__":
     raise SystemExit(run_parts([
         _part_r14_replay_snow_mountain,
         _part_r14_engine_tick_integration,
         _part_friend_events_allowlist_and_integrations,
         _part_friend_events_dual_hardlock_and_http,
+        _part_engine_tick_flush_and_dual_lock_transition,
         _part_set_maa_os4_medicine999,
     ]))

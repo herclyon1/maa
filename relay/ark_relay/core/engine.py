@@ -741,7 +741,9 @@ class Engine:
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""
-        from ark_relay.features import friend_events, phone as monthcard  # noqa: PLC0415
+        from ark_relay.features import friend_events, hardlock, phone as monthcard  # noqa: PLC0415
+        if hardlock.active(self.state.dir, "wechat"):
+            return
         items = monthcard.due_items(self.state.dir)
         due = monthcard.due_notice(self.state.dir)
         if due and not self.notifier.send(*due):
@@ -1203,6 +1205,11 @@ class Engine:
             # A retried 「没干完」 alarm that went out leaves the copy on disk too.
             if len(self._unsent_unresolved) != unsent:
                 self._persist_pending()
+            try:
+                from ark_relay.features import friend_events  # noqa: PLC0415
+                friend_events.flush_pending(self.cfg, async_flush=True)
+            except Exception:
+                log.warning("排空好友微信待发队列失败", exc_info=True)
 
     def _essence_filler(self, now: datetime | None = None) -> None:
         """A target-met essence run switches 基质刷取 to filler mode (features/essence)."""

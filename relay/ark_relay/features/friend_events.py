@@ -515,15 +515,61 @@ def emit_arknights_activity_open(cfg_or_dir: Any, activity_id: str, title: str, 
     return emit(cfg_or_dir, ev, url=url, post=post, sync=sync)
 
 
+_FLUSH_GUARD = threading.Lock()
+_FLUSH_THREADS: dict[str, threading.Thread] = {}
+
+
+def _start_flush_thread(q: FriendEventQueue) -> threading.Thread | None:
+    """Spawn at most one background flush thread per state_dir so Engine.tick() never blocks."""
+    key = str(q.state_dir.resolve())
+    with _FLUSH_GUARD:
+        cur = _FLUSH_THREADS.get(key)
+        if cur is not None and cur.is_alive():
+            return cur
+
+        def run() -> None:
+            try:
+                q.flush()
+            except Exception:
+                log.warning("好友微信事件同步到 Mac 时出错", exc_info=True)
+            finally:
+                with _FLUSH_GUARD:
+                    if _FLUSH_THREADS.get(key) is threading.current_thread():
+                        _FLUSH_THREADS.pop(key, None)
+
+        t = threading.Thread(target=run, name="friend-events-sync", daemon=True)
+        _FLUSH_THREADS[key] = t
+        t.start()
+        return t
+
+
 def flush_pending(cfg_or_dir: Any, *, url: str | None = None, post=None,
-                  outbox_path: Path | str | None = None) -> int | None:
-    """Flush any queued friend events once hardlocks are lifted."""
+                  outbox_path: Path | str | None = None,
+                  async_flush: bool = False, timeout: float = TIMEOUT) -> int | None:
+    """Flush any queued friend events once hardlocks are lifted.
+
+    When `async_flush=True` (used by `Engine._flush_pending`), drains on a single
+    per-state-dir background daemon thread with bounded HTTP timeout so the tick loop
+    never stalls on an unreachable Mac.
+    """
     sd = _state_dir_of(cfg_or_dir)
+    if not (sd / QUEUE_FILE).is_file():
+        return 0
+    if hardlock_reason(sd):
+        return len(FriendEventQueue(sd).pending())
     q = FriendEventQueue(
         sd,
         url=_notify_url_of(cfg_or_dir, explicit=url),
+        timeout=timeout,
         post=post,
         outbox_path=_outbox_path_of(outbox_path),
     )
+    if not q._can_send():
+        return len(q.pending())
+    if async_flush:
+        if not q.pending():
+            return 0
+        _start_flush_thread(q)
+        return None
     return q.flush()
 
