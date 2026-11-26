@@ -584,15 +584,31 @@ def last_log_line(log_text, limit: int = 200) -> str:
     return ""
 
 
+def _matches_queue(task, uid, name: str = "") -> bool:
+    if not isinstance(task, dict):
+        return False
+    if uid and task.get("queueId") == uid:
+        return True
+    if name and not task.get("queueId"):
+        info = (task.get("task") or {}).get("info") if isinstance(task.get("task"), dict) else None
+        if isinstance(info, dict) and str(info.get("name") or "") == name:
+            return True
+    return False
+
+
 def _queue_task(snap, uid, name: str = ""):
+    """Find the queue's task in runtime-snapshot, preferring an unfinished entry
+    over historical terminal tasks of the same queue or name."""
+    from ark_relay.core import engine as _engine  # noqa: PLC0415
+    fallback = None
     for task in (snap or {}).get("tasks") or []:
-        if uid and task.get("queueId") == uid:
+        if not _matches_queue(task, uid, name):
+            continue
+        if _engine._task_unfinished(task):
             return task
-        if name and not task.get("queueId"):
-            info = (task.get("task") or {}).get("info") if isinstance(task.get("task"), dict) else None
-            if isinstance(info, dict) and str(info.get("name") or "") == name:
-                return task
-    return None
+        if fallback is None:
+            fallback = task
+    return fallback
 
 
 def _not_the_shift(eng, task, app=False) -> bool:

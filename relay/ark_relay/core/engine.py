@@ -33,7 +33,8 @@ from ark_relay.core.collector import Source
 
 log = logging.getLogger("ark.engine")
 # Short-lived cache for `_scripts_running`; see the comment on that method.
-_SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
+_SCRIPTS_CACHE: dict = {"at": -1e9, "val": False, "gen": 0}
+_SCRIPTS_CACHE_LOCK = threading.Lock()
 _SCRIPTS_TTL = 3.0
 # An OK-WW process whose log is older than this is hung and no longer counts as running
 # (_okww_up): eight times its longest quiet stretch at work, the 120 s wait_until.
@@ -48,7 +49,10 @@ def forget_scripts_cache() -> None:
     make-up step would otherwise reuse the 「nothing runs」 read before it, and
     power off or dispatch on top of the run that has just been started.
     """
-    _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = -1e9, False
+    with _SCRIPTS_CACHE_LOCK:
+        _SCRIPTS_CACHE["at"] = -1e9
+        _SCRIPTS_CACHE["val"] = False
+        _SCRIPTS_CACHE["gen"] = _SCRIPTS_CACHE.get("gen", 0) + 1
 
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
@@ -58,6 +62,7 @@ _TASK_DONE = {"success", "error", "cancelled"}
 # letting a permanently deadlocked AUTO-MAS hold missed-run checks and shutdown forever).
 _SNAP_TIMEOUT_CAP_S = 180.0
 _SNAP_TIMEOUT: dict = {"since": None, "capped_logged": False}
+_SNAP_TIMEOUT_LOCK = threading.Lock()
 _SNAP_STATE = threading.local()
 
 
@@ -153,22 +158,30 @@ def _automas_snapshot():
             raw = r.read()
     except Exception as exc:  # noqa: BLE001 - no endpoint -> fall back to the process check
         if _is_timeout(exc):
-            now_m = time.monotonic()
-            if _SNAP_TIMEOUT["since"] is None:
-                _SNAP_TIMEOUT["since"] = now_m
-                _SNAP_TIMEOUT["capped_logged"] = False
-            if now_m - _SNAP_TIMEOUT["since"] <= _SNAP_TIMEOUT_CAP_S:
-                _SNAP_STATE.timed_out = True
-            elif not _SNAP_TIMEOUT["capped_logged"]:
-                _SNAP_TIMEOUT["capped_logged"] = True
+            log_capped = False
+            with _SNAP_TIMEOUT_LOCK:
+                now_m = time.monotonic()
+                since = _SNAP_TIMEOUT["since"]
+                if since is None:
+                    since = now_m
+                    _SNAP_TIMEOUT["since"] = since
+                    _SNAP_TIMEOUT["capped_logged"] = False
+                if now_m - since <= _SNAP_TIMEOUT_CAP_S:
+                    _SNAP_STATE.timed_out = True
+                elif not _SNAP_TIMEOUT["capped_logged"]:
+                    _SNAP_TIMEOUT["capped_logged"] = True
+                    log_capped = True
+            if log_capped:
                 log.info("AUTO-MAS 运行快照已连续超时超过 %d 秒，改回查进程表", int(_SNAP_TIMEOUT_CAP_S))
         else:
-            _SNAP_TIMEOUT["since"] = None
-            _SNAP_TIMEOUT["capped_logged"] = False
+            with _SNAP_TIMEOUT_LOCK:
+                _SNAP_TIMEOUT["since"] = None
+                _SNAP_TIMEOUT["capped_logged"] = False
         tape.answer("mas", _RUNTIME_PATH, error=exc)
         return None
-    _SNAP_TIMEOUT["since"] = None
-    _SNAP_TIMEOUT["capped_logged"] = False
+    with _SNAP_TIMEOUT_LOCK:
+        _SNAP_TIMEOUT["since"] = None
+        _SNAP_TIMEOUT["capped_logged"] = False
     tape.answer("mas", _RUNTIME_PATH, body=raw, resp=r)
     try:
         return json.loads(raw.decode("utf-8"))
@@ -749,12 +762,18 @@ class Engine:
         """
         if not config.IS_WINDOWS:
             return False
+        with _SCRIPTS_CACHE_LOCK:
+            gen = _SCRIPTS_CACHE.get("gen", 0)
         _SNAP_STATE.timed_out = False
         snap = _automas_snapshot()
         if snap is None:
             if getattr(_SNAP_STATE, "timed_out", False):
                 log.info("AUTO-MAS 运行快照超时，暂按 %s 还在跑处理", name)
-                _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = time.monotonic(), True
+                with _SCRIPTS_CACHE_LOCK:
+                    if _SCRIPTS_CACHE.get("gen", 0) == gen:
+                        _SCRIPTS_CACHE["at"] = time.monotonic()
+                        _SCRIPTS_CACHE["val"] = True
+                        _SCRIPTS_CACHE["gen"] = gen + 1
                 return True
             return self._scripts_running()
         return _script_unfinished(snap, name)
@@ -773,9 +792,11 @@ class Engine:
             return False
         # One tick asks this many times (skip mode, held-back alerts, missed runs,
         # reports, shutdown); an answer less than _SCRIPTS_TTL seconds old is reused.
-        now = time.monotonic()
-        if now - _SCRIPTS_CACHE["at"] < _SCRIPTS_TTL:
-            return _SCRIPTS_CACHE["val"]
+        with _SCRIPTS_CACHE_LOCK:
+            now = time.monotonic()
+            if now - _SCRIPTS_CACHE["at"] < _SCRIPTS_TTL:
+                return _SCRIPTS_CACHE["val"]
+            gen = _SCRIPTS_CACHE.get("gen", 0)
         busy = _automas_busy()
         if busy:
             val = True
@@ -791,7 +812,11 @@ class Engine:
                 # MaaEnd.exe goes blind for the entire Endfield stretch.
                 # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:_scripts_running」
                 val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe")) or _okww_up()
-        _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = now, val
+        with _SCRIPTS_CACHE_LOCK:
+            if _SCRIPTS_CACHE.get("gen", 0) == gen:
+                _SCRIPTS_CACHE["at"] = now
+                _SCRIPTS_CACHE["val"] = val
+                _SCRIPTS_CACHE["gen"] = gen + 1
         return val
 
     # ---------- daily wrap-up ----------

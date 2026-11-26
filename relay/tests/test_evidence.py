@@ -3092,5 +3092,206 @@ def _part_scripts_running_asks_automas():
         engine._SNAP_TIMEOUT.update(since=None, capped_logged=False)
 
 
+def _part_scripts_cache_toctou():
+    """_SCRIPTS_CACHE lock + generation counter blocks stale write-back after forget_scripts_cache."""
+    import threading
+    import urllib.request
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import engine
+
+    print("[_scripts_running 执行 tasklist 期间被 forget_scripts_cache 打断：不回写过期 False]")
+    real_win = engine.config.IS_WINDOWS
+    real_busy = engine._automas_busy
+    real_sub = engine.subprocess
+    real_okww = engine._okww_up
+    in_tasklist = threading.Event()
+    allow_finish = threading.Event()
+    busy_state = {"val": False, "calls": 0}
+    first_result: list[bool] = []
+    errors: list[BaseException] = []
+
+    def fake_busy():
+        busy_state["calls"] += 1
+        return busy_state["val"]
+
+    def slow_tasklist(*a, **k):
+        in_tasklist.set()
+        allow_finish.wait(timeout=5.0)
+        return types.SimpleNamespace(stdout=b"")
+
+    def worker_scripts_running():
+        try:
+            first_result.append(engine.Engine._scripts_running())
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    try:
+        engine.config.IS_WINDOWS = True
+        engine._automas_busy = fake_busy
+        engine._okww_up = lambda: False
+        engine.subprocess = types.SimpleNamespace(
+            run=slow_tasklist,
+            SubprocessError=real_sub.SubprocessError,
+        )
+        engine.forget_scripts_cache()
+
+        t = threading.Thread(target=worker_scripts_running)
+        t.start()
+        check("主线程已进入 tasklist", in_tasklist.wait(timeout=5.0), True)
+        # Another thread (game-update / phone command) dispatches a task and invalidates cache.
+        busy_state["val"] = True
+        engine.forget_scripts_cache()
+        allow_finish.set()
+        t.join(timeout=5.0)
+
+        check("并发线程无异常", errors, [])
+        check("主线程本轮读到旧快照 False", first_result, [False])
+        check("缓存没被过期 False 覆盖（仍作废）", engine._SCRIPTS_CACHE["at"] < 0, True)
+        check("紧接着 3 秒内再问：重新问 AUTO-MAS 并判在跑",
+              (engine.Engine._scripts_running(), busy_state["calls"]), (True, 2))
+    finally:
+        engine.config.IS_WINDOWS = real_win
+        engine._automas_busy = real_busy
+        engine.subprocess = real_sub
+        engine._okww_up = real_okww
+        engine.forget_scripts_cache()
+
+    print("\n[_script_running 超时期间被 forget_scripts_cache 打断：不把旧超时写进缓存]")
+    real_open = urllib.request.urlopen
+    in_snap = threading.Event()
+    allow_snap = threading.Event()
+    sr_result: list[bool] = []
+    sr_errors: list[BaseException] = []
+
+    def slow_timeout(*a, **k):
+        in_snap.set()
+        allow_snap.wait(timeout=5.0)
+        raise TimeoutError("timed out")
+
+    def worker_script_running():
+        try:
+            dummy = object.__new__(engine.Engine)
+            sr_result.append(dummy._script_running("MaaEnd"))
+        except BaseException as exc:  # noqa: BLE001
+            sr_errors.append(exc)
+
+    try:
+        engine.config.IS_WINDOWS = True
+        urllib.request.urlopen = slow_timeout
+        engine._SNAP_TIMEOUT.update(since=None, capped_logged=False)
+        engine.forget_scripts_cache()
+
+        t2 = threading.Thread(target=worker_script_running)
+        t2.start()
+        check("单脚本查快照已挂起", in_snap.wait(timeout=5.0), True)
+        engine.forget_scripts_cache()
+        allow_snap.set()
+        t2.join(timeout=5.0)
+
+        check("单脚本超时线程无异常", sr_errors, [])
+        check("单脚本超时仍保守返回 True", sr_result, [True])
+        check("代际已变，不把旧超时回写进缓存", engine._SCRIPTS_CACHE["at"] < 0, True)
+    finally:
+        engine.config.IS_WINDOWS = real_win
+        urllib.request.urlopen = real_open
+        engine._SNAP_TIMEOUT.update(since=None, capped_logged=False)
+        engine.forget_scripts_cache()
+
+
+def _part_snap_timeout_thread_safety():
+    """_SNAP_TIMEOUT concurrent timeout/recovery has no float-None TypeError and logs cap once."""
+    import logging
+    import threading
+    import time
+    import urllib.error
+    import urllib.request
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import engine
+
+    print("[_SNAP_TIMEOUT 跨线程并发超时/恢复：无 TypeError，封顶日志只记一次]")
+    real_open = urllib.request.urlopen
+
+    class _OkResp:
+        status = 200
+        def read(self): return b'{"tasks": []}'
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    class _Grab(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.INFO)
+            self.lines: list[str] = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+    race_errors: list[BaseException] = []
+    barrier = threading.Barrier(6)
+
+    def _race_open(url, timeout=3):
+        idx = int(threading.current_thread().name.rsplit("-", 1)[-1])
+        if idx % 2 == 0:
+            raise TimeoutError("timed out")
+        if idx == 1:
+            raise urllib.error.URLError(ConnectionRefusedError("refused"))
+        return _OkResp()
+
+    def _race_worker():
+        barrier.wait(timeout=5.0)
+        try:
+            for _ in range(40):
+                engine._automas_snapshot()
+        except BaseException as exc:  # noqa: BLE001
+            race_errors.append(exc)
+
+    grab = _Grab()
+    prev_level = engine.log.level
+    engine.log.setLevel(logging.INFO)
+    engine.log.addHandler(grab)
+    try:
+        urllib.request.urlopen = _race_open
+        engine._SNAP_TIMEOUT.update(since=None, capped_logged=False)
+        threads = [threading.Thread(target=_race_worker, name=f"snap-race-{i}") for i in range(6)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join(timeout=5.0)
+        check("并发读写 _SNAP_TIMEOUT 零异常（无 float - None TypeError）", race_errors, [])
+
+        # Capped log fires exactly once under concurrent timeouts past _SNAP_TIMEOUT_CAP_S
+        grab.lines.clear()
+        cap_barrier = threading.Barrier(6)
+        cap_errors: list[BaseException] = []
+
+        def _always_timeout(*a, **k):
+            cap_barrier.wait(timeout=5.0)
+            raise TimeoutError("still stuck")
+
+        def _cap_worker():
+            try:
+                engine._automas_snapshot()
+            except BaseException as exc:  # noqa: BLE001
+                cap_errors.append(exc)
+
+        urllib.request.urlopen = _always_timeout
+        engine._SNAP_TIMEOUT.update(since=time.monotonic() - 240.0, capped_logged=False)
+        cap_threads = [threading.Thread(target=_cap_worker) for _ in range(6)]
+        for th in cap_threads:
+            th.start()
+        for th in cap_threads:
+            th.join(timeout=5.0)
+        capped_lines = [ln for ln in grab.lines if "连续超时超过" in ln]
+        check("并发封顶无异常", cap_errors, [])
+        check("6 线程同时触发连续超时封顶，只记 1 条日志", len(capped_lines), 1)
+    finally:
+        engine.log.removeHandler(grab)
+        engine.log.setLevel(prev_level)
+        urllib.request.urlopen = real_open
+        engine._SNAP_TIMEOUT.update(since=None, capped_logged=False)
+        engine.forget_scripts_cache()
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_evidence_main, _part_evidence_archive, _part_evidence_cli_window, _part_evidence_daily_silent, _part_evidence_maaend_live_logs, _part_evidence_notify_once, _part_evidence_relay_after_run, _part_evidence_saved_count, _part_evidence_sources_unreachable, _part_error_evidence, _part_game_evidence, _part_held_push_keeps_evidence, _part_task_shots, _part_tacet_shots, _part_self_attrs_main, _part_self_heal_red, _part_undefined_names, _part_module_table, _part_parts, _part_scripts_relay_attrs, _part_scripts_running_asks_automas]))
+    sys.exit(run_parts([_part_evidence_main, _part_evidence_archive, _part_evidence_cli_window, _part_evidence_daily_silent, _part_evidence_maaend_live_logs, _part_evidence_notify_once, _part_evidence_relay_after_run, _part_evidence_saved_count, _part_evidence_sources_unreachable, _part_error_evidence, _part_game_evidence, _part_held_push_keeps_evidence, _part_task_shots, _part_tacet_shots, _part_self_attrs_main, _part_self_heal_red, _part_undefined_names, _part_module_table, _part_parts, _part_scripts_relay_attrs, _part_scripts_running_asks_automas, _part_scripts_cache_toctou, _part_snap_timeout_thread_safety]))
