@@ -2926,5 +2926,158 @@ def _part_retry_note_time():
     sys.exit(0 if ok else 1)
 
 
+def _part_makeup_outcome_undone_reverts_marker():
+    """When a make-up exits ok=True but _verify_outcome finds undone work, after_outcome
+    reverts makeup/<day>.json from OK to FAILED so report.makeup_line and handle.after_makeup
+    do not claim it passed, and the held failure is not falsely marked self-healed."""
+    import json
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import engine as eng_mod, texts
+    from ark_relay.core.config import SERVER_TZ, Config, RunRecord
+    from ark_relay.core.ledger import State
+    from ark_relay.features import handle, machinecheck as _mc, makeup, report
+
+    TODAY = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    MASTER = {"instances": [{"controllerName": "Win32", "tasks": [
+        {"id": "1", "taskName": "FarmEssence", "enabled": True},
+    ]}]}
+
+    def at(hh, mm):
+        return datetime.fromisoformat(f"{TODAY}T{hh:02d}:{mm:02d}:00+08:00").astimezone(SERVER_TZ)
+
+    def put_master():
+        root = tmpdir()
+        f = root / "data" / "sid" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
+        f.parent.mkdir(parents=True)
+        f.write_text(json.dumps(MASTER, ensure_ascii=False, indent=2), encoding="utf-8")
+        return root
+
+    class Notes:
+        def __init__(self):
+            self.sent: list = []
+
+        def send(self, title, body, *, alert=False, daily=False):
+            self.sent.append((title, body, alert))
+            return []
+
+    def build():
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        cfg.automas_dir = put_master()
+        cfg.maaend_dir = None
+        cfg.history_dir = None
+        e = eng_mod.Engine(cfg, source=_NoSrc(), state=State(cfg.state_dir), notifier=Notes())
+        e._scripts_running = lambda: False
+        e._script_running = lambda s: False
+        e._unfinished_queues = lambda now, entries: []
+        e._deferred_update_busy = lambda: False
+        e._archive_maaend_evidence = lambda r: None
+        e._maintenance_today = lambda g: False
+        return e
+
+    def rec(script, started, *, ok=False, failed=None, raw=None):
+        user = "arknights" if script == "MAA" else "endfield"
+        return RunRecord(
+            run_id=f"{TODAY}/{user}/{script}-{started:%H-%M-%S}",
+            script=script, user=user, started=started,
+            finished=started + timedelta(minutes=10),
+            ok=ok, failed_tasks=list(failed or []), raw=dict(raw or {}),
+        )
+
+    saved = (makeup._dispatch, makeup._kill_game, handle._ship_evidence, handle._weekly_gates, dict(_mc.CHECKS))
+    _mc.CHECKS.clear()
+    makeup._dispatch = lambda s: (True, "ok")
+    makeup._kill_game = lambda: None
+    handle._ship_evidence = lambda e, r: ""
+    handle._weekly_gates = lambda e, r: None
+    try:
+        # 1. MaaEnd make-up exits ok=True but outcome check finds 基质刷取 undone
+        e = build()
+        fail = rec("MaaEnd", at(9, 5), failed=["基质刷取"])
+        handle._handle(e, fail)
+        e._flush_pending()
+        check("MaaEnd 补跑派下去了", makeup.maybe_run(e, at(10, 5)), True)
+        undone_msg = "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 基质刷取 真的刷了：日志里没有刷基质"
+        e._verify_outcome = lambda r: undone_msg
+        mk = rec("MaaEnd", at(10, 6), ok=True, raw={"tasks_done": ["基质刷取"], "tasks_evidence": {"基质刷取": "x"}})
+        handle._handle(e, mk)
+
+        ent = makeup.read_marker(e.cfg.state_dir, TODAY)["MaaEnd"]
+        check("MaaEnd 补跑结果核对没过：marker 改回 FAILED", ent["result"], makeup.FAILED)
+        check("MaaEnd marker 写明没干完的项目", ent["note"], "跑完了但没干完：基质刷取")
+        fail_row = {x["run_id"]: x for x in e.state.read_ledger(TODAY)}[fail.run_id]
+        check("原失败行不写 makeup_ok", (fail_row.get("raw") or {}).get("makeup_ok"), None)
+        line = report.makeup_line(e.cfg.state_dir, TODAY)
+        check("日报 makeup_line 说还是没成且不带走通了",
+              ("还是没成（跑完了但没干完：基质刷取）" in line, "走通了" in line), (True, False))
+        check("日报 makeup_line 是人话", texts.plain(line), [])
+        check("handle.after_makeup 返回 UNRESOLVED", handle.after_makeup(e, fail, at(10, 20)), (handle.UNRESOLVED, "补跑也没成"))
+        check("原失败不误进 _recovered（仍留在 _pending 等报群）",
+              (list(e._recovered), list(e._pending)), ([], [("MaaEnd", "endfield")]))
+        e._flush_pending()
+        titles = [t for t, _, a in e.notifier.sent if a]
+        check("先报补跑没干完，再由 _flush_pending 报原失败补跑也没成",
+              titles, [texts.unresolved_undone("终末地", "早班"), texts.unresolved("终末地", "早班")])
+        check("报完后清空 _pending", dict(e._pending), {})
+
+        # 2. MAA make-up exits ok=True but outcome check finds 基建换班 undone
+        e2 = build()
+        mfail = rec("MAA", at(9, 5), failed=["开始唤醒"], raw={"maa_unreachable": True})
+        handle._handle(e2, mfail)
+        e2._flush_pending()
+        check("MAA 补跑派下去了", makeup.maybe_run(e2, at(10, 5)), True)
+        e2._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：日志里没有换班"
+        mmk = rec("MAA", at(10, 6), ok=True)
+        handle._handle(e2, mmk)
+        ment = makeup.read_marker(e2.cfg.state_dir, TODAY)["MAA"]
+        mline = report.makeup_line(e2.cfg.state_dir, TODAY)
+        check("MAA marker 改回 FAILED 且写明基建换班", (ment["result"], ment["note"]), (makeup.FAILED, "跑完了但没干完：基建换班"))
+        check("MAA 日报 makeup_line", mline, "明日方舟失败后自动补跑，还是没成（跑完了但没干完：基建换班）")
+        check("MAA 日报 makeup_line 是人话", texts.plain(mline), [])
+        check("MAA after_makeup 返回 UNRESOLVED", handle.after_makeup(e2, mfail, at(10, 20)), (handle.UNRESOLVED, "补跑也没成"))
+        e2._flush_pending()
+        check("MAA 两次报警分别覆盖没干完与原失败补跑没成",
+              [t for t, _, a in e2.notifier.sent if a],
+              [texts.unresolved_undone("明日方舟", "早班"), texts.unresolved("明日方舟", "早班")])
+
+        # 3. Settings-only undone preserves prep_note + crash replay without _TIE_UP still reverts OK -> FAILED
+        e3 = build()
+        makeup._write_marker(e3.cfg.state_dir, TODAY, {
+            "MaaEnd": {"dispatched_at": at(10, 5).isoformat(), "result": makeup.DISPATCHED,
+                       "tries": 1, "tasks": [makeup.WHOLE_MAAEND], "prep_note": "背包满了，但找不到存放背包"},
+        })
+        rmk = rec("MaaEnd", at(10, 6), ok=True)
+        makeup.on_record(e3, rmk)
+        makeup._TIE_UP.pop(rmk.run_id, None)    # simulate restart between on_record and after_outcome
+        settings_msg = f"MaaEnd 这一轮{texts.OUTCOME_SETTINGS_HEAD}\n· 基质刷取：被重置了"
+        makeup.after_outcome(e3, rmk, settings_msg)
+        ent3 = makeup.read_marker(e3.cfg.state_dir, TODAY)["MaaEnd"]
+        line3 = report.makeup_line(e3.cfg.state_dir, TODAY)
+        check("崩溃重放后也改回 FAILED 并保留 prep_note",
+              (ent3["result"], "设置被重置成默认值：基质刷取" in ent3["note"], "背包满了" in ent3["note"]),
+              (makeup.FAILED, True, True))
+        check("设置重置时的 makeup_line 是人话", texts.plain(line3), [])
+
+        # 4. Control: outcome check passes -> stays OK, marks makeup_ok, moves to _recovered and silent flush
+        e4 = build()
+        ok_fail = rec("MAA", at(9, 5), failed=["开始唤醒"], raw={"maa_unreachable": True})
+        handle._handle(e4, ok_fail)
+        e4._flush_pending()
+        makeup.maybe_run(e4, at(10, 5))
+        e4._verify_outcome = lambda r: None
+        handle._handle(e4, rec("MAA", at(10, 6), ok=True))
+        check("核对通过：marker 保持 OK 且进入 _recovered",
+              (makeup.read_marker(e4.cfg.state_dir, TODAY)["MAA"]["result"], list(e4._recovered)),
+              (makeup.OK, [("MAA", "arknights")]))
+        e4._flush_pending()
+        check("核对通过：不推送告警且清空 _recovered", (e4.notifier.sent, dict(e4._recovered)), ([], {}))
+    finally:
+        makeup._dispatch, makeup._kill_game, handle._ship_evidence, handle._weekly_gates = saved[:4]
+        _mc.CHECKS.clear()
+        _mc.CHECKS.update(saved[4])
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_collect_history_db, _part_collect_main, _part_collect_blocked, _part_collect_retry_cutoff, _part_collect_retry_robustness, _part_collect_watch, _part_makeup_main, _part_hand_started_retry, _part_makeup_midnight, _part_hand_started_runs, _part_retry_note_time]))
+    sys.exit(run_parts([_part_collect_history_db, _part_collect_main, _part_collect_blocked, _part_collect_retry_cutoff, _part_collect_retry_robustness, _part_collect_watch, _part_makeup_main, _part_hand_started_retry, _part_makeup_midnight, _part_hand_started_runs, _part_retry_note_time, _part_makeup_outcome_undone_reverts_marker]))

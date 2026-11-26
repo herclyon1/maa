@@ -132,10 +132,33 @@ def _activity_holding(eng, now: datetime) -> str:
     the report waits for it, as for a make-up."""
     try:
         from ark_relay.features import activity  # noqa: PLC0415
-        return activity.holding(eng, now)
+        if why := activity.holding(eng, now):
+            return why
+        if eng.cfg.state_dir:
+            yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+            old = activity.read(eng.cfg.state_dir, yday)
+            if old.get("result") == "dispatched" and not old.get("alarmed"):
+                sent = activity._at(old.get("dispatched_at"))
+                if sent is not None and now - sent <= activity.STALE:
+                    return texts.ACTIVITY_TOPUP_WAIT
+        return ""
     except Exception:
         log.exception("读鸣潮活跃晚班补的状态出错，日报不等它")
         return ""
+
+
+def _report_wait(eng, now: datetime, entries: list[dict]) -> str | None:
+    """None when the daily report may go out; '' when scripts are running (quiet wait),
+    else the reason logged as 「日报再等等」."""
+    if eng._scripts_running():
+        return ""
+    if unfinished := eng._unfinished_queues(now, entries):
+        return "；".join(unfinished)
+    if going := _makeup_in_flight(eng, now):
+        return f"{'、'.join(going)} 的补跑还没出结果"
+    if why := _activity_holding(eng, now):
+        return why
+    return None
 
 
 def _maybe_interim_report(eng, now: datetime | None = None) -> None:
@@ -185,18 +208,25 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
     day = now.strftime("%Y-%m-%d")
     # Yesterday first: every check below is written against "today", so if
     # yesterday's report never went out, past midnight there is no other chance
-    # to make it up. It has to be settled here.
+    # to make it up. It has to be settled here - but only once nothing from a
+    # cross-midnight evening shift, make-up or activity top-up is still running,
+    # otherwise it sends an incomplete summary right at 00:00 and locks report:<yday>.
     # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_maybe_daily_report」
     yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     if not eng.state.report_sent(yday) and (
             y_entries := eng.state.read_ledger(yday)):
-        title, body = eng._compose_daily(yday, y_entries)
-        write_daily_techlog(eng, yday)
-        if errors := eng.notifier.send(title + "（补发）", body, daily=True):
-            log.error("昨日日报补发失败，稍后重试: %s", "；".join(errors))
+        wait = _report_wait(eng, now, eng.state.read_ledger(day) + y_entries)
+        if wait is not None:
+            if wait:
+                log.info("昨日日报再等等：%s", wait)
         else:
-            eng.state.mark_report_sent(yday)
-            log.info("📋 %s 日报已补发（%d 条记录）", yday, len(y_entries))
+            title, body = eng._compose_daily(yday, y_entries)
+            write_daily_techlog(eng, yday)
+            if errors := eng.notifier.send(title + "（补发）", body, daily=True):
+                log.error("昨日日报补发失败，稍后重试: %s", "；".join(errors))
+            else:
+                eng.state.mark_report_sent(yday)
+                log.info("📋 %s 日报已补发（%d 条记录）", yday, len(y_entries))
     if eng.state.report_sent(day):
         return
     entries = eng.state.read_ledger(day)
@@ -204,19 +234,15 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
         return
     # Due once the clock is past the day's last queue and nothing is still
     # working - never based on when a run happened to finish.
-    if now < eng._report_cutoff(now) or eng._scripts_running():
+    if now < eng._report_cutoff(now):
         return
     # The cutoff is the last queue's start time, so right after it that queue's
     # game may still be launching with no process yet. Wait until every queue
     # that came due has recorded its scripts (the shutdown decision does the same).
-    if unfinished := eng._unfinished_queues(now, eng.state.read_ledger(day)):
-        log.info("日报再等等：%s", "；".join(unfinished))
-        return
-    if going := _makeup_in_flight(eng, now):
-        log.info("日报再等等：%s 的补跑还没出结果", "、".join(going))
-        return
-    if why := _activity_holding(eng, now):
-        log.info("日报再等等：%s", why)
+    wait = _report_wait(eng, now, entries)
+    if wait is not None:
+        if wait:
+            log.info("日报再等等：%s", wait)
         return
 
     title, body = eng._compose_daily(day, entries)

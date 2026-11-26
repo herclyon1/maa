@@ -1063,25 +1063,85 @@ def on_record(eng, rec) -> None:
             rows += _yesterday_tail(eng.state.read_ledger, rec.script, rec.user, day, first_start)
         except Exception:
             log.warning("补跑：前一天的账本读不出来，跨午夜那几次没记上补跑做成", exc_info=True)
-    _TIE_UP[rec.run_id] = (rows, when)
+    _TIE_UP[rec.run_id] = (day, rec.script, rows, when)
     log.info("✅ 补跑：%s %s AUTO-MAS 记成功，等结果核对过了再记到之前那几次上", rec.script, rec.run_id)
 
 
-# run_id -> (ledger rows, HH:MM) of a make-up booked OK, until its outcome check is done.
+# run_id -> (dispatch day, script, ledger rows, HH:MM) of a make-up provisionally booked OK,
+# until its outcome check is done.
 _TIE_UP: dict[str, tuple] = {}
+
+
+def is_pending_ok(state_dir, rec) -> bool:
+    """True when `rec` is a make-up on_record provisionally booked OK whose outcome check
+    has not settled yet (either in `_TIE_UP` or on disk after a mid-booking replay)."""
+    run_id = getattr(rec, "run_id", None)
+    if not run_id:
+        return False
+    if run_id in _TIE_UP:
+        return True
+    script = getattr(rec, "script", None)
+    started = getattr(rec, "started", None)
+    if script not in SCRIPTS or started is None or not state_dir:
+        return False
+    return any(isinstance(ent := marker.get(script), dict)
+               and ent.get("record") == run_id and ent.get("result") == OK
+               for _, marker in _recent(state_dir, started))
+
+
+def _undone_note(undone: str) -> str:
+    """Short plain-Chinese reason for a make-up AUTO-MAS booked OK but outcome check rejected."""
+    from ark_relay.core import texts  # noqa: PLC0415
+    from ark_relay.features.handle import undone_label  # noqa: PLC0415
+    label = undone_label(undone)
+    if texts.outcome_settings_only(undone):
+        return "跑完了，但设置被重置成默认值" + (f"：{label}" if label else "")
+    return "跑完了但没干完" + (f"：{label}" if label else "")
+
+
+def _mark_outcome_failed(eng, day: str, script: str, run_id: str, undone: str) -> bool:
+    """Revert a make-up marker that on_record provisionally booked OK back to FAILED
+    when _verify_outcome found work undone. Returns True when the marker changed."""
+    marker = read_marker(eng.cfg.state_dir, day)
+    ent = marker.get(script)
+    if not isinstance(ent, dict) or ent.get("record") != run_id or ent.get("result") != OK:
+        return False
+    why = _undone_note(undone)
+    prep = str(ent.get("prep_note") or "").strip()
+    ent["result"] = FAILED
+    ent["note"] = f"{why}；{prep}" if prep else why
+    marker[script] = ent
+    _write_marker(eng.cfg.state_dir, day, marker)
+    _machinecheck(eng, {"kind": "补跑", "script": script, "day": day, "result": dict(ent)})
+    return True
 
 
 def after_outcome(eng, rec, undone: "str | None") -> None:
     """The make-up `rec`'s outcome check is done (`undone`: its 没干成 paragraph, None when
     all was done). Done: mark the failures it made up for (raw.makeup_ok) and clear the
-    earlier rounds' incomplete. Undone: leave them as they are - the record's own alarm
-    says what is still missing. A record that is not a make-up booked OK does nothing."""
-    got = _TIE_UP.pop(getattr(rec, "run_id", None), None)
+    earlier rounds' incomplete. Undone: revert the day's make-up marker from OK back to
+    FAILED (with what was left undone) and leave the earlier rows as they are - the
+    record's own alarm says what is still missing. A record that is not a make-up booked
+    OK does nothing."""
+    run_id = getattr(rec, "run_id", None)
+    got = _TIE_UP.pop(run_id, None)
     if got is None:
+        # Replay after a crash between on_record and _verify_outcome: on_record skipped
+        # re-booking the same run_id, so still revert the marker on disk when undone.
+        if undone and getattr(rec, "script", None) in SCRIPTS and getattr(rec, "started", None) is not None:
+            for d, marker in _recent(eng.cfg.state_dir, rec.started):
+                ent = marker.get(rec.script)
+                if isinstance(ent, dict) and ent.get("record") == run_id and ent.get("result") == OK:
+                    _mark_outcome_failed(eng, d, rec.script, run_id, undone)
+                    log.info("补跑：%s %s AUTO-MAS 记成功，但结果核对没过，改记为补跑没成、之前那几次不算补上",
+                             rec.script, rec.run_id)
+                    break
         return
-    rows, when = got
+    day, script, rows, when = got
     if undone:
-        log.info("补跑：%s %s AUTO-MAS 记成功，但结果核对没过，之前那几次不算补上", rec.script, rec.run_id)
+        _mark_outcome_failed(eng, day, script, run_id, undone)
+        log.info("补跑：%s %s AUTO-MAS 记成功，但结果核对没过，改记为补跑没成、之前那几次不算补上",
+                 rec.script, rec.run_id)
         return
     for d, e in rows:
         if not e.get("ok"):

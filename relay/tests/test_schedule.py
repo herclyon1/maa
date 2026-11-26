@@ -4444,5 +4444,102 @@ def _part_runwatch_queue_task_terminal_ahead():
         _mc.CHECKS.update(_mc_real)
 
 
+def _part_partial_queue_midnight_dedup():
+    """_check_partial_queues keys and marks by the queue's own due date, so a 21:30
+    evening queue that alerted before 00:00 does not re-alert at 00:01 after midnight."""
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import plan as _plan
+    from ark_relay.core.config import SERVER_TZ, Config
+    from ark_relay.core.engine import Engine
+    from ark_relay.core.ledger import State
+    from ark_relay.features import handle
+
+    yday, today = "2026-11-25", "2026-11-26"
+    due_yday = datetime(2026, 11, 25, 21, 30, tzinfo=SERVER_TZ)
+    due_today = datetime(2026, 11, 26, 21, 30, tzinfo=SERVER_TZ)
+    boot_at = datetime(2026, 11, 25, 21, 20, tzinfo=SERVER_TZ)
+
+    def make_eng(state_dir: Path, sent: list):
+        cfg = Config()
+        cfg.state_dir = state_dir
+        cfg.automas_dir = None
+        cfg.partial_grace = 60
+        cfg.partial_window = 240
+
+        class Notes:
+            def send(self, title, body, *, alert=False, daily=False):
+                sent.append((title, body, alert))
+                return []
+
+        e = Engine(cfg, source=None, state=State(state_dir), notifier=Notes())
+        e._boot_time = lambda now: boot_at
+        e._started_at = boot_at
+        e._script_running = lambda kind: False
+        return e
+
+    def write_maa(state_dir: Path, d: str, due_dt: datetime):
+        (state_dir / f"ledger-{d}.jsonl").write_text(
+            json.dumps({
+                "script": "MAA",
+                "started": (due_dt + timedelta(minutes=1)).isoformat(),
+                "finished": (due_dt + timedelta(minutes=20)).isoformat(),
+                "ok": True,
+                "run_id": f"{d}/ark/maa",
+            }) + "\n",
+            encoding="utf-8",
+        )
+
+    orig_recent = _plan.recent_due_queues
+    try:
+        # Case 1: Alert at 23:30 on yday -> quiet at 00:01 on today (same process & restarted)
+        sd1, sent1 = tmpdir(), []
+        write_maa(sd1, yday, due_yday)
+        _plan.recent_due_queues = lambda d, n, window_minutes=120: [
+            {"name": "Evening-MAA", "due": due_yday, "kinds": ["MAA", "MaaEnd"]}]
+        e1 = make_eng(sd1, sent1)
+        entries1 = e1.state.read_ledger(yday)
+        e1._check_partial_queues(datetime(2026, 11, 25, 23, 30, tzinfo=SERVER_TZ), yday, entries1)
+        check("跨零点前 23:30 报一次缺项", len(sent1), 1)
+        check("记号落在排期所属日期 yday",
+              handle._already_alerted(e1, yday, "漏跑|2026-11-25/Evening-MAA/21:30/MaaEnd"), True)
+        e1._check_partial_queues(datetime(2026, 11, 26, 0, 1, tzinfo=SERVER_TZ), today, entries1)
+        check("跨零点后 00:01 同进程不再重复报", len(sent1), 1)
+        e1_re = make_eng(sd1, sent1)
+        e1_re._check_partial_queues(datetime(2026, 11, 26, 0, 5, tzinfo=SERVER_TZ), today, entries1)
+        check("跨零点后重启进程也不再重复报", len(sent1), 1)
+
+        # Case 2: First alert happens at 00:05 -> marks yday, does not block today's 21:30 queue
+        sd2, sent2 = tmpdir(), []
+        write_maa(sd2, yday, due_yday)
+        e2 = make_eng(sd2, sent2)
+        entries2 = e2.state.read_ledger(yday)
+        e2._check_partial_queues(datetime(2026, 11, 26, 0, 5, tzinfo=SERVER_TZ), today, entries2)
+        e2._check_partial_queues(datetime(2026, 11, 26, 0, 10, tzinfo=SERVER_TZ), today, entries2)
+        check("00:05 首次告警只报一次", len(sent2), 1)
+        check("00:05 首次告警记号仍落在 yday",
+              handle._already_alerted(e2, yday, "漏跑|2026-11-25/Evening-MAA/21:30/MaaEnd"), True)
+        write_maa(sd2, today, due_today)
+        _plan.recent_due_queues = lambda d, n, window_minutes=120: [
+            {"name": "Evening-MAA", "due": due_today, "kinds": ["MAA", "MaaEnd"]}]
+        e2._check_partial_queues(datetime(2026, 11, 26, 23, 30, tzinfo=SERVER_TZ), today,
+                                 e2.state.read_ledger(yday) + e2.state.read_ledger(today))
+        check("不影响今天 21:30 同一班次的正常告警", len(sent2), 2)
+
+        # Case 3: Settled by runwatch on yday -> quiet past midnight
+        sd3, sent3 = tmpdir(), []
+        write_maa(sd3, yday, due_yday)
+        _plan.recent_due_queues = lambda d, n, window_minutes=120: [
+            {"name": "Evening-MAA", "due": due_yday, "kinds": ["MAA", "MaaEnd"]}]
+        e3 = make_eng(sd3, sent3)
+        handle._settle(e3, yday, f"{yday}/Evening-MAA/21:30/MaaEnd")
+        e3_re = make_eng(sd3, sent3)
+        e3_re._check_partial_queues(datetime(2026, 11, 26, 0, 10, tzinfo=SERVER_TZ), today, e3.state.read_ledger(yday))
+        check("runwatch 在 yday 落过记号后，跨零点也不再报", len(sent3), 0)
+    finally:
+        _plan.recent_due_queues = orig_recent
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_guard_status_details, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window, _part_runwatch_queue_task_terminal_ahead]))
+    sys.exit(run_parts([_part_stagegate_main, _part_stagegate_users, _part_stage_set_refused, _part_stagegate_hooks, _part_plan_after_accomplish, _part_plan_collect_days_master, _part_plan_queue_weekdays, _part_plan_silent, _part_plan_stage_modes, _part_plan_startup_mode, _part_queue_apply_backend, _part_queue_apply_runnow, _part_queue_names, _part_queue_rows_times, _part_queue_skip_holders, _part_queue_skip_partial, _part_queue_skip_partial_receipt, _part_queue_skip_scripts, _part_dayroll_skips, _part_due_weekdays_everywhere, _part_shift_clock_after_retry, _part_shiftcheck, _part_overdue_after_update_rerun, _part_next_deadline, _part_next_plan_imports, _part_next_queue_weekdays, _part_dispatch_guard_idle, _part_dispatch_guard_self, _part_dispatch_guard_silent, _part_dispatch_guard_test_debug, _part_dispatch_guard_status_details, _part_dispatch_note_timing, _part_runwatch_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday, _part_missed_runs_main, _part_missed_weekdays, _part_debug_window, _part_runwatch_queue_task_terminal_ahead, _part_partial_queue_midnight_dedup]))
