@@ -705,7 +705,13 @@ def _part_cdn_ip_rotation():
 
         def do_GET(self):
             seen_hosts.append(self.headers.get("Host", ""))
-            body = b'{"ok":true,"msg":"healthy"}'
+            if self.path == "/bulletin":
+                body = ('{"data":{"list":[{"title":"「测试」版本更新说明","header":"「测试」版本更新说明","startAt":1795658400}]}}'
+                        .encode("utf-8"))
+            elif self.path.startswith("/skland"):
+                body = b'{"code":0,"data":{"ok":true,"msg":"healthy"}}'
+            else:
+                body = b'{"ok":true,"msg":"healthy"}'
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -815,6 +821,56 @@ def _part_cdn_ip_rotation():
         raw_b = B._read(req2, url, None, 5)
         check("banners._read recovered via 3rd IP", b'"healthy"' in raw_b, True)
         check("banners._read tried bad1 -> bad2 -> good", targets, ["fake-cdn.invalid", "203.0.113.2", "203.0.113.9"])
+
+        print("[6. maintenance.update_hint rotates away from resetting edge IP]")
+        from datetime import datetime
+        from ark_relay.core import skland
+        from ark_relay.core.config import SERVER_TZ
+        from ark_relay.features import needtable as NT
+
+        real_url = M._URL
+        real_nsleep = N._sleep
+        real_sksleep = skland._sleep
+        real_nt_zonai = NT.ZONAI
+        real_nt_sleep = NT.time.sleep
+        try:
+            N._sleep = lambda s: None
+            skland._sleep = lambda s: None
+            NT.time.sleep = lambda s: None
+            burl = f"http://fake-cdn.invalid:{good_port}/bulletin"
+            dns_map[burl] = ["203.0.113.1", "203.0.113.2", "203.0.113.9"]
+            M._URL = burl
+            targets.clear()
+            hint = M.update_hint(datetime(2026, 11, 26, 9, 0, tzinfo=SERVER_TZ), strict=True)
+            check("update_hint recovered via 3rd IP", "「测试」版本更新" in hint, True)
+            check("update_hint tried bad1 -> bad2 -> good", targets, ["fake-cdn.invalid", "203.0.113.2", "203.0.113.9"])
+
+            print("[7. skland._open rotates away from resetting edge IP]")
+            surl = f"http://fake-cdn.invalid:{good_port}/skland/card"
+            dns_map[surl] = ["203.0.113.1", "203.0.113.2", "203.0.113.9"]
+            targets.clear()
+            got_sk = skland._get(surl, {"User-Agent": "t"})
+            check("skland._get recovered via 3rd IP", (got_sk.get("data") or {}).get("msg"), "healthy")
+            check("skland._get tried bad1 -> bad2 -> good", targets, ["fake-cdn.invalid", "203.0.113.2", "203.0.113.9"])
+
+            print("[8. needtable.RulesSource.get rotates away from resetting edge IP]")
+            NT.ZONAI = f"http://fake-cdn.invalid:{good_port}"
+            nurl = f"{NT.ZONAI}/skland/rules"
+            dns_map[nurl] = ["203.0.113.1", "203.0.113.2", "203.0.113.9"]
+            src = NT.RulesSource.__new__(NT.RulesSource)
+            src.offline, src.save, src._memo = None, None, {}
+            src.skland = skland
+            src.cred = skland.Cred(cred="c", token="t", userId="u", dId="d")
+            targets.clear()
+            got_nt = src.get("rot-test", "/skland/rules")
+            check("RulesSource.get recovered via 3rd IP", got_nt.get("msg"), "healthy")
+            check("RulesSource.get tried bad1 -> bad2 -> good", targets, ["fake-cdn.invalid", "203.0.113.2", "203.0.113.9"])
+        finally:
+            M._URL = real_url
+            N._sleep = real_nsleep
+            skland._sleep = real_sksleep
+            NT.ZONAI = real_nt_zonai
+            NT.time.sleep = real_nt_sleep
     finally:
         socket.create_connection = real_create
         N.resolve_ips = real_resolve

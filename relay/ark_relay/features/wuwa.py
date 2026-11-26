@@ -127,7 +127,7 @@ def update_wuwa_history(state_dir, now: datetime, get=None, article_get=None, bu
                         lambda pid: {"postContent": [{"contentType": 1, "content": texts[pid]}]},
                         [a for a in articles if str(a.get("articleId")) in art_texts],
                         lambda aid: json.dumps({"articleContent": art_texts[str(aid)]}), now)
-    return hist, record_history(state_dir, "鸣潮", hist)
+    return hist, record_history(state_dir, "鸣潮", [h for h in hist if h.get("start") and h.get("end")])
 
 
 # The official site's article index (what mc.kurogames.com/main/news renders): a
@@ -312,6 +312,60 @@ def _bili_opus(it: dict) -> dict:
     return (((it.get("modules") or {}).get("module_dynamic") or {}).get("major") or {}).get("opus") or {}
 
 
+def _live_dict_text(d: dict) -> list[str]:
+    info = d.get("live_play_info")
+    return [str(d.get("title") or ""),
+            str(info.get("title") or "") if isinstance(info, dict) else ""]
+
+
+def _bili_live_text(live) -> str:
+    if isinstance(live, str):
+        try:
+            live = json.loads(live)
+        except ValueError:
+            return live
+    if not isinstance(live, dict):
+        return ""
+    parts = _live_dict_text(live)
+    content = live.get("content")
+    if isinstance(content, str):
+        try:
+            parsed = json.loads(content)
+        except ValueError:
+            parts.append(content)
+        else:
+            parts.extend(_live_dict_text(parsed) if isinstance(parsed, dict)
+                         else [parsed] if isinstance(parsed, str) else [])
+    elif isinstance(content, dict):
+        parts.extend(_live_dict_text(content))
+    return "\n".join(p for p in parts if p)
+
+
+def _bili_text(it: dict) -> str:
+    """All user-visible text of a Bilibili dynamic item (opus, archive, live_rcmd, desc)."""
+    md = (it.get("modules") or {}).get("module_dynamic")
+    if not isinstance(md, dict):
+        return ""
+    major = md.get("major")
+    major = major if isinstance(major, dict) else {}
+    opus = major.get("opus")
+    opus = opus if isinstance(opus, dict) else {}
+    summary = opus.get("summary")
+    archive = major.get("archive")
+    archive = archive if isinstance(archive, dict) else {}
+    desc = md.get("desc")
+    desc = desc if isinstance(desc, dict) else {}
+    parts = [
+        str(opus.get("title") or ""),
+        str((summary if isinstance(summary, dict) else {}).get("text") or ""),
+        str(archive.get("title") or ""),
+        str(archive.get("desc") or ""),
+        _bili_live_text(major.get("live_rcmd")),
+        str(desc.get("text") or ""),
+    ]
+    return "\n".join(p for p in parts if p)
+
+
 def wuwa_bili_post(items: list, ver: "str | None", now: datetime
                    ) -> "tuple[str, str, list[tuple[str, int, int]]] | None":
     """(dynamic id, first line, [(image URL, width, height)]) of the newest
@@ -389,7 +443,7 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
         if ver:
             for it in items:
                 at = _bili_at(it)
-                txt = str((_bili_opus(it).get("summary") or {}).get("text") or "")
+                txt = _bili_text(it)
                 if at and at <= now and f"{ver}版本前瞻" in txt and (preview_at is None or at > preview_at):
                     preview_at = at
             unpinned = dated[1:] if len(dated) > 1 and dated[0] < dated[1] else dated

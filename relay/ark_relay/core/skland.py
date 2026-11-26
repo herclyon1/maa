@@ -47,6 +47,8 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
+from ark_relay.core import notify as netretry
+
 log = logging.getLogger("ark.skland")
 
 _UA = ("Skland/1.32.1 (com.hypergryph.skland; build:103201004; "
@@ -64,6 +66,8 @@ BINDING_URL = "https://zonai.skland.com/api/v1/game/player/binding"
 ENDFIELD_CARD_URL = "https://zonai.skland.com/api/v1/game/endfield/card/detail"
 
 _TIMEOUT = 20
+_RETRY_PAUSE = 2.0
+_sleep = time.sleep
 
 
 class SklandError(RuntimeError):
@@ -110,23 +114,63 @@ def _read(resp) -> dict:
     return json.loads(raw.decode("utf-8"))
 
 
+def _http_error(e: urllib.error.HTTPError) -> Exception:
+    try:
+        body = _read(e)
+    except Exception:  # noqa: BLE001 - no readable body: the bare HTTP error is all there is
+        return e
+    if not isinstance(body, dict):
+        return e
+    return SklandError(f"森空岛拒绝了请求（HTTP {e.code}）：code={body.get('code')} "
+                       f"{body.get('message') or body.get('msg') or ''}".rstrip())
+
+
 def _open(req: urllib.request.Request) -> dict:
-    """Send one request. A 4xx/5xx keeps Skland's own {"code", "message"} body: it is
+    """Send one request (retrying transient failures and rotating away from broken
+    CDN edge IPs). A 4xx/5xx keeps Skland's own {"code", "message"} body: it is
     the only clue to what went wrong (10001 / 10003 come back as 403 / 401), and
     urllib's bare HTTPError dropped it, so the log and the phone tile said only
     「HTTP Error 403」 (audit s6 #5)."""
-    try:
-        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-            return _read(r)
-    except urllib.error.HTTPError as e:
+    url = req.full_url
+    safe_url = url.split("?", 1)[0]
+    tried_ips: set[str] = set()
+    pin_ip = ""
+    attempt = 0
+    while True:
+        peer_box = [""]
         try:
-            body = _read(e)
-        except Exception:  # noqa: BLE001 - no readable body: the bare HTTP error is all there is
-            raise e from None
-        if not isinstance(body, dict):
-            raise
-        raise SklandError(f"森空岛拒绝了请求（HTTP {e.code}）：code={body.get('code')} "
-                          f"{body.get('message') or body.get('msg') or ''}".rstrip()) from e
+            with netretry.open_pinned(req, _TIMEOUT, pin_ip, opener=urllib.request.urlopen) as r:
+                peer_box[0] = netretry.response_peer_ip(r)
+                return _read(r)
+        except urllib.error.HTTPError as e:
+            trans = netretry.transient(e)
+            alt = (netretry.next_cdn_ip(url, tried_ips, peer_box[0], pin_ip,
+                                        opener=urllib.request.urlopen) if trans else "")
+            cap = 3 if alt else 2
+            if not trans or attempt + 1 >= cap:
+                err = _http_error(e)
+                if err is e:
+                    raise e from None
+                raise err from e
+            if getattr(e, "fp", None) is not None:
+                e.close()
+            pin_ip = alt
+            note = f"（换地址 {alt}）" if alt else ""
+            log.info("森空岛 %s 回了 %d，%.0f 秒后再试一次%s", safe_url, e.code, _RETRY_PAUSE, note)
+        except Exception as exc:
+            if not netretry.transient(exc):
+                raise
+            alt = netretry.next_cdn_ip(url, tried_ips, peer_box[0], pin_ip,
+                                       opener=urllib.request.urlopen)
+            cap = 3 if alt else 2
+            if attempt + 1 >= cap:
+                raise
+            pin_ip = alt
+            note = f"（换地址 {alt}）" if alt else ""
+            log.info("森空岛 %s 没读完（%s: %s），%.0f 秒后再试一次%s",
+                     safe_url, type(exc).__name__, exc, _RETRY_PAUSE, note)
+        _sleep(_RETRY_PAUSE)
+        attempt += 1
 
 
 def _post(url: str, payload: dict, headers: dict | None = None) -> dict:

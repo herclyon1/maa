@@ -1432,6 +1432,26 @@ def _part_banners():  # noqa: C901
         check("B 站：已翻过本版前瞻仍无版本资讯就停在当页，不继续翻旧版撞风控",
               (_b._bili_poster("3.8", now, get, slept.append, lambda: next(ticks)),
                len(asked["feed"])), (None, 1))
+        for kind, mod_dyn in (
+            ("视频动态 archive.title", {"major": {"type": "MAJOR_TYPE_ARCHIVE", "archive": {"title": "《鸣潮》3.8版本前瞻特别通讯回顾"}}, "desc": {"text": "欢迎观看"}}),
+            ("直播动态 live_rcmd", {"major": {"type": "MAJOR_TYPE_LIVE_RCMD", "live_rcmd": {"content": json.dumps({"type": 1, "live_play_info": {"title": "《鸣潮》3.8版本前瞻特别通讯"}})}}}),
+            ("纯文字动态 desc.text", {"desc": {"text": "#鸣潮# 3.8版本前瞻特别通讯现已定档"}}),
+        ):
+            p1_alt = json.loads(json.dumps(p1_38, ensure_ascii=False))
+            p1_alt["data"]["items"][0]["modules"]["module_dynamic"] = mod_dyn
+            get, asked = fake(lambda n, off, page1=p1_alt: page1 if off == "" else empty)
+            check(f"B 站：{kind}命中本版前瞻时照样早停，不翻下一页",
+                  (_b._bili_poster("3.8", now, get, slept.append, lambda: next(ticks)),
+                   len(asked["feed"])), (None, 1))
+        p1_fwd = json.loads(json.dumps(p1_38, ensure_ascii=False))
+        p1_fwd["data"]["items"][0]["type"] = "DYNAMIC_TYPE_FORWARD"
+        p1_fwd["data"]["items"][0]["modules"]["module_dynamic"] = {"desc": {"text": "恭喜中奖"}}
+        p1_fwd["data"]["items"][0]["orig"] = {"modules": {"module_dynamic": {"desc": {"text": "3.8版本前瞻抽奖"}}}}
+        p2_end = dict(pages[1], data=dict(pages[1]["data"], has_more=False))
+        get, asked = fake(lambda n, off: p1_fwd if off == "" else p2_end)
+        check("B 站：仅转发原文带本版前瞻不误早停（继续翻下一页）",
+              (_b._bili_poster("3.8", now, get, slept.append, lambda: next(ticks)),
+               len(asked["feed"])), (None, 2))
         try:
             _b.bili_wbi_keys({"code": -101, "data": {"isLogin": False}})
             err = None
@@ -3212,7 +3232,49 @@ def _part_skland_http_error_body():
     except Exception as e:  # noqa: BLE001
         got = type(e).__name__
     check("bare HTTPError", got, "HTTPError")
-    skland.urllib.request.urlopen = real
+
+    print("\n[503 transient gateway error retries once and succeeds; 403 does not retry]")
+    import json as _json
+    real_sleep = skland._sleep
+    skland._sleep = lambda s: None
+    hits: list[int] = []
+
+    class _OkResp:
+        headers: dict = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return _json.dumps({"code": 0, "data": {"ok": 1}}).encode()
+
+    def flaky_503(req, timeout=None):
+        hits.append(1)
+        if len(hits) == 1:
+            raise urllib.error.HTTPError(req.full_url, 503, "Busy", email.message.Message(), io.BytesIO(b"busy"))
+        return _OkResp()
+
+    try:
+        skland.urllib.request.urlopen = flaky_503
+        check("503 retried and succeeded", (skland._get(url, {}), len(hits)), ({"code": 0, "data": {"ok": 1}}, 2))
+        hits.clear()
+        skland.urllib.request.urlopen = lambda req, timeout=None: (
+            hits.append(1),
+            (_ for _ in ()).throw(urllib.error.HTTPError(
+                req.full_url, 403, "Forbidden", email.message.Message(),
+                io.BytesIO('{"code":10001,"message":"nope"}'.encode()))),
+        )
+        try:
+            skland._get(url, {})
+        except skland.SklandError:
+            pass
+        check("403 never retried", len(hits), 1)
+    finally:
+        skland._sleep = real_sleep
+        skland.urllib.request.urlopen = real
 
 
 def _part_skland_role():
@@ -3645,6 +3707,33 @@ def _part_needtable_publish():
     check("没 COS", needtable.refresh(c11, D1, make=offline, put=put_ok), False)
     check("都只是 INFO", {lv for lv, _, _ in rec.rows}, {"INFO"})
     check("没放", puts, [])
+
+    print("\n[并发安全：_run 写 _running['ended'] 受 _lock 互斥保护，同步 start 也不死锁]")
+    import threading as _threading
+    needtable._running.clear()
+    c_race = cfg_with()
+    refresh_done = _threading.Event()
+    real_refresh = needtable.refresh
+
+    def fake_refresh(cfg, now=None):
+        refresh_done.set()
+        return False
+
+    needtable.refresh = fake_refresh
+    try:
+        with needtable._lock:
+            t_race = _threading.Thread(target=needtable._run, args=(c_race, D1), daemon=True)
+            t_race.start()
+            check("_run 跑完 refresh 后等待 _lock", refresh_done.wait(2.0), True)
+            t_race.join(0.05)
+            check("持锁期间 _running['ended'] 未被并发改写",
+                  (t_race.is_alive(), "ended" in needtable._running), (True, False))
+        t_race.join(2.0)
+        check("释放 _lock 后 _run 完成写入",
+              (t_race.is_alive(), needtable._running.get("ended")), (False, D1))
+    finally:
+        needtable.refresh = real_refresh
+        needtable._running.clear()
 
     done()
 
@@ -4174,5 +4263,128 @@ def _part_need_table():
     print(f"all checks passed ({len(TYPHOEUS)} of 提弗洛斯's numbers, {len(WEAPON)} of 寒夜幽影's, {len(PURRCHENA)} of 噗切娜's from the preview table)")
 
 
+def _part_needtable_fallback():
+    """Cross-day preview guard and multi-level unpublished current fallback in needtable."""
+    import json
+    from ark_relay.features import needtable as bnt
+
+    HERE = Path(__file__).resolve().parent
+    FIX15 = fx_dir(HERE, "fixtures") / "skland-endfield-1015"
+
+    ranked = [
+        {"name": "小刻", "onlineDate": "2026-11-25", "dotType": "label_type_preview"},
+        {"name": "明河", "onlineDate": "2026-11-05", "dotType": "label_type_up"},
+    ]
+    check("跨日仍标 label_type_preview：_is_released 保持 False，不误升 current",
+          (bnt._is_released(ranked[0], "2026-11-26"),
+           [(w, r) for w, r, _l, _c in bnt.pick_standards(ranked, "2026-11-26", "6")]),
+          (False, [("明河", "current"), ("小刻", "next")]))
+
+    class MultiLag(bnt.RulesSource):
+        """Two newest released six-stars both lack data (unpublished=True); falls back to released[2]."""
+
+        def get(self, name, path, query="", trim=None):
+            if name == "wiki-item-9999":
+                return {"item": {"itemId": "9999", "name": "新干员甲", "publishedAtTs": 9999999999,
+                                 "attrs": {"上线时间": "2026年11月20日", "主要获取方式": "干员寻访·特许寻访"}}}
+            if name == "wiki-doc-9999":
+                return {"item": {"itemId": "9999", "name": "新干员甲", "document": {}}}
+            data = super().get(name, path, query, trim)
+            if name == "wiki-catalog":
+                data = json.loads(json.dumps(data))
+                for sub in data["catalog"][0]["typeSub"]:
+                    if sub["name"] == "干员":
+                        for it in sub["items"]:
+                            if it["name"] == "明河":
+                                it["brief"]["dotType"] = "label_type_up"
+                        sub["items"].append({
+                            "itemId": "9999", "name": "新干员甲", "publishedAtTs": 9999999999,
+                            "brief": {"dotType": "label_type_up", "subTypeList": [{"subTypeId": "10000", "value": "10006"}]},
+                        })
+            return data
+
+        def get_url(self, name, url, trim=None, loads=json.loads):
+            if name == "client-foresight":
+                return {}
+            return super().get_url(name, url, trim, loads)
+
+    t_multi = bnt.build(MultiLag(FIX15, None), "fixture", "2026-11-25")
+    g_multi = t_multi["games"][0]
+    check("前两位已实装干员均缺数据时继续回退到第 3 位（祀），不崩溃",
+          ([x["name"] for x in g_multi["standards"]], g_multi["coverage"]["operator"],
+           "新干员甲" in g_multi["coverage"]["nextError"] and "明河" in g_multi["coverage"]["nextError"]),
+          (["祀"], "祀", True))
+
+    class NonUnpubOnSecond(MultiLag):
+        def get(self, name, path, query="", trim=None):
+            if name.startswith("wiki-doc-") and name != "wiki-doc-9999":
+                raise OSError("network broken on second candidate")
+            return super().get(name, path, query, trim)
+
+    try:
+        bnt.build(NonUnpubOnSecond(FIX15, None), "fixture", "2026-11-25")
+        got_err = ""
+    except OSError as exc:
+        got_err = str(exc)
+    check("次选遇到非 unpublished 真错误时照常抛出、不吞错", "network broken" in got_err, True)
+
+    class AllUnpub(MultiLag):
+        def get(self, name, path, query="", trim=None):
+            if name == "search-chars":
+                return {"chars": []}
+            if name.startswith("wiki-doc-"):
+                return {"item": {"document": {}}}
+            return super().get(name, path, query, trim)
+
+    try:
+        bnt.build(AllUnpub(FIX15, None), "fixture", "2026-11-25")
+        all_err = ""
+    except RuntimeError as exc:
+        all_err = str(exc)
+    check("全部已实装干员都缺数据时抛出首位未收录错误，不产空表", "新干员甲" in all_err, True)
+
+
+def _part_wuwa_history_missing_start():
+    """update_wuwa_history skips incomplete start=None entries instead of crashing record_history."""
+    import json
+    from datetime import datetime
+    from ark_relay.features import banners as _b
+
+    FX = fx_dir(Path(__file__), "fixtures")
+    hx = json.loads((FX / "ww-history-2026-10-06.json").read_text(encoding="utf-8"))
+
+    def hist_get(path, payload):
+        if "findEventList" in path:
+            return {"data": {"list": hx["events"]}}
+        content = hx["details"][str(payload["postId"])]["postContent"][0]["content"]
+        return {"data": {"postDetail": {"postContent": [{"contentType": 1, "content": content}]}}}
+
+    def aget(url):
+        if url == _b._WW_SITE_ARTICLES:
+            return json.dumps(hx["articles"])
+        aid = url.rsplit("/", 1)[1].split(".")[0]
+        return json.dumps({"articleContent": hx["article_text"][aid]})
+
+    def aget_no36(url):
+        if url == _b._WW_SITE_ARTICLES:
+            return json.dumps([a for a in hx["articles"]
+                               if "3.6版本更新维护预告" not in str(a.get("articleTitle") or "")])
+        return aget(url)
+
+    sd = tmpdir()
+    now = datetime(2026, 9, 15, 12, 0)
+    got_miss, chg_miss = _b.update_wuwa_history(sd, now, hist_get, aget_no36, budget=1000)
+    saved_miss = json.loads((sd / "banners" / "history.json").read_text(encoding="utf-8")).get("鸣潮") or {}
+    check("维护预告缺失致 3.6 第一期 start=None：不炸 TypeError，起止齐全的照常落盘",
+          (any(h["ver"] == "3.6" and h["start"] is None for h in got_miss), chg_miss,
+           "3.5|第二期" in saved_miss, "3.6|第一期" in saved_miss),
+          (True, [], True, False))
+    got_fill, chg_fill = _b.update_wuwa_history(sd, now, hist_get, aget, budget=1000)
+    saved_fill = json.loads((sd / "banners" / "history.json").read_text(encoding="utf-8")).get("鸣潮") or {}
+    check("后续拉到 3.6 维护预告补齐 start 后：3.6 第一期补录进 history.json，无误报变化",
+          (all(h["start"] is not None for h in got_fill), chg_fill, "3.6|第一期" in saved_fill),
+          (True, [], True))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_banners, _part_banner_post_miss, _part_bili_pinned_post, _part_event_expiry, _part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard, _part_skland_arknights_annihilation, _part_needtable_publish, _part_needtable_trims, _part_need_table]))
+    sys.exit(run_parts([_part_banners, _part_banner_post_miss, _part_bili_pinned_post, _part_event_expiry, _part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard, _part_skland_arknights_annihilation, _part_needtable_publish, _part_needtable_trims, _part_need_table, _part_needtable_fallback, _part_wuwa_history_missing_start]))
