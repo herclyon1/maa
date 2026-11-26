@@ -4174,5 +4174,303 @@ def _part_need_table():
     print(f"all checks passed ({len(TYPHOEUS)} of 提弗洛斯's numbers, {len(WEAPON)} of 寒夜幽影's, {len(PURRCHENA)} of 噗切娜's from the preview table)")
 
 
+def _part_slice_m_arknights():
+    """Slice M regressions for arknights.py: comm_lead year rollover and date-only opening day."""
+    import json
+    import re
+    import urllib.parse
+    from datetime import datetime
+
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import banners as _b
+
+    def _ts(dt: datetime) -> int:
+        return int(dt.replace(tzinfo=SERVER_TZ).timestamp())
+
+    def _ak_site(lists: dict, posts: dict):
+        def get(u: str) -> str:
+            if u.startswith("https://ak.hypergryph.com/api/news?"):
+                q = urllib.parse.parse_qs(urllib.parse.urlsplit(u).query)
+                items, n = lists.get(q["category"][0], []), int(q["page"][0])
+                chunk = items[(n - 1) * 6:n * 6]
+                return json.dumps({"code": 0, "data": {
+                    "list": [{"cid": c, "title": t, "displayTime": ts} for c, t, ts in chunk],
+                    "end": n * 6 >= len(items)}}, ensure_ascii=False)
+            m = re.match(r"https://web-news\.hypergryph\.com/api/bulletin/(\w+)\?.*code=arknights$", u)
+            if m:
+                return json.dumps({"code": 0, "data": {"data": posts.get(m.group(1), "")}}, ensure_ascii=False)
+            raise OSError(f"offline: {u}")
+        return get
+
+    # 1. arknights_comm_lead: year must derive from posting date, not now
+    posted_dec = _ts(datetime(2026, 12, 20, 16, 0))
+    lst_comm = {"NEWS": [("9001", "《明日方舟》制作组通讯#99期", posted_dec)]}
+    dec_body = "<p>●SideStory「冬末雪原」限时活动将于12月下旬开启，新干员也将伴随本次活动登场。</p>"
+    get_dec = _ak_site(lst_comm, {"9001": dec_body})
+    check("12 月通讯提 12 月下旬：12-25 仍在期内",
+          _b.arknights_comm_lead(datetime(2026, 12, 25, 12, 0), get=get_dec)[:2],
+          ("冬末雪原", "12 月下旬"))
+    why: list[str] = []
+    check("12 月通讯提 12 月下旬：次年 1 月已过期（不再错算成次年 12 月）",
+          _b.arknights_comm_lead(datetime(2027, 1, 2, 12, 0), get=get_dec, why=why), None)
+    check("过期原因写明 12 月下旬已过", bool(why and "12 月下旬已过" in why[-1]), True)
+
+    jan_body = "<p>●SideStory「新年初雪」限时活动将于1月上旬开启，新干员也将伴随本次活动登场。</p>"
+    get_jan = _ak_site(lst_comm, {"9001": jan_body})
+    check("12 月通讯提 1 月上旬：12-28 有效",
+          _b.arknights_comm_lead(datetime(2026, 12, 28, 12, 0), get=get_jan)[:2], ("新年初雪", "1 月上旬"))
+    check("12 月通讯提 1 月上旬：次年 1-05 有效",
+          _b.arknights_comm_lead(datetime(2027, 1, 5, 12, 0), get=get_jan)[:2], ("新年初雪", "1 月上旬"))
+    check("12 月通讯提 1 月上旬：次年 1-11 过期",
+          _b.arknights_comm_lead(datetime(2027, 1, 11, 0, 0), get=get_jan), None)
+    check("同篇含 12 月下旬和 1 月上旬：次年 1-02 跳过已过的 12 月、返回 1 月活动",
+          _b.arknights_comm_lead(datetime(2027, 1, 2, 12, 0),
+                                 get=_ak_site(lst_comm, {"9001": dec_body + jan_body}))[:2],
+          ("新年初雪", "1 月上旬"))
+
+    # 2. _arknights: date-only (00:00, 「版本更新后」) post stays in 下期 on opening day before PRTS lists it
+    posted_pool = _ts(datetime(2025, 10, 29, 12, 0))
+    lst_pool = {"ACTIVITY": [("6262", "【以风雪为誓】限定寻访即将开启", posted_pool)]}
+    post_html = ("<p>活动时间：11月1日版本更新后 - 11月15日03:59</p>"
+                 "<p>★★★★★★：凛御银灰[限定] / 圣聆初雪</p>")
+    get_pool = _ak_site(lst_pool, {"6262": post_html})
+
+    def run_ak(now: datetime, prts_rows: list):
+        real = (_b._ak_prts_rows, _b._json, _b._text)
+        saved = dict(_b._rarity_cache)
+
+        def offline(url, *a, **k):
+            raise OSError(f"offline: {url}")
+
+        _b._ak_prts_rows = lambda tr: list(prts_rows)
+        _b._json = offline
+        _b._text = lambda url, *a, **k: get_pool(url)
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update({"凛御银灰": 5, "圣聆初雪": 5})
+        tr = _b.Trace.new()
+        try:
+            got, nxt = _b._arknights(now, trace=tr)
+        finally:
+            _b._ak_prts_rows, _b._json, _b._text = real
+            _b._rarity_cache.clear()
+            _b._rarity_cache.update(saved)
+        return got, nxt, tr
+
+    day0 = datetime(2025, 11, 1, 12, 0)
+    got0, nxt0, tr0 = run_ak(day0, [])
+    check("版本更新后(00:00)开池当天 PRTS 未补录：保留为下期，不两头落空",
+          nxt0, (datetime(2025, 11, 1, 0, 0), "凛御银灰、圣聆初雪「以风雪为誓」"))
+    out0 = _b.render(got0, day0, {"明日方舟": nxt0}, trace=tr0)
+    check("开池当天日报展示下期且过来源闸",
+          ("· 下期：以风雪为誓 · 凛御银灰、圣聆初雪 · 北京 11-01 开 · 11-15 03:59 结束" in out0, tr0.withheld),
+          (True, []))
+    check("开池当天不误发「明天开」群通知", _b.opening_tomorrow(day0, {"明日方舟": nxt0}), [])
+
+    prts_live = [_b.Banner("明日方舟", "【限定寻访·庆典】以风雪为誓", ("凛御银灰", "圣聆初雪"),
+                           datetime(2025, 11, 1, 16, 0), datetime(2025, 11, 15, 3, 59))]
+    day0_after = datetime(2025, 11, 1, 18, 0)
+    got1, nxt1, tr1 = run_ak(day0_after, prts_live)
+    check("开池当天 PRTS 已补录在跑：进当期且不再重复挂下期",
+          ([b.name for b in got1 if _b.running(b, day0_after)], nxt1),
+          (["【限定寻访·庆典】以风雪为誓"], None))
+    out1 = _b.render(got1, day0_after, {}, trace=tr1)
+    check("PRTS 已补录时下期回到未公告", "· 下期：官方未公告" in out1, True)
+
+    day1 = datetime(2025, 11, 2, 12, 0)
+    got2, nxt2, _tr2 = run_ak(day1, [])
+    check("次日 PRTS 仍未补录：按官网补进当期、不再挂下期",
+          ([(b.name, b.chars) for b in got2 if _b.running(b, day1)], nxt2),
+          ([("以风雪为誓", ("凛御银灰", "圣聆初雪"))], None))
+
+    if fails:
+        raise SystemExit(1)
+    print("all checks passed")
+
+
+def _part_slice_m_endfield():
+    """Slice M regressions for endfield.py: CMS code check, multi-row next scan, Skland future filter."""
+    import json
+    from datetime import datetime
+
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import banners as _b
+
+    def _ts(dt: datetime) -> int:
+        return int(dt.replace(tzinfo=SERVER_TZ).timestamp())
+
+    # 3. ef_cms_posts: code != 0 must raise so tr.problems and all-sources-unreadable guard trigger
+    list_err = False
+    try:
+        _b.ef_cms_posts(lambda u: json.dumps({"code": 10001, "msg": "rate limited", "data": None}), max_pages=1)
+    except ValueError as exc:
+        list_err = "code=10001" in str(exc)
+    check("终末地 CMS 列表 code!=0 抛 ValueError 而非静默返回空", list_err, True)
+
+    def post_err_get(u: str) -> str:
+        if "page=1" in u:
+            return json.dumps({"code": 0, "data": {
+                "list": [{"cid": "7204", "title": "「烟火邀星河」特许寻访说明", "displayTime": 1793786400}],
+                "total": 1}}, ensure_ascii=False)
+        return json.dumps({"code": -1, "msg": "busy", "data": None})
+
+    post_err = False
+    try:
+        _b.ef_cms_posts(post_err_get, max_pages=1)
+    except ValueError as exc:
+        post_err = "7204" in str(exc) and "code=-1" in str(exc)
+    check("终末地 CMS 帖子 code!=0 抛 ValueError", post_err, True)
+
+    real = (_b._json, _b._text, _b.endfield_next_from_news)
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+
+    def cms_rate_limited(url, *a, **k):
+        if url == _b._EF_CMS_LIST.format(page=1):
+            return json.dumps({"code": 10001, "msg": "rate limited", "data": None})
+        raise OSError(f"offline: {url}")
+
+    _b._json, _b._text, _b.endfield_next_from_news = offline, cms_rate_limited, (lambda now: None)
+    tr = _b.Trace.new()
+    failed: list[str] = []
+    try:
+        _b._endfield(None, lambda path: {"data": {"list": []}}, datetime(2026, 11, 7, 12, 0),
+                     trace=tr, failed=failed)
+    finally:
+        _b._json, _b._text, _b.endfield_next_from_news = real
+    check("终末地 CMS 限流记进 tr.problems",
+          any("特许寻访说明" in p and "ValueError" in p for p in tr.problems), True)
+    check("终末地森空岛空且 CMS 限流（另两源不可读）：触发全源不可读保护",
+          failed, ["终末地（森空岛的当期卡池表是空的，官方公告也没读到）"])
+
+    def fallback_get(url: str) -> str:
+        if "web-news.hypergryph.com/api/bulletin?" in url:
+            return json.dumps({"code": 10001, "msg": "busy", "data": None})
+        if url == _b._EF_NEWS:
+            return ('\\"cid\\":\\"7204\\",\\"tab\\":\\"news\\",\\"sticky\\":false,'
+                    '\\"title\\":\\"「烟火邀星河」特许寻访说明\\",\\"author\\":\\"\\",\\"displayTime\\":1793786400')
+        if url == f"{_b._EF_NEWS}/7204":
+            return "概率提升的6星干员为【明河】 开放时间：2026/11/05 12:00 - 2026/11/26 06:00"
+        raise OSError(f"unexpected: {url}")
+
+    check("endfield_next_from_news 遇到 CMS code!=0 回退新闻页",
+          _b.endfield_next_from_news(datetime(2026, 11, 1, 12, 0), get=fallback_get),
+          (datetime(2026, 11, 5, 12, 0), "明河「烟火邀星河」"))
+
+    # 4. ef_next_from_rows: scan beyond rows[0] for future notices
+    reposted = [
+        {"who": "祀「万物更新」", "start": datetime(2026, 10, 15, 12, 0),
+         "end": datetime(2026, 11, 5, 11, 59), "posted": _ts(datetime(2026, 11, 1, 10, 0))},
+        {"who": "明河「烟火邀星河」", "start": datetime(2026, 11, 5, 12, 0),
+         "end": None, "posted": _ts(datetime(2026, 10, 31, 12, 0))},
+    ]
+    check("当期公告后更新排在 rows[0]：仍找到 rows[1] 的下期",
+          _b.ef_next_from_rows(reposted, datetime(2026, 11, 1, 12, 0)),
+          (datetime(2026, 11, 5, 12, 0), "明河「烟火邀星河」"))
+
+    both_future = [
+        {"who": "明河「烟火邀星河」", "start": datetime(2026, 11, 5, 12, 0), "end": None},
+        {"who": "祀「万物更新」", "start": datetime(2026, 10, 15, 12, 0),
+         "end": datetime(2026, 11, 5, 11, 59)},
+    ]
+    check("上下半同发且均未开：取最早开的那个",
+          _b.ef_next_from_rows(both_future, datetime(2026, 10, 14, 12, 0)),
+          (datetime(2026, 10, 15, 12, 0), "祀「万物更新」"))
+
+    unscheduled_behind = [
+        {"who": "明河「烟火邀星河」", "start": datetime(2026, 11, 5, 12, 0),
+         "end": datetime(2026, 11, 26, 6, 0), "posted": _ts(datetime(2026, 11, 25, 14, 0))},
+        {"who": "新人「新池」", "start": None,
+         "end": datetime(2026, 12, 17, 11, 59), "posted": _ts(datetime(2026, 11, 25, 10, 0))},
+    ]
+    check("当期补发压过未定开服时刻的新版本公告：仍返回 (None, who)",
+          _b.ef_next_from_rows(unscheduled_behind, datetime(2026, 11, 25, 20, 0)),
+          (None, "新人「新池」"))
+
+    ancient = [
+        {"who": "明河「烟火邀星河」", "start": datetime(2026, 11, 5, 12, 0),
+         "end": None, "posted": _ts(datetime(2026, 11, 4, 12, 0))},
+        {"who": "旧人「旧池」", "start": None,
+         "end": None, "posted": _ts(datetime(2026, 1, 20, 12, 0))},
+    ]
+    check("远古无起止旧帖发在当期开池之前：不误报成下期",
+          _b.ef_next_from_rows(ancient, datetime(2026, 11, 7, 12, 0)), None)
+
+    # 5. _endfield: pre-listed future (and expired) Skland pools must not enter `on`
+    now = datetime(2026, 10, 25, 12, 0)
+    pools = [
+        {"name": "万物更新", "poolStartAtTs": str(_ts(datetime(2026, 10, 15, 12, 0))),
+         "poolEndAtTs": str(_ts(datetime(2026, 11, 5, 11, 59))),
+         "chars": [{"dotType": "label_type_up", "pcLink": "x?gameEntryId=1001"}]},
+        {"name": "烟火邀星河", "poolStartAtTs": str(_ts(datetime(2026, 11, 5, 12, 0))),
+         "poolEndAtTs": str(_ts(datetime(2026, 11, 26, 6, 0))),
+         "chars": [{"dotType": "label_type_up", "pcLink": "x?gameEntryId=1002"}]},
+    ]
+    names = {"1001": "祀", "1002": "明河"}
+
+    def sk_get(path: str) -> dict:
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": pools}}
+        return {"data": {"item": {"name": names[path.split("id=")[-1]]}}}
+
+    bulletin_html = (
+        "<p>■ 全新干员 6星干员【祀】【明河】 ■ 全新寻访及申领</p>"
+        "<p>1.「万物更新」特许寻访 开放时间：2026/10/15 12:00 - 2026/11/05 11:59 6星干员【祀】获取概率提升</p>"
+        "<p>2.「烟火邀星河」特许寻访 开放时间：2026/11/05 12:00 - 2026/11/26 06:00 6星干员【明河】获取概率提升</p>"
+    )
+
+    def _run_ef(js_fn, text_fn, sk_fn, at):
+        _b._json, _b._text, _b.endfield_next_from_news = js_fn, text_fn, (lambda _now: None)
+        t = _b.Trace.new()
+        try:
+            got, nxt = _b._endfield(None, sk_fn, at, trace=t)
+        finally:
+            _b._json, _b._text, _b.endfield_next_from_news = real
+        return got, nxt, t
+
+    def _bulletin_js(html_body: str):
+        def js(url, *a, **k):
+            if url == _b._EF_BULLETIN:
+                return {"data": {"list": [{"title": "「丹青渡」版本更新说明", "data": {"html": html_body}}]}}
+            raise OSError(f"offline: {url}")
+        return js
+
+    got, nxt, tr_ef = _run_ef(_bulletin_js(bulletin_html), offline, sk_get, now)
+    check("森空岛提前挂出未开下半池：不滤掉公告里的下期预告",
+          nxt, (datetime(2026, 11, 5, 12, 0), "明河「烟火邀星河」"))
+    out = _b.render(got, now, {"终末地": nxt}, trace=tr_ef)
+    check("日报当期仅报已开上半、下期报下半",
+          ("· 当期：万物更新 · 祀" in out, "· 当期：烟火邀星河" in out,
+           "· 下期：烟火邀星河 · 明河 · 北京 11-05 12:00 开 · 11-26 06:00 结束" in out),
+          (True, False, True))
+
+    fx = fx_dir(Path(__file__), "fixtures") / "ef-briefing-v1d6"
+    brief_page = (fx / "latest.html").read_text(encoding="utf-8")
+    brief_url = _b._EF_BRIEFING_JS.search(brief_page).group(1)
+    brief_js = (fx / "bundle.js").read_text(encoding="utf-8")
+    brief_pages = {_b._EF_BRIEFING: brief_page, brief_url: brief_js}
+    _got_b, nxt_b, _tr_b = _run_ef(
+        offline,
+        lambda url, *a, **k: brief_pages[url] if url in brief_pages else (_ for _ in ()).throw(OSError(url)),
+        sk_get, now)
+    check("森空岛提前挂出未开池：新版本导览路径也不滤掉下期",
+          nxt_b, (datetime(2026, 11, 5, 12, 0), "明河「烟火邀星河」"))
+
+    bulletin_no_clock = (
+        "<p>■ 全新干员 6星干员【祀】【明河】 ■ 全新寻访及申领</p>"
+        "<p>1.「万物更新」特许寻访 6星干员【祀】获取概率提升</p>"
+        "<p>2.「烟火邀星河」特许寻访 6星干员【明河】获取概率提升</p>"
+    )
+    _got_p, nxt_p, _tr_p = _run_ef(
+        _bulletin_js(bulletin_no_clock), offline,
+        lambda path: {"data": {"list": [pools[0]]}} if path == "/web/v1/wiki/char-pool" else {"data": {"item": {"name": "祀"}}},
+        datetime(2026, 11, 27, 12, 0))
+    check("森空岛残留已过期上半池：不进 on、不把已结束的下半误报为下期", nxt_p, None)
+
+    if fails:
+        raise SystemExit(1)
+    print("all checks passed")
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_banners, _part_banner_post_miss, _part_bili_pinned_post, _part_event_expiry, _part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard, _part_skland_arknights_annihilation, _part_needtable_publish, _part_needtable_trims, _part_need_table]))
+    sys.exit(run_parts([_part_banners, _part_banner_post_miss, _part_bili_pinned_post, _part_event_expiry, _part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard, _part_skland_arknights_annihilation, _part_needtable_publish, _part_needtable_trims, _part_need_table, _part_slice_m_arknights, _part_slice_m_endfield]))

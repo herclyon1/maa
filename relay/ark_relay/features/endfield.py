@@ -195,7 +195,7 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
               if r["start"] is not None and r["start"] <= now and (r["end"] is None or now <= r["end"])]
     _ef_crosscheck(got, now, pools_n, ends_n, notice_ok, opened, tr)
     _ef_fill(got, live, opened, now, tr)
-    on = {c for b in live for c in b.chars} | {r["op"] for r in opened}
+    on = {c for b in live if b.start <= now <= b.end for c in b.chars} | {r["op"] for r in opened}
     nxt = _ef_next(now, on, debut, pools_n, off, notes, tr)
     _ef_until(nxt, offi, tr)
     return got, nxt
@@ -541,13 +541,33 @@ def ef_next_banner(posts: "list[tuple[str, str, int, str]]", now: datetime
 
 
 def ef_next_from_rows(rows: "list[dict]", now: datetime) -> "tuple[datetime | None, str] | None":
-    """ef_next_banner on notices ef_banner_posts has already read."""
+    """ef_next_banner on notices ef_banner_posts has already read.
+
+    Any notice whose opening time is still in the future wins (earliest first),
+    so an already-open banner's notice being edited/reposted later, or both
+    halves being posted together, cannot hide the next banner. When no dated
+    future notice exists, an unscheduled (start is None) notice still stands in
+    as (None, who) unless it has ended or was posted before an already-opened
+    banner with no closing time.
+    """
     if not rows:
         return None
-    r = rows[0]
-    if r["start"] is None:
-        return None if (r["end"] and r["end"] <= now) else (None, r["who"])
-    return (r["start"], r["who"]) if r["start"] > now else None
+    timed = [r for r in rows if r["start"] is not None and r["start"] > now]
+    if timed:
+        r = min(timed, key=lambda r: r["start"])
+        return (r["start"], r["who"])
+    latest_opened = max((r["start"] for r in rows if r["start"] is not None and r["start"] <= now), default=None)
+    for r in rows:
+        if r["start"] is not None:
+            continue
+        if r["end"] and r["end"] <= now:
+            continue
+        if r["end"] is None and latest_opened is not None and r.get("posted"):
+            posted_at = datetime.fromtimestamp(int(r["posted"]), tz=SERVER_TZ).replace(tzinfo=None)
+            if posted_at < latest_opened:
+                continue
+        return (None, r["who"])
+    return None
 
 
 # The three official sources' names, in the order their times are taken.
@@ -719,6 +739,15 @@ def ef_briefing_next(now: datetime, on: "set[str]", version: str, rows: "list[di
     return r["open"], r["who"], version, (r["listed"] if r["after_update"] else None)
 
 
+def _ef_cms_data(raw: object, what: str) -> dict:
+    """Validate one Hypergryph CMS JSON reply (must be code == 0) and return its data dict."""
+    if not isinstance(raw, dict) or raw.get("code") != 0:
+        code = raw.get("code") if isinstance(raw, dict) else type(raw).__name__
+        raise ValueError(f"终末地官网{what}返回 code={code!r}")
+    data = raw.get("data")
+    return data if isinstance(data, dict) else {}
+
+
 def ef_cms_posts(get=None, max_pages: int = 20) -> "list[tuple[str, str, int, str]]":
     """Every post the official site still lists, with the bodies _ef_wanted needs:
     [(cid, title, displayTime, text)]. Maintenance windows come from the 预告 posts;
@@ -728,14 +757,14 @@ def ef_cms_posts(get=None, max_pages: int = 20) -> "list[tuple[str, str, int, st
     get = get or (lambda u: hub._text(u, _UA_BROWSER))
     items: list[dict] = []
     for page in range(1, max_pages + 1):
-        data = (json.loads(get(_EF_CMS_LIST.format(page=page))).get("data") or {})
+        data = _ef_cms_data(json.loads(get(_EF_CMS_LIST.format(page=page))), f"列表第 {page} 页")
         got = data.get("list") or []
         items += got
         if not got or len(items) >= int(data.get("total") or 0):
             break
 
     def body(cid: str) -> str:
-        d = json.loads(get(_EF_CMS_POST.format(cid=cid))).get("data") or {}
+        d = _ef_cms_data(json.loads(get(_EF_CMS_POST.format(cid=cid))), f"帖子 {cid}")
         return _ef_cms_text(str(d.get("data") or ""))
 
     posts: list[tuple[str, str, int, str]] = []
