@@ -5221,6 +5221,11 @@ def _part_state_pusher_concurrency():
     phone.Mailbox, phone.Heartbeat = SlowBox, QuietHb
     phone.state_payload = lambda c, d: {"at": 1}
     boot_stages.ensure_automas = lambda *a, **k: True
+    lg = logging.getLogger("ark.test_phone")
+    prev_prop = lg.propagate
+    null_h = logging.NullHandler()
+    lg.addHandler(null_h)
+    lg.propagate = False
     try:
         sd2 = tmpdir()
         cfg2 = types.SimpleNamespace(phone_topic="t-conc", phone_pin="8964", state_dir=sd2,
@@ -5228,9 +5233,6 @@ def _part_state_pusher_concurrency():
         svc = types.SimpleNamespace(stop_event=None)
         eng = types.SimpleNamespace(scripts_running=lambda: False)
         notifier = types.SimpleNamespace(send=lambda *a, **k: [])
-        lg = logging.getLogger("ark.test_phone_conc")
-        lg.addHandler(logging.NullHandler())
-        lg.propagate = False
         push = phone._start_phone_channel(svc, cfg2, eng, notifier, lg)  # 开机 = 1st (ok)
         # 3 concurrent publishes (2nd fails, 3rd/4th succeed), then 关机前 (5th ok)
         workers = [threading.Thread(target=push, args=(f"并发{i}",)) for i in range(3)]
@@ -5245,6 +5247,8 @@ def _part_state_pusher_concurrency():
               ("上报状态 5 次，送到 4 次（腾讯云 4）" in ev, "1 份没送到" in ev, "ntfy 回 502" in ev),
               (True, True, True))
     finally:
+        lg.propagate = prev_prop
+        lg.removeHandler(null_h)
         phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas = saved
 
 
