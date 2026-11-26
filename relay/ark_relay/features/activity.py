@@ -208,6 +208,7 @@ def on_record(eng, rec) -> None:
 
 def next_moment(state_dir, now: datetime) -> "tuple[datetime, str] | None":
     """When the loop must wake for the top-up: its time, or a retry after a dispatch that did not take."""
+    now = now.astimezone(SERVER_TZ)
     rec = read(state_dir, now.strftime("%Y-%m-%d"))
     due = _at(rec.get("due"))
     if due is None:
@@ -215,5 +216,7 @@ def next_moment(state_dir, now: datetime) -> "tuple[datetime, str] | None":
     if rec.get("result") == "booked" and due > now:
         return due, "到点给鸣潮补活跃"
     if rec.get("result") == "couldnt_run" and (last := _at(rec.get("dispatched_at"))) is not None:
-        return last + timedelta(seconds=RETRY_GAP_S), "鸣潮活跃晚班补再派一次"
+        at = last + timedelta(seconds=RETRY_GAP_S)
+        if at > now:
+            return at, "鸣潮活跃晚班补再派一次"
     return None

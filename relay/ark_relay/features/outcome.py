@@ -704,18 +704,22 @@ WEEKLY_GO_CLAIM = "周本领奖：打完了，去结晶按 F"
 def weekly_incomplete_reason(text: str, c: "dict | None" = None) -> str:
     """Why a weekly-boss run that confirmed >=1 claim still silently dropped a reward; '' when ok.
 
-    Only applies when verified > 0 and neither WEEKLY_SHORT nor _WEEKLY_FAILED fired, so
-    verified==0 diagnostics and explicit _stop reasons keep full specificity. Catches the
-    2026-11-23 pattern where lap 3 pressed F on an echo, exited silently with 1/3 left,
+    Unverified claims (attempted > verified) are never excused by WEEKLY_SHORT or _WEEKLY_FAILED:
+    a later waveplate shortage does not verify an earlier unconfirmed click. The remaining
+    silent-drop heuristics apply only when verified > 0 and neither WEEKLY_SHORT nor _WEEKLY_FAILED
+    fired, so verified==0 diagnostics and explicit _stop / shortage reasons keep full specificity.
+    Catches the 2026-11-23 pattern where lap 3 pressed F on an echo, exited silently with 1/3 left,
     and Tacet then burned 120 waveplates while the run still reported 「已完成」.
     """
     t = _task_lines(text)
     if c is None:
         c = weekly_claims(t)
-    if not c["verified"] or WEEKLY_SHORT.search(t) or _WEEKLY_FAILED.search(t):
+    if not c["verified"]:
         return ""
     if c["attempted"] > c["verified"]:
         return weekly_unverified(c)
+    if WEEKLY_SHORT.search(t) or _WEEKLY_FAILED.search(t):
+        return ""
     remain = weekly_left(t)
     go_claim = t.count(WEEKLY_GO_CLAIM)
     if remain != 0 and go_claim > c["verified"]:
@@ -1120,7 +1124,9 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         elif short:
             label = (f"周本（这一趟领到了 {c['verified']} 次，之后结晶波片不足，剩下的奖励没领）"
                      if c["verified"] else "周本（结晶波片不足，奖励没领）")
-            out.append(Check(label, False, WEEKLY_SHORT_SAY))
+            unverified = weekly_unverified(c)
+            detail = f"{WEEKLY_SHORT_SAY}；另有{unverified}" if unverified else WEEKLY_SHORT_SAY
+            out.append(Check(label, False, detail))
         elif stopped:
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
             out.append(Check("周本领到了奖励", False, without_screen_dump(stopped.group(1)) + got))
@@ -1278,17 +1284,17 @@ def _all_done_no_exit(text: str, own_log: bool) -> bool:
     「All done」 is checked against the scheduled count, not just against the
     tasks that started: a crash between two tasks leaves later ones never begun.
     """
-    if not own_log or _MAAEND_DONE in text:
+    if not own_log or _MAAEND_DONE in text or re.search(r"任务失败[:：]", text):
         return False
     counts = [int(n) for n in _MAAEND_SCHEDULED.findall(text)]
     if not counts:
         return False
-    started = re.findall(r"任务开始[:：]\s*(\S+)", text)
-    finished = re.findall(r"任务完成[:：]\s*(\S+)", text)
-    ended = re.findall(r"任务(?:完成|失败)[:：]\s*(\S+)", text)
-    return (bool(started) and not (Counter(started) - Counter(ended))
-            and not re.search(r"任务失败[:：]", text)
-            and len(finished) >= counts[-1])
+    stop = collector_maaend._END_STOP_MARK
+    started = [n for m in re.findall(r"任务开始[:：]\s*(\S.+?)\s*$", text, re.M)
+               if (n := collector_maaend._strip_emoji(m)) != stop]
+    finished = [n for m in re.findall(r"任务完成[:：]\s*(\S.+?)\s*$", text, re.M)
+                if (n := collector_maaend._strip_emoji(m)) != stop]
+    return bool(started) and not (Counter(started) - Counter(finished)) and len(finished) >= counts[-1]
 
 
 def maaend_no_self_exit(text: str, own_log: bool = False) -> bool:
@@ -1553,6 +1559,10 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
         got = (info.get("fields") or {}).get("Teleport to Tacet Suppression")
         hits = _OKWW_TACET_INDEX.findall(text)
         if got is None and not hits:
+            if m := _BOSS_FULL.search(text):
+                return (f"强敌·{m.group(1)}{m.group(2)}（已满，未刷）", "")
+            if _BOSS_SHORT.search(text) or _BOSS_FAILED.search(text):
+                return ("", "")
             return ("无音区（日志里没有序号）", "声骸（无音区序号没读到，套装不明）")
         idx = (int(got) if got is not None else int(hits[-1])) + 1
         # The list moved in 3.7 (wuwa_tacet.NEW_LIST_FROM): read it as of the run's own day.
@@ -2075,7 +2085,8 @@ def _okww_farm_fields(text: str, out: dict) -> None:
     farm, reward = _okww_farm(text, info)
     if farm:
         out["okww_farm"] = farm
-        out["okww_farm_reward"] = reward
+        if reward:
+            out["okww_farm_reward"] = reward
         double = len(_OKWW_DOUBLE.findall(text))
         single = len(_OKWW_SINGLE.findall(text))
         if double:
@@ -2215,7 +2226,7 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             extra = f"；另有{unverified}" if unverified else ""
             if short:
                 extra += "；剩下的奖励没领：结晶波片不足"
-            if (stopped and not short) or incomplete:
+            if (stopped and not short) or incomplete or unverified:
                 prefix = "未领满：只领了" if (remain is not None and remain > 0) else "领奖有异常：领了"
                 steps.append(f"周本（{prefix} {claims} 次，{where}{extra}）")
             else:
