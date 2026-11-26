@@ -98,7 +98,16 @@ runpy.run_path(sys.argv[0], run_name="__main__")
 
     # The reachability probe connects here; a thread accepts and drops each connection.
     listener = socket.create_server(("127.0.0.1", 0))
-    threading.Thread(target=lambda: [listener.accept()[0].close() for _ in iter(int, 1)], daemon=True).start()
+    listener_stop = threading.Event()
+
+    def _accept_loop() -> None:
+        while not listener_stop.is_set():
+            try:
+                listener.accept()[0].close()
+            except OSError:
+                return
+
+    threading.Thread(target=_accept_loop, daemon=True).start()
     REACHABLE = f"127.0.0.1:{listener.getsockname()[1]}"
     with socket.create_server(("127.0.0.1", 0)) as _s:
         CLOSED = f"127.0.0.1:{_s.getsockname()[1]}"   # nothing listens here once it is closed
@@ -339,6 +348,12 @@ runpy.run_path(sys.argv[0], run_name="__main__")
     else:
         print("  - relay/ark_relay/core/statestore.py is not on this branch yet; compared once it lands")
 
+    listener_stop.set()
+    try:
+        socket.create_connection(listener.getsockname(), timeout=0.5).close()
+    except OSError:
+        pass
+    listener.close()
     print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
     sys.exit(1 if fails else 0)
 
