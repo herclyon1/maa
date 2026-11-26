@@ -24,6 +24,7 @@ import logging
 import os
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -51,7 +52,9 @@ SEEN_FILE = "friend-events-seen.json"
 HARDLOCK_FILE = "HARDLOCK.json"
 HARDLOCK_WECHAT_FILE = "HARDLOCK_WECHAT.json"
 LOCKED_FLAG_FILE = "LOCKED_UNAVAILABLE.flag"
-DEFAULT_FRIEND_NOTIFY_URL = "http://100.110.87.36:8931/friend-event"
+DEFAULT_FRIEND_NOTIFY_URL = "http://100.110.87.36:8931/friend-notify"
+FRIEND_NOTIFY_PATH = "/friend-notify"
+ALERTDAEMON_PORT = 8931
 
 TIMEOUT = 5.0
 MAX_QUEUE = 200
@@ -69,6 +72,22 @@ def _state_dir_of(cfg_or_dir: Any) -> Path:
     if sd is None:
         raise ValueError("缺少状态目录")
     return Path(sd)
+
+
+def validate_notify_url(url: str) -> str:
+    """Validate friend-notify endpoint: NEVER allow the alertdaemon alarm root `/`."""
+    raw = str(url or "").strip()
+    if not raw:
+        raise ValueError("未配置好友提醒接收地址")
+    parsed = urllib.parse.urlsplit(raw)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"好友提醒地址格式无效：{raw}")
+    path = (parsed.path or "").rstrip("/") or "/"
+    if path == "/":
+        raise ValueError("禁止向报警根路径 '/' 投递好友提醒，必须使用 /friend-notify 或独立端口路径")
+    if parsed.port == ALERTDAEMON_PORT and path != FRIEND_NOTIFY_PATH:
+        raise ValueError(f"端口 {ALERTDAEMON_PORT} 只允许投递到 {FRIEND_NOTIFY_PATH}，拒绝路径 {path}")
+    return raw
 
 
 def _notify_url_of(cfg_or_dir: Any, explicit: str | None = None) -> str:
@@ -328,9 +347,14 @@ class FriendEventQueue:
                 return "retry", f"{type(exc).__name__}: {exc}"
         if not self.url:
             return "retry", "未配置接收地址"
+        try:
+            target_url = validate_notify_url(self.url)
+        except ValueError as exc:
+            log.warning("拒绝向不合规地址投递好友微信事件（%s）：%s", exc, self.url)
+            return "retry", str(exc)
         data = json.dumps(clean, ensure_ascii=False).encode("utf-8")
         req = urllib.request.Request(
-            self.url,
+            target_url,
             data=data,
             method="POST",
             headers={"Content-Type": "application/json; charset=utf-8"},

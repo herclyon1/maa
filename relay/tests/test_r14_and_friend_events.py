@@ -387,9 +387,11 @@ def _part_friend_events_dual_hardlock_and_http():
     from ark_relay.features import friend_events
 
     received: list[dict] = []
+    paths_hit: list[str] = []
 
     class _Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self):
+            paths_hit.append(self.path)
             n = int(self.headers.get("Content-Length", "0"))
             body = json.loads(self.rfile.read(n).decode("utf-8"))
             received.append(body)
@@ -405,7 +407,7 @@ def _part_friend_events_dual_hardlock_and_http():
     port = srv.server_address[1]
     t = threading.Thread(target=srv.serve_forever, daemon=True)
     t.start()
-    url = f"http://127.0.0.1:{port}/friend-event"
+    url = f"http://127.0.0.1:{port}/friend-notify"
 
     try:
         from ark_relay.core import engine as engine_mod
@@ -484,9 +486,36 @@ def _part_friend_events_dual_hardlock_and_http():
         })
         qpath.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
 
+        # Verify default URL is strictly isolated /friend-notify and alarm root `/` is hard-refused (0 HTTP calls).
+        check("默认好友投递地址为专用 /friend-notify 端点",
+              friend_events.DEFAULT_FRIEND_NOTIFY_URL, "http://100.110.87.36:8931/friend-notify")
+        for bad_url in (
+            "http://100.110.87.36:8931",
+            "http://100.110.87.36:8931/",
+            "http://100.110.87.36:8931/friend-event",
+            f"http://127.0.0.1:{port}/",
+            f"http://127.0.0.1:{port}",
+        ):
+            rejected = False
+            try:
+                friend_events.validate_notify_url(bad_url)
+            except ValueError:
+                rejected = True
+            check(f"拒绝不合规好友投递地址 {bad_url}", rejected, True)
+        check("允许专用 /friend-notify 地址",
+              friend_events.validate_notify_url("http://100.110.87.36:8931/friend-notify"),
+              "http://100.110.87.36:8931/friend-notify")
+        check("允许独立端口专用路径",
+              friend_events.validate_notify_url("http://127.0.0.1:18931/friend-notify"),
+              "http://127.0.0.1:18931/friend-notify")
+
+        left_bad = friend_events.flush_pending(sd, url=f"http://127.0.0.1:{port}/")
+        check("尝试向报警根路径 '/' 投递：零 HTTP 请求且事件保留在队列", (left_bad, len(received), paths_hit), (2, 0, []))
+
         left = friend_events.flush_pending(sd, url=url)
         check("解封后队列清零", left, 0)
         check("仅 1 条合规事件送达 Mac，篡改事件被拦截", len(received), 1)
+        check("仅投递到专用 /friend-notify 路径", paths_hit, ["/friend-notify"])
         check("送达事件收件人为 No1Urgot", received[0]["recipient_wechat_id"], "No1Urgot")
         check("送达事件 event_id 准确", received[0]["event_id"], "arknights_activity_open:act46side")
     finally:
@@ -743,7 +772,7 @@ def _part_engine_tick_flush_and_dual_lock_transition():
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Receiver)
     port = srv.server_address[1]
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    url = f"http://127.0.0.1:{port}/friend-event"
+    url = f"http://127.0.0.1:{port}/friend-notify"
 
     old_url = os.environ.get("ARK_FRIEND_NOTIFY_URL")
     try:
