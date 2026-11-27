@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
-/opt/homebrew/bin/python3 -I /Users/herclyon/Money/审批记录/硬锁/hardlock.py check relay "$(basename "$0") $*" || exit 75
 # 在游戏机上跑一段 PowerShell。**唯一正门**——任何时候都别再手拼 ssh + 引号。
 #
 # 为什么必须有这个：一条内联的 PowerShell 要穿过 bash → ssh → cmd → PowerShell

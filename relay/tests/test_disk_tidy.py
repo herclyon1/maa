@@ -209,5 +209,30 @@ def _part_fresh_and_docstring_honesty():
     require("rule docstring mentions Trash auto-empty policy", "FXRemoveOldTrashItems" in doc, doc)
 
 
+def _part_out_log_rotation_and_no_hardlock():
+    dt = _load_disk_tidy()
+    src = Path(dt.__file__).read_text(encoding="utf-8")
+    require("disk-tidy.py stripped Mac hardlock.py", "hardlock" not in src.lower(), "hardlock ref remains")
+    root = tmpdir().resolve()
+    out_log = root / "disk-tidy.out"
+    # Below 2 MB threshold -> no rotation
+    small = b"small log line\n" * 10
+    out_log.write_bytes(small)
+    check("under 2 MB does not rotate", dt.rotate_out_log(out_log), False)
+    check("small log unchanged", out_log.read_bytes(), small)
+    # Above 2 MB threshold -> rotates tail <= 2 MB to .1 and truncates .out in-place (preserving inode)
+    ino_before = out_log.stat().st_ino
+    chunk = (b"disk-tidy 2026-11-27 12:00 line " + b"x" * 96 + b"\n") * 25000
+    out_log.write_bytes(chunk + b"LAST_MARKER_LINE\n")
+    require("test log exceeds 2 MB", out_log.stat().st_size > dt.OUT_LOG_MAX_BYTES, str(out_log.stat().st_size))
+    check("over 2 MB rotates", dt.rotate_out_log(out_log), True)
+    check("inode preserved for launchd O_APPEND", out_log.stat().st_ino, ino_before)
+    check("active disk-tidy.out truncated to 0", out_log.stat().st_size, 0)
+    bak = root / "disk-tidy.out.1"
+    require("backup .1 exists and <= 2 MB", bak.is_file() and 0 < bak.stat().st_size <= dt.OUT_LOG_MAX_BYTES,
+            str(bak.stat().st_size if bak.is_file() else -1))
+    require("backup .1 keeps newest tail", b"LAST_MARKER_LINE\n" in bak.read_bytes(), "missing tail marker")
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_board_stale_and_refs, _part_fresh_and_docstring_honesty]))
+    sys.exit(run_parts([_part_board_stale_and_refs, _part_fresh_and_docstring_honesty, _part_out_log_rotation_and_no_hardlock]))

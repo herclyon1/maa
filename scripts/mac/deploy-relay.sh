@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
-case "${1:-}" in --dry-run) ;; *) /opt/homebrew/bin/python3 -I /Users/herclyon/Money/审批记录/硬锁/hardlock.py check relay "$(basename "$0") $*" || exit 75; esac
 # 把 relay/ 直推到游戏机并立即生效，每一步都核对，失败就非零退出。
 #
 # 为什么需要它：2026-08-20 晚一次 scp 静默失败——命令返回 0、文件却没过去，

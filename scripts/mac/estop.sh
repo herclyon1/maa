@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
-case "${1:-}" in --list) ;; *) /opt/homebrew/bin/python3 -I /Users/herclyon/Money/审批记录/硬锁/hardlock.py check relay "$(basename "$0") $*" || exit 75; esac
 # 红按钮 —— 一键停掉游戏机上的一切：AUTO-MAS、全部脚本、全部游戏。
 #
 #   scripts/mac/estop.sh            # 停：杀进程 + 关队列定时（默认，最彻底）

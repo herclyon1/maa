@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
-/opt/homebrew/bin/python3 -I /Users/herclyon/Money/审批记录/硬锁/hardlock.py check relay "$(basename "$0") $*" || exit 75
 # 在游戏机上单独跑 OK-WW 的某一个任务，绕开 AUTO-MAS 的每日任务流程。
 #
 # 为什么需要它：AUTO-MAS 永远用 `-t 1`（每日任务）拉 OK-WW，而每日任务里

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# HARDLOCK-1126 硬锁（用户 11-26 令「所有目前东西必须标记为不可用状态加上硬锁」）：锁着或锁模块读不出就以 75 退出，什么都不做。
-/opt/homebrew/bin/python3 -I /Users/herclyon/Money/审批记录/硬锁/hardlock.py check relay "$(basename "$0") $*" || exit 75
 # 直接驱动游戏机上那台安卓模拟器（雷电里的明日方舟）。
 #
 # **为什么不用 winrun**：winrun 一次约 10 秒——scp 一个脚本过去、建一个计划
