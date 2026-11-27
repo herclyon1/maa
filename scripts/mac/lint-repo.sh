@@ -6,6 +6,7 @@
 # 和 shellcheck 的分工：shellcheck 查通用 shell 缺陷，这里查**这个项目特有的
 # 反模式**——那些语法完全合法、但在这台游戏机上必然出问题的写法。
 set -uo pipefail
+export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || exit 1   # 绝对路径，见规则 5
 # 排除自己：规则文本里就带着要查的模式，不排除会自己匹配自己。
 SELF="scripts/mac/lint-repo.sh"
