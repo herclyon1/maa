@@ -615,7 +615,7 @@ fi
                        ("scratchpad/ itself", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad"),
                        ("an f-string entry", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-{{name}}")):
         write(HOME / ".claude/hooks/h2.py", f"P = f'{ref}'\n")
-        ctx.ref_ids, ctx.ref_whole, ctx.ref_entries, ctx.ref_dd_names, ctx.ref_paths = dt.references(
+        ctx.ref_ids, ctx.ref_whole, ctx.ref_entries, ctx.ref_dd_names, ctx.ref_paths, ctx.ref_gemini_ids = dt.references(
             env, ctx.repos, repo_files=ctx.repo_files)
         got = {i.path: i.keep or "" for i in dt.rule_live_session_scratch(env, ctx)}
         check(f"a tool naming {label} keeps the whole scratchpad",
