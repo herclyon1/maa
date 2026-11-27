@@ -80,7 +80,9 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 # /usr/bin/python3 3.9 (scripts/mac/lib/relay-python.sh; user 10-12 08:21).
 RELAY_PY=$("$HERE/../scripts/mac/lib/relay-python.sh") || { echo "  ✋ 没有 3.14 跑中继测试，部署取消"; exit 1; }
 export RELAY_PY
-python3 make-manifest.py > /dev/null
+if [ "$DRY_RUN" = 0 ]; then
+  python3 make-manifest.py > /dev/null
+fi
 echo "▶ 0/5 本地三道闸并行（死代码 · 回归测试 · 语法）"
 # These three read the working tree and nothing else, so they have no reason to wait
 # for each other. Serially they were 28 s of a 71 s deploy. Every gate still runs and
@@ -259,7 +261,9 @@ lap
 # 真要重推同一份改动（比如部署链路本身出问题在反复试），加 --redeploy。
 NOTES="$HERE/RELEASE-NOTES.md"
 NOTES_STAMP="$HERE/state/last-deployed-notes.sha1"
-mkdir -p "$HERE/state"
+if [ "$DRY_RUN" = 0 ]; then
+  mkdir -p "$HERE/state"
+fi
 # A dry run announces nothing, so it reports this gate and goes on.
 if [ "$DRY_RUN" = 1 ]; then
   if [ -s "$NOTES" ]; then echo "    （dry run）更新说明有 $(wc -l <"$NOTES" | tr -d ' ') 行"

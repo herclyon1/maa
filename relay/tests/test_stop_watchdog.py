@@ -769,6 +769,8 @@ def _part_publish_cos_notes():
     mk_man = sh.index("python3 make-manifest.py > /dev/null")
     check("非 --dry-run 必须在 main 分支，且在 make-manifest 之前检查",
           branch_chk < mk_man, True)
+    check("--dry-run 绝不调用 make-manifest.py 写脏 relay/manifest.json",
+          'if [ "$DRY_RUN" = 0 ]; then\n  python3 make-manifest.py > /dev/null\nfi' in sh, True)
 
     print("\n[上传失败重试：10-05 两次部署都被链路打断（SSL EOF、HTTP 400），手动重发都成]")
     import io as _io
