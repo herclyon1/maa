@@ -47,6 +47,20 @@ from pathlib import Path
 REPO = "AUTO-MAS-Project/AUTO-MAS"
 CONFIG_DIR = "app/models/config"
 CONFIG_PATH = "app/models/config.py"
+API_DIR = "app/api"
+API_ROUTE_FILES = (
+    "app/api/core.py",
+    "app/api/dispatch.py",
+    "app/api/queue.py",
+    "app/api/setting.py",
+    "app/api/update.py",
+)
+API_SCRIPTS_FILES = (
+    "app/api/scripts/__init__.py",
+    "app/api/scripts/management.py",
+    "app/api/scripts/users.py",
+)
+API_SCRIPTS_LEGACY = "app/api/scripts.py"
 # AUTO-MAS v5.10+ moved built-in adapters out of app/models/config/ into separate plugin
 # repositories (declared in AUTO-MAS app/core/config/plugin_upgrade.py _ADAPTER_PLUGINS).
 ADAPTER_REPOS: dict[str, tuple[str, str]] = {
@@ -388,6 +402,144 @@ def parse(source: "str | dict[str, str] | list[str]") -> dict[str, dict]:
     return out
 
 
+# ------------------------------------------------------------------ upstream FastAPI route AST
+
+_HTTP_METHODS = frozenset({"get", "post", "put", "delete", "patch", "api_route"})
+
+
+def _join_route(prefix: str, subpath: str) -> str:
+    left = (prefix or "").strip().rstrip("/")
+    right = (subpath or "").strip()
+    if right and not right.startswith("/"):
+        right = "/" + right
+    joined = (left + right) or "/"
+    return re.sub(r"/{2,}", "/", joined)
+
+
+def _str_const(node: ast.AST | None) -> "str | None":
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _router_prefix_from_call(call: ast.Call) -> "str | None":
+    fn = _ast_dotted(call.func)
+    if not fn or fn.rsplit(".", 1)[-1] != "APIRouter":
+        return None
+    for kw in call.keywords:
+        if kw.arg == "prefix":
+            return _str_const(kw.value) or ""
+    return ""
+
+
+def _parse_api_file(text: str) -> tuple[dict[str, str], list[tuple[str, str]], list[tuple[str, str, str]]]:
+    """Return ({router_var: prefix}, [(router_var, route_path)], [(parent_var, child_expr, extra_prefix)])."""
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return {}, [], []
+    routers: dict[str, str] = {}
+    routes: list[tuple[str, str]] = []
+    includes: list[tuple[str, str, str]] = []
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
+            pref = _router_prefix_from_call(stmt.value)
+            if pref is not None:
+                for t in stmt.targets:
+                    if isinstance(t, ast.Name):
+                        routers[t.id] = pref
+        elif isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+            call = stmt.value
+            if isinstance(call.func, ast.Attribute) and call.func.attr == "include_router":
+                parent = _ast_dotted(call.func.value) or ""
+                child = _ast_dotted(call.args[0]) if call.args else ""
+                extra = ""
+                for kw in call.keywords:
+                    if kw.arg == "prefix":
+                        extra = _str_const(kw.value) or ""
+                if parent and child:
+                    includes.append((parent, child, extra))
+        elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for dec in stmt.decorator_list:
+                if not (isinstance(dec, ast.Call) and isinstance(dec.func, ast.Attribute)):
+                    continue
+                if dec.func.attr not in _HTTP_METHODS:
+                    continue
+                owner = _ast_dotted(dec.func.value)
+                if not owner:
+                    continue
+                sub = _str_const(dec.args[0]) if dec.args else None
+                if sub is None:
+                    for kw in dec.keywords:
+                        if kw.arg == "path":
+                            sub = _str_const(kw.value)
+                if sub is not None:
+                    routes.append((owner, sub))
+    return routers, routes, includes
+
+
+def parse_api_routes(source: "str | dict[str, str]") -> set[str]:
+    """Extract full FastAPI route paths from AUTO-MAS app/api/*.py source(s)."""
+    items = {"<inline>": source} if isinstance(source, str) else dict(source)
+    parsed: dict[str, tuple[dict[str, str], list[tuple[str, str]], list[tuple[str, str, str]]]] = {
+        k: _parse_api_file(v) for k, v in items.items()
+    }
+    # Package __init__.py prefixes: map (dir_key, child_module_stem) -> parent prefix.
+    pkg_child_prefix: dict[tuple[str, str], str] = {}
+    pkg_dir_prefix: dict[str, str] = {}
+    for key, (routers, _routes, includes) in parsed.items():
+        norm = key.replace("\\", "/")
+        if norm.endswith("/__init__.py"):
+            dir_key = norm.rsplit("/", 1)[0]
+            default_pref = routers.get("router", "")
+            if default_pref:
+                pkg_dir_prefix[dir_key] = default_pref
+            for parent, child, extra in includes:
+                pref = _join_route(routers.get(parent, ""), extra) if extra else routers.get(parent, "")
+                if pref:
+                    mod = child.split(".", 1)[0]
+                    pkg_child_prefix[(dir_key, mod)] = pref
+    found: set[str] = set()
+    for key, (routers, routes, includes) in parsed.items():
+        norm = key.replace("\\", "/")
+        dir_key = norm.rsplit("/", 1)[0] if "/" in norm else ""
+        stem = norm.rsplit("/", 1)[-1].removesuffix(".py")
+        inherited = pkg_child_prefix.get((dir_key, stem)) or pkg_dir_prefix.get(dir_key, "")
+        # In-file sub-router include_router(_sub, prefix=...)
+        eff = dict(routers)
+        for parent, child, extra in includes:
+            if child in eff and parent in eff:
+                eff[child] = _join_route(_join_route(eff[parent], extra), eff[child])
+        for owner, sub in routes:
+            own_pref = eff.get(owner, "")
+            if inherited and not own_pref.startswith("/api/"):
+                full_pref = _join_route(inherited, own_pref) if own_pref else inherited
+            else:
+                full_pref = own_pref
+            found.add(_join_route(full_pref, sub))
+    return found
+
+
+def compare_endpoints(routes: set[str], core_paths, *,
+                      v510_update=(), legacy_update=(), version: str = "") -> list[str]:
+    """Flag every AUTO-MAS HTTP path the relay depends on that is absent from `routes`."""
+    have = _ver_key(version)
+    gaps: list[str] = []
+    for p in core_paths:
+        if p not in routes:
+            gaps.append(f"API {p}: endpoint missing (required by relay)")
+    if "/api/update/check" in routes:
+        upd_req = legacy_update
+    elif have is not None and have < (5, 10, 0, 0, 0):
+        upd_req = legacy_update
+    else:
+        upd_req = v510_update
+    for p in upd_req:
+        if p not in routes:
+            gaps.append(f"API {p}: endpoint missing (required by relay preupdate)")
+    return gaps
+
+
 # ------------------------------------------------------------------ the comparison
 
 def _defines(items: dict, group: str, key: str) -> bool:
@@ -558,10 +710,67 @@ def _read_local(path: Path) -> dict[str, str]:
     return out
 
 
+def fetch_api(tag: str) -> dict[str, str]:
+    """Fetch AUTO-MAS FastAPI route modules the relay depends on for `tag`."""
+    out: dict[str, str] = {}
+    for p in API_ROUTE_FILES:
+        try:
+            out[f"{REPO}:{p}"] = _http(f"https://raw.githubusercontent.com/{REPO}/{tag}/{p}")
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+    scripts_loaded = False
+    for p in API_SCRIPTS_FILES:
+        try:
+            out[f"{REPO}:{p}"] = _http(f"https://raw.githubusercontent.com/{REPO}/{tag}/{p}")
+            scripts_loaded = True
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+    if not scripts_loaded:
+        try:
+            out[f"{REPO}:{API_SCRIPTS_LEGACY}"] = _http(
+                f"https://raw.githubusercontent.com/{REPO}/{tag}/{API_SCRIPTS_LEGACY}")
+        except urllib.error.HTTPError as exc:
+            if exc.code != 404:
+                raise
+    return out
+
+
+def _read_local_api(path: Path) -> dict[str, str]:
+    """Read local app/api/*.py when `path` is an AUTO-MAS checkout/install directory."""
+    if not path.is_dir():
+        return {}
+    api_root = None
+    for cand in (path / "repo" / "app" / "api", path / "app" / "api"):
+        if cand.is_dir():
+            api_root = cand
+            break
+    if api_root is None:
+        return {}
+    out: dict[str, str] = {}
+    for f in sorted(api_root.rglob("*.py")):
+        rel = f.relative_to(api_root).parts
+        if any(p.startswith(".") or p == "__pycache__" for p in rel):
+            continue
+        out[str(f)] = f.read_text(encoding="utf-8", errors="replace")
+    return out
+
+
 def _relay_contract():
     sys.path.insert(0, str(_RELAY))
     from ark_relay.core import mastercfg as masuser, mastercfg as mascontract  # noqa: PLC0415
     return mascontract.CONTRACT, masuser.MOVED, masuser.SPLIT_USER_KEYS
+
+
+def _relay_endpoints():
+    sys.path.insert(0, str(_RELAY))
+    from ark_relay.features import preupdate  # noqa: PLC0415
+    return (
+        preupdate._MAS_CORE_PATHS,
+        preupdate._MAS_V510_UPDATE_PATHS,
+        preupdate._MAS_LEGACY_UPDATE_PATHS,
+    )
 
 
 def main(argv: list[str]) -> int:
@@ -577,13 +786,18 @@ def main(argv: list[str]) -> int:
             print(__doc__)
             return 3
     contract, moved, split_keys = _relay_contract()
+    core_eps, v510_eps, legacy_eps = _relay_endpoints()
+    api_sources: dict[str, str] = {}
     try:
         if file:
-            sources, tag = _read_local(Path(file)), tag or file
+            p = Path(file)
+            sources, tag = _read_local(p), tag or file
+            api_sources = _read_local_api(p)
             classes = parse(sources)
         else:
             tag = tag or newest_tag()
             sources = fetch_config(tag)
+            api_sources = fetch_api(tag)
             classes = parse(sources)
             expanded = _fetch_plugin_adapters(sources, classes, contract)
             if len(expanded) > len(sources):
@@ -595,10 +809,17 @@ def main(argv: list[str]) -> int:
         print(f"{tag}: {CONFIG_DIR} / {CONFIG_PATH} has no config classes - not the source expected")
         return 3
     gaps = compare(classes, contract, moved, version=tag, split_keys=split_keys)
+    ep_count = 0
+    if api_sources:
+        routes = parse_api_routes(api_sources)
+        ep_count = len(core_eps) + (len(legacy_eps) if "/api/update/check" in routes else len(v510_eps))
+        gaps.extend(compare_endpoints(
+            routes, core_eps, v510_update=v510_eps, legacy_update=legacy_eps, version=tag))
     if not gaps:
-        print(f"{tag}: all {len(contract)} AUTO-MAS settings the relay reads are still there")
+        ep_note = f" + {ep_count} API endpoints" if ep_count else ""
+        print(f"{tag}: all {len(contract)} AUTO-MAS settings{ep_note} the relay reads are still there")
         return 0
-    print(f"{tag}: {len(gaps)} of {len(contract)} AUTO-MAS settings the relay reads changed:")
+    print(f"{tag}: {len(gaps)} of {len(contract)} AUTO-MAS settings/endpoints the relay reads changed:")
     for g in gaps:
         print(f"  - {g}")
     return 2

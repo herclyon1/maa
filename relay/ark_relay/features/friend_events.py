@@ -260,6 +260,32 @@ def is_hardlocked(state_dir: Path | str) -> bool:
     return bool(hardlock_reason(state_dir))
 
 
+class _DirCoord:
+    """Per-state_dir shared mutex & single-flight drain coordinator across all queue instances."""
+
+    def __init__(self) -> None:
+        self.io_lock = threading.RLock()
+        self.drain_lock = threading.Lock()
+        self.bg_active = False
+        self.bg_again = False
+        self.next_queue: FriendEventQueue | None = None
+        self.thread: threading.Thread | None = None
+
+
+_COORDS_GUARD = threading.Lock()
+_COORDS: dict[str, _DirCoord] = {}
+
+
+def _coord_for(state_dir: Path) -> _DirCoord:
+    key = str(state_dir.resolve())
+    with _COORDS_GUARD:
+        coord = _COORDS.get(key)
+        if coord is None:
+            coord = _DirCoord()
+            _COORDS[key] = coord
+        return coord
+
+
 class FriendEventQueue:
     """Persistent idempotent friend-event queue with dual-hardlock outbound gate."""
 
@@ -272,9 +298,8 @@ class FriendEventQueue:
         self._outbox = Path(outbox_path) if outbox_path else None
         self._queue_path = self.state_dir / QUEUE_FILE
         self._seen_path = self.state_dir / SEEN_FILE
-        self._lock = threading.Lock()
-        self._busy = False
-        self._again = False
+        self._coord = _coord_for(self.state_dir)
+        self._lock = self._coord.io_lock
 
     def _load_queue(self) -> list[dict[str, Any]]:
         try:
@@ -418,46 +443,22 @@ class FriendEventQueue:
             if verdict == "drop":
                 log.info("Mac 端拒收好友事件（%s），已丢弃：%s", why, clean["event_id"])
 
-    def flush(self) -> int | None:
-        """Deliver queued events oldest-first when unlocked. Zero outbound while locked."""
+    def flush(self) -> int:
+        """Deliver queued events oldest-first when unlocked. Serialized per state_dir."""
         if why := hardlock_reason(self.state_dir):
             left = len(self.pending())
             log.info("好友微信事件通道硬锁中（%s），跳过外发，待发 %d 条", why, left)
             return left
         if not self._can_send():
             return len(self.pending())
-        with self._lock:
-            if self._busy:
-                self._again = True
-                return None
-            self._busy, self._again = True, False
-        try:
-            while True:
-                left = self._drain()
-                with self._lock:
-                    if not self._again:
-                        self._busy = False
-                        return left
-                    self._again = False
-        except BaseException:
-            with self._lock:
-                self._busy = False
-            raise
+        with self._coord.drain_lock:
+            return self._drain()
 
     def flush_async(self) -> threading.Thread | None:
-        """Flush on a background daemon thread, strictly skipped while hardlocked."""
+        """Flush on the single shared per-state_dir daemon thread; skipped while hardlocked."""
         if hardlock_reason(self.state_dir) or not self._can_send():
             return None
-
-        def run() -> None:
-            try:
-                self.flush()
-            except Exception:
-                log.warning("好友微信事件同步到 Mac 时出错", exc_info=True)
-
-        t = threading.Thread(target=run, name="friend-events-sync", daemon=True)
-        t.start()
-        return t
+        return _start_flush_thread(self)
 
 
 def emit(cfg_or_dir: Any, event: dict[str, Any], *, url: str | None = None,
@@ -539,30 +540,43 @@ def emit_arknights_activity_open(cfg_or_dir: Any, activity_id: str, title: str, 
     return emit(cfg_or_dir, ev, url=url, post=post, sync=sync)
 
 
-_FLUSH_GUARD = threading.Lock()
-_FLUSH_THREADS: dict[str, threading.Thread] = {}
-
-
 def _start_flush_thread(q: FriendEventQueue) -> threading.Thread | None:
-    """Spawn at most one background flush thread per state_dir so Engine.tick() never blocks."""
-    key = str(q.state_dir.resolve())
-    with _FLUSH_GUARD:
-        cur = _FLUSH_THREADS.get(key)
-        if cur is not None and cur.is_alive():
-            return cur
+    """Spawn at most one background flush thread per state_dir; coalesce concurrent calls."""
+    coord = q._coord
+    with coord.io_lock:
+        if coord.bg_active:
+            coord.bg_again = True
+            coord.next_queue = q
+            return coord.thread
+        coord.bg_active = True
+        coord.bg_again = False
+        coord.next_queue = None
 
         def run() -> None:
+            active_q = q
             try:
-                q.flush()
+                while True:
+                    with coord.drain_lock:
+                        active_q._drain()
+                    with coord.io_lock:
+                        if not coord.bg_again:
+                            coord.bg_active = False
+                            coord.thread = None
+                            coord.next_queue = None
+                            return
+                        coord.bg_again = False
+                        if coord.next_queue is not None:
+                            active_q = coord.next_queue
+                            coord.next_queue = None
             except Exception:
                 log.warning("好友微信事件同步到 Mac 时出错", exc_info=True)
-            finally:
-                with _FLUSH_GUARD:
-                    if _FLUSH_THREADS.get(key) is threading.current_thread():
-                        _FLUSH_THREADS.pop(key, None)
+                with coord.io_lock:
+                    coord.bg_active = False
+                    coord.thread = None
+                    coord.next_queue = None
 
         t = threading.Thread(target=run, name="friend-events-sync", daemon=True)
-        _FLUSH_THREADS[key] = t
+        coord.thread = t
         t.start()
         return t
 
@@ -572,13 +586,15 @@ def flush_pending(cfg_or_dir: Any, *, url: str | None = None, post=None,
                   async_flush: bool = False, timeout: float = TIMEOUT) -> int | None:
     """Flush any queued friend events once hardlocks are lifted.
 
-    When `async_flush=True` (used by `Engine._flush_pending`), drains on a single
+    When `async_flush=True` (used by `Engine._flush_pending`), drains on the single
     per-state-dir background daemon thread with bounded HTTP timeout so the tick loop
     never stalls on an unreachable Mac.
     """
     sd = _state_dir_of(cfg_or_dir)
-    if not (sd / QUEUE_FILE).is_file():
-        return 0
+    coord = _coord_for(sd)
+    with coord.io_lock:
+        if not (sd / QUEUE_FILE).is_file():
+            return 0
     if hardlock_reason(sd):
         return len(FriendEventQueue(sd).pending())
     q = FriendEventQueue(

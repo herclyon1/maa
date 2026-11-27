@@ -869,6 +869,72 @@ def _part_engine_tick_flush_and_dual_lock_transition():
         srv.server_close()
 
 
+def _part_friend_events_concurrent_stress():
+    """Concurrent emit(sync=False/True) + flush_pending(async_flush=True) share per-state_dir
+    locks & single-flight drainer: 0 lost events, 0 duplicate deliveries, max 1 active drainer."""
+    import time
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import friend_events
+
+    tmp = tmpdir("friend-race-")
+    sd = tmp / "state"
+    sd.mkdir()
+    now = datetime(2026, 11, 27, 9, 0, tzinfo=SERVER_TZ)
+
+    delivered: list[str] = []
+    errors: list[BaseException] = []
+    state = {"active": 0, "max_active": 0}
+    stat_lock = threading.Lock()
+
+    def slow_post(ev: dict) -> tuple[str, str]:
+        with stat_lock:
+            state["active"] += 1
+            if state["active"] > state["max_active"]:
+                state["max_active"] = state["active"]
+        try:
+            time.sleep(0.004)
+            with stat_lock:
+                delivered.append(ev["event_id"])
+            return "ok", ""
+        finally:
+            with stat_lock:
+                state["active"] -= 1
+
+    total = 24
+    barrier = threading.Barrier(6)
+
+    def producer(worker_id: int) -> None:
+        try:
+            barrier.wait(timeout=5.0)
+            for j in range(4):
+                idx = worker_id * 4 + j
+                friend_events.emit_arknights_activity_open(
+                    sd, f"race_{idx}", "🎉 明日方舟活动开启", f"并发事件 {idx}",
+                    now=now, post=slow_post, sync=(j == 3),
+                )
+                friend_events.flush_pending(sd, post=slow_post, async_flush=True)
+        except BaseException as exc:  # noqa: BLE001
+            with stat_lock:
+                errors.append(exc)
+
+    threads = [threading.Thread(target=producer, args=(i,)) for i in range(6)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join(timeout=15.0)
+
+    # Drain any remaining coalesced background pass cleanly.
+    q = friend_events.FriendEventQueue(sd, post=slow_post)
+    q.flush()
+
+    check("并发压测零异常", errors, [])
+    check("同一 state_dir 并发排空严格单飞（max_active == 1）", state["max_active"], 1)
+    check("全部 24 条事件精确送达 1 次、零丢失零重复",
+          (len(delivered), len(set(delivered))), (total, total))
+    check("并发压测后本地待发队列彻底清空", q.pending(), [])
+    check("seen 去重记录完整保存 24 条且 JSON 完好", len(q.seen_ids()), total)
+
+
 if __name__ == "__main__":
     raise SystemExit(run_parts([
         _part_r14_replay_snow_mountain,
@@ -876,5 +942,6 @@ if __name__ == "__main__":
         _part_friend_events_allowlist_and_integrations,
         _part_friend_events_dual_hardlock_and_http,
         _part_engine_tick_flush_and_dual_lock_transition,
+        _part_friend_events_concurrent_stress,
         _part_set_maa_os4_medicine999,
     ]))

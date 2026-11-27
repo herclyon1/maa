@@ -3913,6 +3913,85 @@ class OkwwUserConfig(DomainEntry):
             w._gh = real_gh2
         check("GitHub cannot be read: exit 3", code, 3)
 
+        print("\n[HTTP endpoint contract check: parse_api_routes + compare_endpoints + local dir]")
+        api_tree = {
+            "app/api/core.py": (
+                "from fastapi import APIRouter\n"
+                "router = APIRouter(prefix='/api/core')\n"
+                "@router.get('/health')\nasync def h(): pass\n"
+                "@router.post('/close')\nasync def c(): pass\n"
+            ),
+            "app/api/dispatch.py": (
+                "router = APIRouter(prefix='/api/dispatch')\n"
+                "@router.get('/runtime-snapshot')\ndef rs(): pass\n"
+                "@router.post('/start')\ndef st(): pass\n"
+                "@router.post('/stop')\ndef sp(): pass\n"
+            ),
+            "app/api/queue.py": (
+                "router = APIRouter(prefix='/api/queue')\n"
+                "@router.post('/get')\ndef g(): pass\n"
+                "@router.post('/update')\ndef u(): pass\n"
+            ),
+            "app/api/setting.py": (
+                "router = APIRouter(prefix='/api/setting')\n"
+                "@router.post('/get')\ndef g(): pass\n"
+            ),
+            "app/api/update.py": (
+                "router = APIRouter(prefix='/api/update')\n"
+                "@router.post('/precheck')\ndef pc(): pass\n"
+            ),
+            "app/api/scripts/__init__.py": (
+                "router = APIRouter(prefix='/api/scripts')\n"
+                "router.include_router(management.router)\n"
+                "router.include_router(users.router)\n"
+            ),
+            "app/api/scripts/management.py": (
+                "router = APIRouter()\n"
+                "@router.post('/get')\ndef g(): pass\n"
+                "@router.post('/update')\ndef u(): pass\n"
+            ),
+            "app/api/scripts/users.py": (
+                "router = APIRouter()\n"
+                "@router.post('/user/get')\ndef ug(): pass\n"
+                "@router.post('/user/update')\ndef uu(): pass\n"
+            ),
+        }
+        core_eps, v510_eps, legacy_eps = w._relay_endpoints()
+        routes_ok = w.parse_api_routes(api_tree)
+        check("parse_api_routes resolves subpackage /api/scripts/user/update and /api/update/precheck",
+              ("/api/scripts/user/update" in routes_ok, "/api/update/precheck" in routes_ok),
+              (True, True))
+        check("complete v5.10 routes pass compare_endpoints with 0 gaps",
+              w.compare_endpoints(routes_ok, core_eps, v510_update=v510_eps, legacy_update=legacy_eps,
+                                  version="v5.10.0-beta.1"),
+              [])
+        broken_tree = dict(api_tree)
+        broken_tree["app/api/update.py"] = "router = APIRouter(prefix='/api/update')\n"
+        broken_tree["app/api/core.py"] = (
+            "router = APIRouter(prefix='/api/core')\n"
+            "@router.get('/health')\ndef h(): pass\n"
+        )
+        ep_gaps = w.compare_endpoints(w.parse_api_routes(broken_tree), core_eps,
+                                      v510_update=v510_eps, legacy_update=legacy_eps,
+                                      version="v5.10.0-beta.1")
+        check("missing /api/core/close and /api/update/precheck are flagged",
+              (any("/api/core/close" in g for g in ep_gaps),
+               any("/api/update/precheck" in g for g in ep_gaps)),
+              (True, True))
+        # Local directory checkout with missing route causes main() to exit 2.
+        loc = tmpdir("cw-api-dir-")
+        (loc / "app" / "models" / "config").mkdir(parents=True)
+        (loc / "app" / "models" / "config" / "all.py").write_text(
+            BETA4.read_text(encoding="utf-8"), encoding="utf-8")
+        for rel, content in broken_tree.items():
+            dst = loc / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_text(content, encoding="utf-8")
+        code_ep, text_ep = run_main("--file", str(loc), "--tag", "v5.10.0-beta.1")
+        check("local dir missing API routes exits 2 and names missing endpoint",
+              (code_ep, "/api/update/precheck" in text_ep, "/api/core/close" in text_ep),
+              (2, True, True))
+
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
@@ -5883,5 +5962,242 @@ class OkwwUserConfig(DomainEntry):
             os.environ["ARK_STATE_DIR"] = saved_sd
 
 
+def _part_preupdate_automas_v510():
+    """AUTO-MAS v5.10+ pre-update: instant 404 switch (0s sleep), MirrorChyan check,
+    precheck + silent installer, conflict/network errors, OpenAPI path verification,
+    and <v5.10 backward compatibility (ledger #204/#205).
+    """
+    import json
+    import logging
+    import types
+    import urllib.error
+    import zipfile
+
+    from ark_relay.core import texts
+    from ark_relay.features import preupdate as P
+
+    class _Cap(logging.Handler):
+        def __init__(self):
+            super().__init__(level=logging.DEBUG)
+            self.records = []
+
+        def emit(self, record):
+            self.records.append((record.levelname, record.getMessage()))
+
+    cap = _Cap()
+    P.log.addHandler(cap)
+    P.log.setLevel(logging.DEBUG)
+
+    ALL_V510_ROUTES = set(P._MAS_CORE_PATHS) | set(P._MAS_V510_UPDATE_PATHS)
+    ALL_LEGACY_ROUTES = set(P._MAS_CORE_PATHS) | set(P._MAS_LEGACY_UPDATE_PATHS)
+
+    saved = (
+        P._mas_post, P._automas_version, P._live_version, P._wait_for_version,
+        P._mas_openapi_paths, P._mas_http_get, P._mas_download_file,
+        P._mas_spawn_installer_v510, P.time,
+    )
+    slept: list[float] = []
+    now_t = [1000.0]
+
+    def _sleep(sec: float) -> None:
+        slept.append(sec)
+        now_t[0] += sec
+
+    fake_time = types.SimpleNamespace(sleep=_sleep, monotonic=lambda: now_t[0])
+
+    def _http_err(code: int, msg: str = "err"):
+        return urllib.error.HTTPError("http://127.0.0.1:36163/api/update/check", code, msg, {}, None)
+
+    try:
+        P.time = fake_time
+
+        print("[0. Semver compare & PEP440 core version helpers]")
+        check("beta.10 > beta.2", P._mas_compare_versions("v5.10.0-beta.10", "v5.10.0-beta.2") > 0, True)
+        check("release > prerelease", P._mas_compare_versions("v5.10.0", "v5.10.0-beta.10") > 0, True)
+        check("missing v prefix equals with v", P._mas_compare_versions("5.10.0-beta.1", "v5.10.0-beta.1"), 0)
+        check("PEP440 beta core version", P._mas_expected_core_version("v5.10.0-beta.2"), "5.10.0b2")
+
+        print("\n[1. HTTP 404 on /api/update/check -> 0s sleep, switches to v5.10 MirrorChyan (already latest)]")
+        tmp = tmpdir("mas-v510-")
+        (tmp / "config").mkdir()
+        (tmp / "config" / "frontend_config.json").write_text(json.dumps({
+            "Update": {"Channel": "beta", "Source": "MirrorChyan", "ProxyAddress": "", "MirrorChyanCDK": "test-cdk"}
+        }), encoding="utf-8")
+        check_calls: list[str] = []
+        http_urls: list[str] = []
+
+        def post_404(path, body=None):
+            check_calls.append(path)
+            if path == "/api/update/check":
+                raise _http_err(404, "Not Found")
+            if path == "/api/setting/get":
+                return {"code": 200, "data": {"Update": {"Channel": "beta", "Source": "MirrorChyan", "ProxyAddress": ""}}}
+            return {"code": 200}
+
+        def get_latest(url, *, proxy="", timeout=20):
+            http_urls.append(url)
+            return json.dumps({
+                "code": 0,
+                "data": {"version_name": "v5.10.0-beta.1", "channel": "beta"},
+            }).encode("utf-8")
+
+        P._mas_post = post_404
+        P._automas_version = lambda _r: "v5.5.0-beta.2"
+        P._live_version = lambda: "v5.10.0-beta.1"
+        P._mas_openapi_paths = lambda: set(ALL_V510_ROUTES)
+        P._mas_http_get = get_latest
+        slept.clear()
+        cap.records.clear()
+        problems: list[str] = []
+        note = P.run_automas(tmp, budget_s=10, problems=problems)
+        check("404 switch sleeps 0 seconds (no 180s stall)", slept, [])
+        check("/api/update/check only tried once before switching",
+              check_calls.count("/api/update/check"), 1)
+        check("MirrorChyan queried with beta channel & v5.10.0-beta.1 without cdk on check",
+              bool(http_urls) and "channel=beta" in http_urls[0] and "cdk=" not in http_urls[0], True)
+        check("already latest -> empty note, no problems, zero WARNING",
+              (note, problems, [r for r in cap.records if r[0] == "WARNING"]), ("", [], []))
+
+        print("\n[2. Non-404 4xx (405) -> 0s sleep, fails fast with plain-Chinese WARNING]")
+        slept.clear()
+        cap.records.clear()
+        P._mas_post = lambda path, body=None: (_ for _ in ()).throw(_http_err(405, "Method Not Allowed"))
+        problems = []
+        note = P.run_automas(tmp, budget_s=10, problems=problems)
+        warns = [m for lv, m in cap.records if lv == "WARNING"]
+        check("405 fails fast with 0 sleep & 1 problem", (slept, len(problems), note), ([], 1, ""))
+        check("405 WARNING is plain Chinese", bool(warns) and texts.plain(warns[0]) == [], True)
+
+        print("\n[3. v5.10 upgrade available -> precheck pass -> download -> extract -> /api/core/close -> silent install -> after_update]")
+        events: list[str] = []
+        spawned: list[tuple[Path, Path]] = []
+        after_vers: list[str] = []
+        live_state = ["v5.10.0-beta.1"]
+
+        def post_upgrade(path, body=None):
+            events.append(f"post:{path}")
+            if path == "/api/update/check":
+                raise _http_err(404, "Not Found")
+            if path == "/api/setting/get":
+                return {"code": 200, "data": {"Update": {"Channel": "beta", "Source": "MirrorChyan", "ProxyAddress": "", "MirrorChyanCDK": "k123"}}}
+            if path == "/api/update/precheck":
+                check("precheck body carries version + python_version",
+                      (body.get("version"), body.get("python_version")), ("v5.10.0-beta.2", "3.12.13"))
+                return {"code": 200, "status": "success", "compatible": True, "conflicts": []}
+            if path == "/api/core/close":
+                live_state[0] = ""
+                return {"code": 200, "status": "success"}
+            return {"code": 200}
+
+        def get_upgrade(url, *, proxy="", timeout=20):
+            events.append(f"get:{url.split('?')[0]}")
+            if "mirrorchyan.com" in url:
+                data = {"version_name": "v5.10.0-beta.2", "channel": "beta"}
+                if "cdk=k123" in url:
+                    data["url"] = "https://dl.example/AUTO-MAS-Setup-v5.10.0-beta.2-x64.zip"
+                return json.dumps({"code": 0, "data": data}).encode("utf-8")
+            if url.endswith("pyproject.toml"):
+                return b'[project]\nname = "auto-mas"\nversion = "5.10.0b2"\nrequires-python = ">=3.12"\ndependencies = ["fastapi"]\n'
+            if url.endswith("uv.lock"):
+                return b'version = 1\n'
+            if url.endswith(".python-version"):
+                return b'3.12.13\n'
+            raise AssertionError(f"unexpected url: {url}")
+
+        def fake_dl(url, dest, *, proxy="", deadline, stopping=None):
+            events.append(f"dl:{url}")
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(dest, "w") as zf:
+                zf.writestr("AUTO-MAS-Setup.exe", b"MZ-fake-installer")
+            return "ok"
+
+        def fake_spawn(installer, root):
+            events.append("spawn")
+            spawned.append((installer, root))
+            return True
+
+        P._mas_post = post_upgrade
+        P._live_version = lambda: live_state[0]
+        P._mas_http_get = get_upgrade
+        P._mas_download_file = fake_dl
+        P._mas_spawn_installer_v510 = fake_spawn
+        P._wait_for_version = lambda want, dl, *_a: want
+        P._mas_openapi_paths = lambda: set(ALL_V510_ROUTES)
+        cap.records.clear()
+        problems = []
+        note = P.run_automas(tmp, budget_s=60, problems=problems, after_update=after_vers.append)
+        check("upgrade succeeds cleanly", (note, problems, after_vers),
+              ("AUTO-MAS 已更新：v5.10.0-beta.1 → v5.10.0-beta.2", [], ["v5.10.0-beta.2"]))
+        check("extracted installer exists with expected bytes",
+              bool(spawned) and spawned[0][0].read_bytes() == b"MZ-fake-installer", True)
+        check("/api/core/close runs before installer spawn",
+              events.index("post:/api/core/close") < events.index("spawn"), True)
+        check("MirrorChyan download URL preferred first",
+              any(e == "dl:https://dl.example/AUTO-MAS-Setup-v5.10.0-beta.2-x64.zip" for e in events), True)
+
+        print("\n[4. v5.10 precheck conflict -> aborts cleanly before download/install]")
+        dl_called = [False]
+        spawn_called = [False]
+        live_state[0] = "v5.10.0-beta.1"
+
+        def post_conflict(path, body=None):
+            if path == "/api/update/check":
+                raise _http_err(404, "Not Found")
+            if path == "/api/update/precheck":
+                return {"code": 200, "status": "success", "compatible": False,
+                        "conflicts": [{"message": "插件不兼容"}]}
+            return {"code": 200}
+
+        P._mas_post = post_conflict
+        P._mas_download_file = lambda *a, **k: (dl_called.__setitem__(0, True) or "ok")
+        P._mas_spawn_installer_v510 = lambda *a, **k: (spawn_called.__setitem__(0, True) or True)
+        cap.records.clear()
+        problems = []
+        note = P.run_automas(tmp, budget_s=60, problems=problems)
+        warns = [m for lv, m in cap.records if lv == "WARNING"]
+        check("conflict aborts with 0 download & 0 spawn",
+              (note, dl_called[0], spawn_called[0], len(problems), "插件兼容预检没通过" in problems[0]),
+              ("", False, False, 1, True))
+        check("conflict WARNING is plain Chinese", bool(warns) and texts.plain(warns[0]) == [], True)
+
+        print("\n[5. v5.10 MirrorChyan network error -> problem recorded, NOT treated as up-to-date]")
+        P._mas_http_get = lambda *a, **k: (_ for _ in ()).throw(urllib.error.URLError("net down"))
+        cap.records.clear()
+        problems = []
+        note = P.run_automas(tmp, budget_s=10, problems=problems)
+        warns = [m for lv, m in cap.records if lv == "WARNING"]
+        check("network error records problem", (note, len(problems), "没有检查更新" in problems[0]), ("", 1, True))
+        check("network error WARNING is plain Chinese", bool(warns) and texts.plain(warns[0]) == [], True)
+
+        print("\n[6. OpenAPI endpoint check flags missing paths immediately (live & post-upgrade)]")
+        P._mas_openapi_paths = lambda: ALL_V510_ROUTES - {"/api/core/close", "/api/update/precheck"}
+        cap.records.clear()
+        ep_probs: list[str] = []
+        missing = P._check_mas_endpoints("v5.10.0-beta.1", mode="post_upgrade", problems=ep_probs)
+        warns = [m for lv, m in cap.records if lv == "WARNING"]
+        check("missing paths returned accurately", sorted(missing or []), ["/api/core/close", "/api/update/precheck"])
+        check("missing paths recorded in problems",
+              len(ep_probs) == 1 and "/api/core/close" in ep_probs[0] and "/api/update/precheck" in ep_probs[0],
+              True)
+        check("missing endpoint WARNING is plain Chinese", bool(warns) and texts.plain(warns[0]) == [], True)
+
+        print("\n[7. Legacy <v5.10 compatibility: 200 OK stays on legacy path without hitting MirrorChyan]")
+        mirror_hit = [False]
+        P._mas_post = lambda path, body=None: {"code": 200, "status": "success", "if_need_update": False, "latest_version": "v5.9.0"}
+        P._live_version = lambda: "v5.9.0"
+        P._mas_openapi_paths = lambda: set(ALL_LEGACY_ROUTES)
+        P._mas_http_get = lambda *a, **k: (mirror_hit.__setitem__(0, True) or b"{}")
+        problems = []
+        note = P.run_automas(tmp, budget_s=10, problems=problems)
+        check("legacy path stays intact and skips MirrorChyan", (note, problems, mirror_hit[0]), ("", [], False))
+    finally:
+        P.log.removeHandler(cap)
+        (
+            P._mas_post, P._automas_version, P._live_version, P._wait_for_version,
+            P._mas_openapi_paths, P._mas_http_get, P._mas_download_file,
+            P._mas_spawn_installer_v510, P.time,
+        ) = saved
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_wait_open, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3, _part_preupdate_pack_vanished, _part_maaend_v58_sanity_split]))
+    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_wait_open, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3, _part_preupdate_pack_vanished, _part_maaend_v58_sanity_split, _part_preupdate_automas_v510]))

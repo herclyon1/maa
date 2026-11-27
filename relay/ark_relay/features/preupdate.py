@@ -4,12 +4,17 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 import uuid
 import json
 import time
 import re
+import zipfile
 from pathlib import Path
 from typing import Callable
 from ark_relay.core.config import mas_base, atomic_write_text, SERVER_TZ
@@ -488,6 +493,41 @@ MAS_WAIT_SECONDS = 180
 # Seconds to wait after install for the restarted backend to report the new
 # version (measured: 16 s).
 MAS_INSTALL_WAIT_SECONDS = 150
+_MAS_CLOSE_WAIT_SECONDS = 20
+
+# AUTO-MAS v5.10+ moved self-update out of FastAPI /api/update/{check,download,install}
+# into Electron IPC (appUpdateService.js). The relay mirrors that flow when the legacy
+# endpoint returns HTTP 404 so unattended boot pre-updates stay intact.
+_MAS_MIRRORCHYAN_URL = "https://mirrorchyan.com/api/resources/AUTO_MAS/latest"
+_MAS_PRECHECK_SOURCES = (
+    "https://cnb.cool/AUTO-MAS-Project/AUTO-MAS/-/git/raw/{rev}/",
+    "https://raw.githubusercontent.com/AUTO-MAS-Project/AUTO-MAS/{rev}/",
+)
+_MAS_PRECHECK_FILES = ("pyproject.toml", "uv.lock", ".python-version")
+_MAS_RELEASE_CNB = "https://cnb.cool/AUTO-MAS-Project/AUTO-MAS/-/releases/download/{ver}/{asset}"
+_MAS_RELEASE_GITHUB = "https://github.com/AUTO-MAS-Project/AUTO-MAS/releases/download/{ver}/{asset}"
+_MAS_RELEASE_AUTOSITE = "https://data.auto-mas.top/api/v1/files/auto-mas/Release/{ch}/download"
+_MAS_SETUP_EXE = "AUTO-MAS-Setup.exe"
+_MAS_STAGE_PREFIX = "ark-automas-update-"
+
+# Backend paths the relay relies on (checked via GET /openapi.json on live check and
+# right after any AUTO-MAS upgrade so upstream route removals are caught immediately).
+_MAS_CORE_PATHS = (
+    "/api/core/health",
+    "/api/core/close",
+    "/api/setting/get",
+    "/api/dispatch/runtime-snapshot",
+    "/api/dispatch/start",
+    "/api/dispatch/stop",
+    "/api/queue/get",
+    "/api/queue/update",
+    "/api/scripts/get",
+    "/api/scripts/update",
+    "/api/scripts/user/get",
+    "/api/scripts/user/update",
+)
+_MAS_V510_UPDATE_PATHS = ("/api/update/precheck",)
+_MAS_LEGACY_UPDATE_PATHS = ("/api/update/check", "/api/update/download", "/api/update/install")
 
 
 def _automas_version(automas_dir: Path) -> str:
@@ -507,7 +547,6 @@ def _live_version() -> str:
     Electron builds no longer rewrite res/version.json, so the backend's answer
     takes precedence over the file.
     """
-    import urllib.request  # noqa: PLC0415
     try:
         with urllib.request.urlopen(mas_base() + "/api/core/health",
                                     timeout=_MAS_HTTP_TIMEOUT) as resp:
@@ -529,13 +568,503 @@ def _wait_for_version(want: str, deadline: float, stopping=going_down) -> str:
 
 
 def _mas_post(path: str, body: dict | None = None) -> dict:
-    import urllib.request  # noqa: PLC0415 - only this path needs it
     data = json.dumps(body or {}).encode()
     req = urllib.request.Request(
         mas_base() + path, data=data, method="POST",
         headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=_MAS_HTTP_TIMEOUT) as resp:
         return json.loads(resp.read().decode("utf-8", "replace"))
+
+
+def _mas_openapi_paths() -> set[str] | None:
+    """All route paths exposed by the running AUTO-MAS backend (/openapi.json);
+    None when unreachable or unreadable."""
+    try:
+        with urllib.request.urlopen(mas_base() + "/openapi.json",
+                                    timeout=min(_MAS_HTTP_TIMEOUT, 10)) as resp:
+            doc = json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception:  # noqa: BLE001 - backend unreachable or non-JSON
+        return None
+    paths = doc.get("paths") if isinstance(doc, dict) else None
+    return set(paths.keys()) if isinstance(paths, dict) and paths else None
+
+
+def _check_mas_endpoints(version: str, *, mode: str = "auto",
+                         problems: list[str] | None = None) -> list[str] | None:
+    """Verify the running AUTO-MAS OpenAPI schema still exposes every path the relay uses.
+
+    Returns the list of missing paths ([] when all present), or None if /openapi.json
+    could not be fetched. Missing paths are logged clearly and recorded in `problems`
+    so an upstream removal is caught on upgrade day rather than failing with 404 next boot.
+    """
+    paths = _mas_openapi_paths()
+    if paths is None:
+        return None
+    if mode == "v510":
+        required = _MAS_CORE_PATHS + _MAS_V510_UPDATE_PATHS
+    elif mode == "legacy":
+        required = _MAS_CORE_PATHS + _MAS_LEGACY_UPDATE_PATHS
+    else:
+        upd = _MAS_LEGACY_UPDATE_PATHS if "/api/update/check" in paths else _MAS_V510_UPDATE_PATHS
+        required = _MAS_CORE_PATHS + upd
+    missing = [p for p in required if p not in paths]
+    if missing:
+        log.info("预更新：AUTO-MAS %s 后端缺少中继依赖路径：%s", version, "、".join(missing))
+        log.warning("预更新：AUTO-MAS %s 后端缺少 %d 项中继依赖路径，请检查升级兼容（详见日志）",
+                    version, len(missing))
+        _note(problems,
+              f"AUTO-MAS 后端路径核对：{version} 缺少 {len(missing)} 项中继依赖路径"
+              f"（{'、'.join(missing)}）")
+    else:
+        log.info("预更新：AUTO-MAS %s 后端路径核对通过（%d 项齐备）", version, len(required))
+    return missing
+
+
+def _mas_norm_version(raw: str) -> str:
+    s = str(raw or "").strip()
+    if not s:
+        return ""
+    if s[0] in ("v", "V"):
+        return "v" + s[1:]
+    return "v" + s
+
+
+def _mas_parse_version(raw: str) -> tuple[list[int], list[int | str] | None]:
+    """Match AUTO-MAS updateVersion.js parseVersion."""
+    text = str(raw or "").strip().lstrip("vV")
+    head, sep, tail = text.partition("-")
+    release = [int(p) if p.isdigit() else 0 for p in head.split(".")] if head else [0]
+    if not sep:
+        return release, None
+    pre: list[int | str] = []
+    for part in re.split(r"[.-]", tail):
+        if not part:
+            continue
+        pre.append(int(part) if part.isdigit() else part.lower())
+    return release, pre
+
+
+def _mas_compare_versions(a: str, b: str) -> int:
+    """Semver compare matching updateVersion.js: <0 if a<b, 0 if equal, >0 if a>b."""
+    ra, pa = _mas_parse_version(a)
+    rb, pb = _mas_parse_version(b)
+    n = max(len(ra), len(rb))
+    for i in range(n):
+        va = ra[i] if i < len(ra) else 0
+        vb = rb[i] if i < len(rb) else 0
+        if va != vb:
+            return -1 if va < vb else 1
+    if pa is None and pb is None:
+        return 0
+    if pa is None:
+        return 1
+    if pb is None:
+        return -1
+    m = max(len(pa), len(pb))
+    for i in range(m):
+        if i >= len(pa):
+            return -1
+        if i >= len(pb):
+            return 1
+        ia, ib = pa[i], pb[i]
+        if isinstance(ia, int) and isinstance(ib, int):
+            if ia != ib:
+                return -1 if ia < ib else 1
+        elif isinstance(ia, int):
+            return -1
+        elif isinstance(ib, int):
+            return 1
+        elif ia != ib:
+            return -1 if ia < ib else 1
+    return 0
+
+
+def _mas_expected_core_version(version: str) -> str:
+    """PEP 440 version string expected inside pyproject.toml."""
+    core = _mas_norm_version(version).lstrip("v")
+    core = re.sub(r"-beta\.(\d+)$", r"b\1", core)
+    core = re.sub(r"-alpha\.(\d+)$", r"a\1", core)
+    core = re.sub(r"-rc\.(\d+)$", r"rc\1", core)
+    return core
+
+
+def _mas_http_open(url: str, *, proxy: str = "", timeout: float = _MAS_HTTP_TIMEOUT):
+    req = urllib.request.Request(url, headers={"User-Agent": "AutoMasGui"})
+    if proxy:
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+        return opener.open(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def _mas_http_get(url: str, *, proxy: str = "", timeout: float = _MAS_HTTP_TIMEOUT) -> bytes:
+    with _mas_http_open(url, proxy=proxy, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _mas_download_file(url: str, dest: Path, *, proxy: str = "",
+                       deadline: float, stopping=going_down) -> str:
+    """Stream `url` into `dest` via a `.part` file. Returns 'ok', 'stopped', 'timeout', or 'error'."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    try:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            return "timeout"
+        with _mas_http_open(url, proxy=proxy, timeout=min(30.0, max(1.0, left))) as resp:
+            expected_raw = resp.headers.get("Content-Length") if resp.headers else None
+            expected = int(expected_raw) if expected_raw and str(expected_raw).isdigit() else -1
+            got = 0
+            with part.open("wb") as fh:
+                while True:
+                    if stopping():
+                        return "stopped"
+                    if time.monotonic() >= deadline:
+                        return "timeout"
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    got += len(chunk)
+        if expected > 0 and got != expected:
+            log.info("预更新：下载体积不完整（收到 %d / 期望 %d 字节）", got, expected)
+            return "error"
+        if got <= 0:
+            return "error"
+        os.replace(part, dest)
+        return "ok"
+    except Exception as e:  # noqa: BLE001 - caller tries next source or reports failure
+        log.info("预更新：下载 AUTO-MAS 更新包失败（%s: %s）", type(e).__name__, e)
+        return "stopped" if stopping() else ("timeout" if time.monotonic() >= deadline else "error")
+    finally:
+        if part.exists():
+            try:
+                part.unlink()
+            except OSError:
+                pass
+
+
+def _mas_update_settings(root: Path) -> dict[str, str]:
+    """Read Update.{Channel, Source, ProxyAddress, MirrorChyanCDK} from live backend,
+    then frontend_config.json, then setting.yaml. Never logs the CDK."""
+    merged: dict[str, object] = {}
+
+    def _merge(obj) -> None:
+        if not isinstance(obj, dict):
+            return
+        for k in ("Channel", "Source", "ProxyAddress", "MirrorChyanCDK"):
+            v = obj.get(k)
+            if not merged.get(k) and isinstance(v, str) and v.strip():
+                if k == "MirrorChyanCDK" and v.strip().startswith("DPAPI:"):
+                    continue
+                merged[k] = v.strip()
+
+    try:
+        res = _mas_post("/api/setting/get", {})
+        if isinstance(res, dict) and isinstance(res.get("data"), dict):
+            _merge(res["data"].get("Update"))
+    except Exception:  # noqa: BLE001 - fall back to disk files
+        pass
+    try:
+        fc = json.loads((root / "config" / "frontend_config.json").read_text(encoding="utf-8"))
+        if isinstance(fc, dict):
+            _merge(fc.get("Update"))
+    except (OSError, ValueError):
+        pass
+    try:
+        from ark_relay.core import mastercfg  # noqa: PLC0415
+        sy = mastercfg.loads((root / "config" / "setting.yaml").read_text(encoding="utf-8"))
+        if isinstance(sy, dict):
+            _merge(sy.get("Update"))
+    except (OSError, ValueError):
+        pass
+    return {
+        "channel": str(merged.get("Channel") or "stable"),
+        "source": str(merged.get("Source") or "CNB"),
+        "proxy": str(merged.get("ProxyAddress") or ""),
+        "cdk": str(merged.get("MirrorChyanCDK") or ""),
+    }
+
+
+def _mas_query_mirrorchyan(version: str, settings: dict[str, str],
+                           purpose: str = "check") -> dict:
+    """Query MirrorChyan for the latest AUTO-MAS release metadata (matches appUpdateService.js)."""
+    params = {
+        "user_agent": "AutoMasGui",
+        "os": "win",
+        "arch": "x64",
+        "current_version": _mas_norm_version(version),
+        "channel": settings.get("channel") or "stable",
+    }
+    if purpose == "download" and settings.get("source") == "MirrorChyan" and settings.get("cdk"):
+        params["cdk"] = settings["cdk"]
+    url = _MAS_MIRRORCHYAN_URL + "?" + urllib.parse.urlencode(params)
+    raw = _mas_http_get(url, proxy=settings.get("proxy", ""), timeout=_MAS_HTTP_TIMEOUT)
+    payload = json.loads(raw.decode("utf-8", "replace"))
+    if not isinstance(payload, dict) or payload.get("code") != 0 or not isinstance(payload.get("data"), dict):
+        code = payload.get("code") if isinstance(payload, dict) else "?"
+        msg = payload.get("msg") if isinstance(payload, dict) else ""
+        raise ValueError(f"MirrorChyan 返回异常 code={code} {msg}".strip())
+    return payload["data"]
+
+
+def _mas_precheck_v510(latest: str, settings: dict[str, str], stopping) -> tuple[str, str]:
+    """Fetch target version's dependency manifests and call POST /api/update/precheck.
+
+    Returns ('ok', ''), ('stopped', ''), ('fetch_failed', detail), or ('conflict', detail).
+    """
+    import tomllib  # noqa: PLC0415 - stdlib 3.11+ (relay runs 3.14); keeps module importable on 3.9 tools
+    sources = list(_MAS_PRECHECK_SOURCES)
+    if settings.get("source") == "GitHub":
+        sources.reverse()
+    target: dict[str, str] | None = None
+    last_err = ""
+    expected_core = _mas_expected_core_version(latest)
+    for tmpl in sources:
+        if stopping():
+            return "stopped", ""
+        base = tmpl.format(rev=latest)
+        try:
+            texts_got = [
+                _mas_http_get(base + fn, proxy=settings.get("proxy", ""), timeout=_MAS_HTTP_TIMEOUT)
+                .decode("utf-8", "replace")
+                for fn in _MAS_PRECHECK_FILES
+            ]
+            project_text, lockfile, python_text = texts_got
+            doc = tomllib.loads(project_text)
+            proj = doc.get("project") if isinstance(doc, dict) else None
+            deps = proj.get("dependencies") if isinstance(proj, dict) else None
+            if (not isinstance(proj, dict)
+                    or proj.get("version") != expected_core
+                    or not isinstance(deps, list) or not deps
+                    or not all(isinstance(item, str) for item in deps)):
+                raise ValueError("目标版本 pyproject.toml 声明无效")
+            py_ver = python_text.strip()
+            if not re.fullmatch(r"\d+\.\d+\.\d+", py_ver):
+                raise ValueError("目标版本 .python-version 声明无效")
+            tomllib.loads(lockfile)
+            target = {"project": project_text, "lockfile": lockfile, "python_version": py_ver}
+            break
+        except Exception as e:  # noqa: BLE001 - try fallback source
+            last_err = f"{type(e).__name__}: {e}"
+    if stopping():
+        return "stopped", ""
+    if target is None:
+        return "fetch_failed", last_err
+    try:
+        res = _mas_post("/api/update/precheck", {"version": latest, **target})
+    except Exception as e:  # noqa: BLE001
+        return "conflict", f"{type(e).__name__}: {e}"
+    err = _mas_error(res)
+    if err is not None:
+        return "conflict", err
+    if res.get("compatible") is True:
+        return "ok", ""
+    conflicts = [
+        str(item.get("message") or "").strip()
+        for item in (res.get("conflicts") or [])
+        if isinstance(item, dict) and item.get("message")
+    ]
+    return "conflict", "；".join(conflicts) or "插件与目标版本不兼容"
+
+
+def _mas_download_urls_v510(version: str, latest: str, settings: dict[str, str]) -> list[str]:
+    """Candidate download URLs for AUTO-MAS-Setup-<latest>-x64.zip, matching appUpdateService.js."""
+    asset = f"AUTO-MAS-Setup-{latest}-x64.zip"
+    cnb_url = _MAS_RELEASE_CNB.format(ver=latest, asset=asset)
+    gh_url = _MAS_RELEASE_GITHUB.format(ver=latest, asset=asset)
+    auto_url = _MAS_RELEASE_AUTOSITE.format(ch="beta" if "beta" in latest.lower() else "stable")
+    src = settings.get("source") or "CNB"
+    urls: list[str] = []
+    if src == "MirrorChyan":
+        try:
+            rel = _mas_query_mirrorchyan(version, settings, purpose="download")
+            rel_ver = _mas_norm_version(str(rel.get("version_name") or ""))
+            rel_url = str(rel.get("url") or "").strip()
+            if rel_ver == latest and rel_url:
+                urls.append(rel_url)
+        except Exception as e:  # noqa: BLE001 - fall back to CNB release
+            log.info("预更新：MirrorChyan 取下载地址失败（%s: %s），尝试备用源", type(e).__name__, e)
+        urls.append(cnb_url)
+    elif src == "GitHub":
+        urls.extend([gh_url, cnb_url])
+    elif src == "CNB":
+        urls.append(cnb_url)
+    else:
+        urls.extend([auto_url, cnb_url])
+    return urls
+
+
+def _mas_cleanup_old_stages(root: Path, keep_name: str) -> None:
+    temp_dir = root / "temp"
+    if not temp_dir.is_dir():
+        return
+    for item in temp_dir.iterdir():
+        if item.is_dir() and item.name.startswith(_MAS_STAGE_PREFIX) and item.name != keep_name:
+            try:
+                shutil.rmtree(item, ignore_errors=True)
+            except OSError:
+                pass
+
+
+def _mas_extract_setup_v510(zip_path: Path) -> Path | None:
+    """Extract AUTO-MAS-Setup.exe safely next to zip_path; None when absent or corrupt."""
+    installer = zip_path.parent / _MAS_SETUP_EXE
+    part = installer.with_name(installer.name + ".part")
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            matches = [
+                info for info in zf.infolist()
+                if not info.is_dir() and Path(info.filename).name.lower() == _MAS_SETUP_EXE.lower()
+            ]
+            if not matches:
+                return None
+            with zf.open(matches[0]) as src, part.open("wb") as dst:
+                shutil.copyfileobj(src, dst)
+        os.replace(part, installer)
+        return installer
+    except (OSError, zipfile.BadZipFile, KeyError, RuntimeError) as e:
+        log.info("预更新：解压 AUTO-MAS 安装程序失败（%s: %s）", type(e).__name__, e)
+        if part.exists():
+            try:
+                part.unlink()
+            except OSError:
+                pass
+        return None
+
+
+def _mas_close_backend(stopping) -> None:
+    """Ask AUTO-MAS backend to close cleanly before running the silent installer."""
+    try:
+        _mas_post("/api/core/close", {})
+    except Exception as e:  # noqa: BLE001 - installer still closes running app via /FORCECLOSEAPPLICATIONS
+        log.info("预更新：通知 AUTO-MAS 关闭后端返回异常（%s: %s），继续安装", type(e).__name__, e)
+        return
+    until = time.monotonic() + _MAS_CLOSE_WAIT_SECONDS
+    while time.monotonic() < until and not stopping():
+        if not _live_version():
+            return
+        time.sleep(2)
+
+
+def _mas_spawn_installer_v510(installer: Path, root: Path) -> bool:
+    """Start AUTO-MAS-Setup.exe silently with the same flags as appUpdateService.js."""
+    args = (
+        "/SP-",
+        "/SILENT",
+        "/NOCANCEL",
+        "/FORCECLOSEAPPLICATIONS",
+        "/LANG=Chinese",
+        f"/DIR={root}",
+    )
+    return _spawn_interactive(installer, installer.parent, args, hidden=True)
+
+
+def _finish_automas_install(version: str, latest: str, after_update,
+                            problems: list[str] | None, stopping,
+                            carry: "dict | None") -> str:
+    """Wait for the restarted AUTO-MAS backend to report `latest`, verify endpoints & contract."""
+    got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS, stopping)
+    if got != latest and stopping():
+        log.info("预更新：中继正在停止，AUTO-MAS 的安装已启动，装没装上留到下次开机再看")
+        return ""
+    if got == latest:
+        log.info("预更新：AUTO-MAS 已更新到 %s（后端重启后自报）", latest)
+        _check_mas_endpoints(latest, mode="post_upgrade", problems=problems)
+        _after(after_update, latest)
+        return f"AUTO-MAS 已更新：{_span(version, latest)}"
+    log.warning("预更新：AUTO-MAS 装完 %.0f 秒内后端没有自报 %s（最后一次说的是 %s），留到下次开机再看",
+                MAS_INSTALL_WAIT_SECONDS, latest, got or "问不到")
+    _note(problems, f"AUTO-MAS 预更新：{latest} 的安装已启动，但后端没有自报新版本"
+                    f"（最后说的是 {got or '问不到'}），留到下次开机再看")
+    if carry is not None:
+        carry.update({"from": (carry.get("from") or version), "to": latest})
+    return f"AUTO-MAS 有更新：{_span(version, latest)}（安装已启动，还没确认装成）"
+
+
+def _run_automas_v510(root: Path, version: str, budget_s: float,
+                      problems: list[str] | None, after_update,
+                      stopping, carry: "dict | None") -> str:
+    """Unattended AUTO-MAS v5.10+ pre-update aligned with Electron appUpdateService.js."""
+    landed = _landed(carry, version, after_update, problems)
+    _check_mas_endpoints(version, mode="v510", problems=problems)
+    settings = _mas_update_settings(root)
+    try:
+        rel = _mas_query_mirrorchyan(version, settings, purpose="check")
+        raw_latest = str(rel.get("version_name") or "").strip()
+        if not raw_latest:
+            raise ValueError("缺少 version_name")
+        latest = _mas_norm_version(raw_latest)
+    except Exception as e:  # noqa: BLE001
+        if stopping():
+            log.info("预更新：中继正在停止，AUTO-MAS 的更新这次不查了")
+            return landed
+        log.info("预更新：查 AUTO-MAS 新版本失败详情：%s: %s", type(e).__name__, e)
+        log.warning("预更新：查 AUTO-MAS 新版本失败，本轮没有检查更新")
+        _note(problems, "AUTO-MAS 预更新：查新版本没拿到结果，**没有检查更新**（不是「无需更新」）")
+        return landed
+
+    if _mas_compare_versions(latest, version) <= 0:
+        log.info("预更新：AUTO-MAS 已是 %s（无需更新）", version)
+        return landed
+
+    log.info("预更新：AUTO-MAS 有更新 %s → %s，先做插件兼容预检", version, latest)
+    pre_status, pre_detail = _mas_precheck_v510(latest, settings, stopping)
+    if pre_status == "stopped":
+        log.info("预更新：中继正在停止，AUTO-MAS 的更新留到下次开机再查")
+        return landed
+    if pre_status == "fetch_failed":
+        log.info("预更新：拉取 AUTO-MAS %s 依赖清单失败：%s", latest, pre_detail)
+        log.warning("预更新：AUTO-MAS %s 依赖清单取不到，暂不升级", latest)
+        _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但取不到依赖清单，未做兼容预检、暂不升级")
+        return landed
+    if pre_status == "conflict":
+        log.info("预更新：AUTO-MAS %s 插件兼容预检未通过：%s", latest, pre_detail)
+        log.warning("预更新：AUTO-MAS %s 没通过插件兼容预检，暂不升级", latest)
+        _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但插件兼容预检没通过，暂不升级")
+        return landed
+
+    deadline = time.monotonic() + budget_s
+    stage_name = _MAS_STAGE_PREFIX + latest
+    _mas_cleanup_old_stages(root, stage_name)
+    zip_path = root / "temp" / stage_name / f"AUTO-MAS-Setup-{latest}-x64.zip"
+    urls = _mas_download_urls_v510(version, latest, settings)
+    log.info("预更新：AUTO-MAS %s 兼容预检通过，开始下载更新包（候选源 %d 个）", latest, len(urls))
+    dl_status = "error"
+    for url in urls:
+        dl_status = _mas_download_file(url, zip_path, proxy=settings.get("proxy", ""),
+                                       deadline=deadline, stopping=stopping)
+        if dl_status in ("ok", "stopped", "timeout"):
+            break
+    if dl_status == "stopped":
+        log.info("预更新：中继正在停止，AUTO-MAS 的更新包留到下次开机再装")
+        return landed
+    if dl_status == "timeout":
+        log.warning("预更新：AUTO-MAS 更新包 %.0f 秒内没下完，留到下次开机再装", budget_s)
+        _note(problems,
+              f"AUTO-MAS 预更新：{latest} 的更新包 {budget_s:.0f} 秒内没下完，留到下次开机再装")
+        return landed
+    if dl_status != "ok":
+        log.warning("预更新：AUTO-MAS 更新包下载失败，留到下次开机再装")
+        _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但更新包下载失败，留到下次开机再装")
+        return landed
+
+    installer = _mas_extract_setup_v510(zip_path)
+    if installer is None:
+        log.warning("预更新：AUTO-MAS 更新包里缺少安装程序，留到下次开机再装")
+        _note(problems, f"AUTO-MAS 预更新：{latest} 的更新包里缺少安装程序，留到下次开机再装")
+        return landed
+
+    log.info("预更新：更新包就绪（%s），关闭后端并启动静默安装", zip_path.name)
+    _mas_close_backend(stopping)
+    if stopping():
+        log.info("预更新：中继正在停止，AUTO-MAS 的安装留到下次开机再做")
+        return landed
+    if not _mas_spawn_installer_v510(installer, root):
+        log.warning("预更新：AUTO-MAS 安装程序没能启动，留到下次开机再装")
+        _note(problems, f"AUTO-MAS 预更新：{latest} 的更新包已下好，但安装程序没能启动，留到下次开机再装")
+        return landed
+    return _finish_automas_install(version, latest, after_update, problems, stopping, carry) or landed
 
 
 def _mas_error(answer) -> str | None:
@@ -624,11 +1153,16 @@ def run_automas(automas_dir: Path | None,
     root = Path(automas_dir)
     version = _automas_version(root)
     if not version:
+        version = _live_version()
+    if not version:
         log.info("预更新：读不到 AUTO-MAS 版本号，跳过")
         _note(problems, "AUTO-MAS 预更新：读不到版本号，**没有检查更新**")
         return ""
     # The backend may not be listening yet at boot: retry for MAS_WAIT_SECONDS.
+    # Deterministic HTTP 404 means AUTO-MAS v5.10+ removed /api/update/check and
+    # switches immediately (0 s wasted) to the v5.10 flow.
     answer = None
+    legacy_gone = False
     wait_until = time.monotonic() + MAS_WAIT_SECONDS
     while True:
         try:
@@ -643,11 +1177,22 @@ def run_automas(automas_dir: Path | None,
             answer = _mas_post("/api/update/check",
                                {"current_version": version, "if_force": True})
             break
-        except Exception:  # noqa: BLE001 - not up yet, or genuinely unreachable
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                log.info("预更新：AUTO-MAS 后端已移除旧更新地址（HTTP 404），切到新版预更新流程")
+                legacy_gone = True
+                break
+            if 400 <= e.code < 500:
+                log.info("预更新：AUTO-MAS /api/update/check 返回 HTTP %d: %s", e.code, e.reason)
+                log.warning("预更新：AUTO-MAS 查更新返回状态码 %d，跳过", e.code)
+                _note(problems,
+                      f"AUTO-MAS 预更新：查更新返回状态码 {e.code}，**没有检查更新**")
+                return _landed(carry, version, after_update, problems)
             if stopping():
                 log.info("预更新：中继正在停止，AUTO-MAS 的更新这次不查了")
                 return ""
             if time.monotonic() >= wait_until:
+                log.info("预更新：AUTO-MAS 查更新连续失败的最后状态码：HTTP %d (%s)", e.code, e.reason)
                 log.warning("预更新：等了 %.0f 秒仍问不到 AUTO-MAS 更新状态，跳过",
                             MAS_WAIT_SECONDS)
                 _note(problems,
@@ -655,7 +1200,23 @@ def run_automas(automas_dir: Path | None,
                       "更新状态，**没有检查更新**")
                 return ""
             time.sleep(5)
-    landed = _landed(carry, version, after_update)
+        except Exception as e:  # noqa: BLE001 - not up yet, or genuinely unreachable
+            if stopping():
+                log.info("预更新：中继正在停止，AUTO-MAS 的更新这次不查了")
+                return ""
+            if time.monotonic() >= wait_until:
+                log.info("预更新：AUTO-MAS 查更新连续失败的最后原因：%s: %s", type(e).__name__, e)
+                log.warning("预更新：等了 %.0f 秒仍问不到 AUTO-MAS 更新状态，跳过",
+                            MAS_WAIT_SECONDS)
+                _note(problems,
+                      f"AUTO-MAS 预更新：等了 {MAS_WAIT_SECONDS:.0f} 秒仍问不到"
+                      "更新状态，**没有检查更新**")
+                return ""
+            time.sleep(5)
+    if legacy_gone:
+        return _run_automas_v510(root, version, budget_s, problems, after_update, stopping, carry)
+    landed = _landed(carry, version, after_update, problems)
+    _check_mas_endpoints(version, mode="legacy", problems=problems)
     failed = _mas_error(answer)
     if failed is None and not isinstance(answer.get("if_need_update"), bool):
         failed = "回答里没有 if_need_update"
@@ -706,21 +1267,7 @@ def run_automas(automas_dir: Path | None,
                         f"（{failed}），留到下次开机再装")
         return landed
     # The backend restarts itself after install; wait for it to report the new version.
-    got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS, stopping)
-    if got != latest and stopping():
-        log.info("预更新：中继正在停止，AUTO-MAS 的安装已启动，装没装上留到下次开机再看")
-        return landed
-    if got == latest:
-        log.info("预更新：AUTO-MAS 已更新到 %s（后端重启后自报）", latest)
-        _after(after_update, latest)
-        return f"AUTO-MAS 已更新：{_span(version, latest)}"
-    log.warning("预更新：AUTO-MAS 装完 %.0f 秒内后端没有自报 %s（最后一次说的是 %s），留到下次开机再看",
-                MAS_INSTALL_WAIT_SECONDS, latest, got or "问不到")
-    _note(problems, f"AUTO-MAS 预更新：{latest} 的安装已启动，但后端没有自报新版本"
-                    f"（最后说的是 {got or '问不到'}），留到下次开机再看")
-    if carry is not None:
-        carry.update({"from": (carry.get("from") or version), "to": latest})
-    return f"AUTO-MAS 有更新：{_span(version, latest)}（安装已启动，还没确认装成）"
+    return _finish_automas_install(version, latest, after_update, problems, stopping, carry) or landed
 
 
 def _after(after_update, version: str) -> None:
@@ -733,7 +1280,8 @@ def _after(after_update, version: str) -> None:
         log.exception("预更新：AUTO-MAS 更新后核对中继要读的设置时出错")
 
 
-def _landed(carry: "dict | None", live: str, after_update) -> str:
+def _landed(carry: "dict | None", live: str, after_update,
+            problems: list[str] | None = None) -> str:
     """「AUTO-MAS 已更新：…」 when an earlier try's install (carry) is what the backend runs
     now, after_update called for it; '' otherwise. The record is used once."""
     if not carry or not carry.get("to") or live != carry["to"]:
@@ -741,6 +1289,7 @@ def _landed(carry: "dict | None", live: str, after_update) -> str:
     old = str(carry.get("from") or "")
     carry.clear()
     log.info("预更新：上一次装的 AUTO-MAS %s 已经装上了（后端现在自报 %s）", live, live)
+    _check_mas_endpoints(live, mode="post_upgrade", problems=problems)
     _after(after_update, live)
     return f"AUTO-MAS 已更新：{_span(old, live)}"
 
