@@ -55,6 +55,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -62,6 +63,7 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -157,6 +159,9 @@ CHROME_APP_BIN = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 BOARD_STALE_DAYS = 14
 BOARD_MIN_KB = 20 * 1024
 BOARD_PROTECTED_PREFIXES = ("方案审批", "归档-")
+TRASH_AI_PREFIXES = ("Claude侧垃圾_", "agy_tidy_", "__retired_")
+GEMINI_PROTECTED_PREFIXES = ("084474b4", "fe823e8f", "44e73229")
+GEMINI_BRAIN_REF = re.compile(rf"\.gemini/antigravity/brain/({UUID_RX})")
 
 
 
@@ -280,6 +285,9 @@ class Env:
         self.sessions, self.projects = h / ".claude/sessions", h / ".claude/projects"
         self.hooks, self.ref_tools = h / ".claude/hooks", h / "Money/styl-work/remote-ref/tools"
         self.log, self.lock = h / "Library/Logs/disk-tidy.log", h / "Library/Logs/disk-tidy.lock"
+        self.trash = h / ".Trash"
+        self.gemini_dir = h / ".gemini/antigravity"
+        self.gemini_brain = self.gemini_dir / "brain"
         # tmpdir is the user's T dir (/private/var/folders/xx/yyy/T); Chrome's clones sit in X beside it.
         self.chrome_clones = self.tmpdir.parent / "X" / "com.google.Chrome.code_sign_clone"
 
@@ -353,6 +361,7 @@ class Ctx:
     gradle_running: bool = True       # unknown counts as running
     repo_files: dict[str, list[str]] = field(default_factory=dict)
     wt_facts_cache: dict[str, tuple[bool, bool]] = field(default_factory=dict)
+    ref_gemini_ids: set[str] = field(default_factory=set)
 
 
 def open_paths() -> list[str] | None:
@@ -558,15 +567,16 @@ def ref_files(env: Env, repos: list[str], repo_files: dict[str, list[str]] | Non
 
 def references(env: Env, repos: list[str],
                repo_files: dict[str, list[str]] | None = None
-               ) -> tuple[set[str], set[str], dict[str, set[str]], set[str], list[str]]:
+               ) -> tuple[set[str], set[str], dict[str, set[str]], set[str], list[str], set[str]]:
     """What some tool's code or memory note names (it reuses it): session ids; of those, the ones
     named without a scratchpad entry; per session the scratchpad entries named; the folder names
-    tools pass to -derivedDataPath; ~/Claude, ~/Money and BOARD/ paths."""
+    tools pass to -derivedDataPath; ~/Claude, ~/Money and BOARD/ paths; Gemini brain UUIDs."""
     ids: set[str] = set()
     whole: set[str] = set()
     entries: dict[str, set[str]] = {}
     dd_names: set[str] = set()
     paths: set[str] = set()
+    gemini_ids: set[str] = set()
     home = str(env.home)
     board_base = env.money / "styl-work/BOARD"
     path_ref = re.compile("(?:~|" + re.escape(home) + ")" + PATH_TAIL)
@@ -577,6 +587,8 @@ def references(env: Env, repos: list[str],
         except OSError:
             continue
         text = read_text(f)
+        for gid in GEMINI_BRAIN_REF.findall(text):
+            gemini_ids.add(gid)
         for sid, entry in TMP_REF.findall(text):
             ids.add(sid)
             entry = entry.rstrip(".:")
@@ -602,7 +614,7 @@ def references(env: Env, repos: list[str],
             cleaned = rel.rstrip(TRAIL_PUNCT)
             if cleaned:
                 paths.add(norm(str(board_base / cleaned)))
-    return ids, whole, entries, dd_names, sorted(paths)
+    return ids, whole, entries, dd_names, sorted(paths), gemini_ids
 
 
 def repo_list(env: Env) -> list[str]:
@@ -671,14 +683,14 @@ def snapshot(env: Env) -> Ctx:
     rfiles = tracked_files(repos)
     wts = [w for r in repos for w in worktrees(r)]
     ids, text = active_journals(env)
-    ref_ids, ref_whole, ref_entries, dd_names, ref_paths = references(env, repos, repo_files=rfiles)
+    ref_ids, ref_whole, ref_entries, dd_names, ref_paths, ref_gemini_ids = references(env, repos, repo_files=rfiles)
     standing = env.standing()
     allowed = sorted(w.path for w in wts if allowed_worktree(env, w) and w.path not in standing)
     return Ctx(in_use=open_paths(), procs=proc_names(), live_ids=live_sessions(env),
                journal_ids=ids, journal_text=text, ref_ids=ref_ids, ref_whole=ref_whole,
                ref_entries=ref_entries, dd_names=dd_names, ref_paths=ref_paths, repos=repos, worktrees=wts,
                allowed_wt=allowed, money_dd=money_derived_data(env), gradle_running=gradle_running(),
-               repo_files=rfiles)
+               repo_files=rfiles, ref_gemini_ids=ref_gemini_ids)
 
 
 def zone_ok(env: Env, ctx: Ctx, p: str) -> bool:
@@ -689,6 +701,10 @@ def zone_ok(env: Env, ctx: Ctx, p: str) -> bool:
         if within(p, root) and p != str(root):
             return True
     if os.path.dirname(p) == str(env.chrome_clones) and os.path.basename(p).startswith(CHROME_CLONE_PREFIX):
+        return True
+    if os.path.dirname(p) == str(env.trash) and os.path.basename(p).startswith(TRASH_AI_PREFIXES):
+        return True
+    if os.path.dirname(p) == str(env.gemini_brain) and UUID_NAME.match(os.path.basename(p)):
         return True
     if within(p, env.tmpdir) and os.path.basename(p).startswith("precheck-"):
         return True
@@ -1379,15 +1395,135 @@ def rule_board_stale_dirs(env: Env, ctx: Ctx) -> list[Item]:
     return items
 
 
+def _parse_db_ts(raw, fallback: float) -> float:
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw or "").strip()
+    if not s:
+        return fallback
+    try:
+        dt_obj = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt_obj.tzinfo is None:
+            dt_obj = dt_obj.replace(tzinfo=timezone.utc)
+        return dt_obj.timestamp()
+    except ValueError:
+        return fallback
+
+
+def _gemini_subagent_meta(env: Env) -> dict[str, tuple[bool, bool, float]] | None:
+    """Read conversation_summaries.db read-only -> {cid: (is_subagent, is_active, last_mod_ts)}.
+    Returns None on DB error so the caller fails closed and removes nothing."""
+    db = env.gemini_dir / "conversation_summaries.db"
+    if not db.is_file():
+        return None
+    con = None
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5.0)
+        rows = con.execute(
+            "SELECT conversation_id, parent_conversation_id, nesting_depth, "
+            "status, not_fully_idle, last_modified_time FROM conversation_summaries"
+        ).fetchall()
+    except (sqlite3.Error, OSError):
+        return None
+    finally:
+        if con is not None:
+            try:
+                con.close()
+            except sqlite3.Error:
+                pass
+    out: dict[str, tuple[bool, bool, float]] = {}
+    for cid, parent, depth, status, not_idle, lmt in rows:
+        sid = str(cid or "")
+        is_sub = bool(str(parent or "").strip()) or int(depth or 0) > 0
+        is_act = (str(status or "") != "CASCADE_RUN_STATUS_IDLE") or bool(int(not_idle or 0))
+        out[sid] = (is_sub, is_act, _parse_db_ts(lmt, env.now))
+    return out
+
+
+def rule_gemini_subagent_dirs(env: Env, ctx: Ctx) -> list[Item]:
+    """Remove idle >24 h unreferenced Gemini subagent brain dirs under ~/.gemini/antigravity/brain.
+    Hard-protects the 3 main windows (084474b4 / fe823e8f / 44e73229), all top-level conversations
+    (e.g. novel), any active/recent (<24 h) session, open files, and referenced brain UUIDs."""
+    rule = "gemini-subagent-dir"
+    if not env.gemini_brain.is_dir():
+        return []
+    try:
+        dirs = sorted(d for d in env.gemini_brain.iterdir()
+                      if d.is_dir() and not d.is_symlink() and UUID_NAME.match(d.name))
+    except OSError:
+        return []
+    if not dirs:
+        return []
+    meta = _gemini_subagent_meta(env)
+    cut = env.cutoff(STALE_HOURS)
+    conv_dir = env.gemini_dir / "conversations"
+    items: list[Item] = []
+    for d in dirs:
+        cid, p = d.name, str(d)
+        why: str | None = None
+        if cid.startswith(GEMINI_PROTECTED_PREFIXES):
+            why = "protected main Gemini window"
+        elif meta is None:
+            why = "conversation_summaries.db unreadable (fail-closed)"
+        elif cid not in meta:
+            why = "not listed in conversation_summaries.db (fail-closed)"
+        else:
+            is_sub, is_act, db_ts = meta[cid]
+            if not is_sub:
+                why = "top-level Gemini conversation (not a subagent)"
+            elif is_act:
+                why = "subagent session still active or non-idle"
+            elif db_ts > cut:
+                why = f"DB last_modified_time within {STALE_HOURS} h"
+        if not why:
+            pb = conv_dir / f"{cid}.pb"
+            try:
+                if pb.exists():
+                    st_pb = pb.lstat()
+                    if max(st_pb.st_mtime, st_pb.st_ctime) > cut:
+                        why = f"conversation .pb changed within {STALE_HOURS} h"
+            except OSError:
+                pass
+        if not why and (cid in ctx.ref_gemini_ids or cid in ctx.journal_text or sorted_hit(ctx.ref_paths, p)):
+            why = "referenced by code, memory or active journal"
+        if not why and changed_since(p, cut, ctime=True):
+            why = f"changed within {STALE_HOURS} h"
+        why = why or guard(env, ctx, p)
+        items.append(keep(rule, p, why) if why else Item(rule, p))
+    return items
+
+
+def rule_trash_ai_batches_floor(env: Env, ctx: Ctx) -> list[Item]:
+    """Below the 30 GB free-space floor: permanently remove AI-moved Trash batches
+    (Claude侧垃圾_*, agy_tidy_*, __retired_*) older than 24 h (mtime & ctime) and unopened.
+    User personal Trash entries are never matched."""
+    rule = "trash-ai-batch"
+    if not env.trash.is_dir():
+        return []
+    cut = env.cutoff(STALE_HOURS)
+    items: list[Item] = []
+    try:
+        entries = sorted(e for e in env.trash.iterdir()
+                         if not e.is_symlink() and e.name.startswith(TRASH_AI_PREFIXES))
+    except OSError:
+        return []
+    for e in entries:
+        p = str(e)
+        why = (f"changed within {STALE_HOURS} h" if changed_since(p, cut, ctime=True) else None) \
+            or guard(env, ctx, p)
+        items.append(keep(rule, p, why) if why else Item(rule, p))
+    return items
+
+
 NORMAL_RULES = [rule_merged_worktrees, rule_stale_registrations, rule_derived_data, rule_old_gradle,
                 rule_gradle_transforms, rule_old_swift_toolchains, rule_dead_session_dirs,
                 rule_live_session_scratch, rule_known_build_outputs, rule_money_derived_data,
-                rule_board_stale_dirs,
+                rule_board_stale_dirs, rule_gemini_subagent_dirs,
                 rule_uv_cache, rule_brew_cache, rule_go_cache, rule_pyright_cache,
                 rule_unavailable_simulators, rule_chrome_sign_clones]
 FLOOR_RULES = [rule_merged_worktrees_floor, rule_derived_data_floor, rule_shared_derived_caches,
                rule_idle_build_outputs, rule_live_session_scratch_floor, rule_gradle_transforms_floor,
-               rule_money_derived_data_floor]
+               rule_money_derived_data_floor, rule_trash_ai_batches_floor]
 # Floor rules that only repeat a normal rule with a shorter window: their KEEP lines would
 # repeat what the normal pass already printed.
 QUIET_KEEPS = {"merged-worktree-2h", "derived-data-2h", "live-session-scratch-2h", "gradle-transforms-2h",

@@ -25,7 +25,6 @@ Modes:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 import sys
@@ -53,8 +52,6 @@ TARGET_FIELDS: dict[str, Any] = {
     "Task.IfFight": True,
     "Task.IfActivityFirst": False,
 }
-
-_MAC_HARDLOCK_SCRIPT = Path("/Users/herclyon/Money/审批记录/硬锁/hardlock.py")
 
 
 def _default_state_dir() -> Path:
@@ -91,29 +88,14 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
         raise
 
 
-def _check_mac_hardlock() -> str:
-    if os.name == "nt" or not _MAC_HARDLOCK_SCRIPT.is_file():
-        return ""
-    try:
-        spec = importlib.util.spec_from_file_location("hardlock_1126", str(_MAC_HARDLOCK_SCRIPT))
-        if spec is None or spec.loader is None:
-            return "Mac 硬锁模块无法加载，按锁定处理"
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        locked, msg = mod.check("relay")
-        return str(msg or "Mac 硬锁中") if locked else ""
-    except Exception as exc:  # noqa: BLE001 - fail-closed on hardlock check error
-        return f"Mac 硬锁检查异常（{type(exc).__name__}），按锁定处理"
-
-
 def check_hardlock(hardlock_path: Path | None = None, *, explicit: bool = False) -> str:
     """Return non-empty lock reason if writes are forbidden; '' when unlocked.
 
     Delegates directly to `ark_relay.features.hardlock.active(state_dir, "relay")`
     so sticky state.json locks, corrupt files, and forged `locked:false`/`unlocked:true`
-    files are all refused fail-closed. Also enforces `LOCKED_UNAVAILABLE.flag` and
-    (unless `explicit` overrides the path for isolated tests) the Mac hardlock module.
+    files are all refused fail-closed. Also enforces `LOCKED_UNAVAILABLE.flag`.
     """
+    _ = explicit
     path = hardlock_path or (_default_state_dir() / "HARDLOCK.json")
     state_dir = path.parent
     flag = state_dir.parent / "LOCKED_UNAVAILABLE.flag"
@@ -132,9 +114,6 @@ def check_hardlock(hardlock_path: Path | None = None, *, explicit: bool = False)
                 return f"硬锁文件 {path} 未含合规解锁记录，拒绝写入"
     except Exception as exc:  # noqa: BLE001 - fail-closed on any hardlock check error
         return f"硬锁检查异常（{type(exc).__name__}），按锁定处理"
-    if not explicit:
-        if mac_why := _check_mac_hardlock():
-            return mac_why
     return ""
 
 
