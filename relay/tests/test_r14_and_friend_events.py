@@ -311,12 +311,22 @@ def _part_friend_events_allowlist_and_integrations():
         text="明日方舟支线活动（复刻）「雪山降临1101」已开启。",
         now=now,
     )
+    e4 = friend_events.build_event(
+        event_id="ef-filler-1",
+        category="endfield_essence_filler",
+        game="终末地",
+        days_left=None,
+        title="🎯 终末地基质刷取已切刷垫子",
+        text="终末地目标武器「甜美交易」基质已刷齐，已切回随机地区刷垫子，刻写券已关闭。\n可按需勾选下一把要刷的目标武器。",
+        now=now,
+    )
     q = friend_events.FriendEventQueue(state_dir)
-    for ev in (e1, e2, e2_zero, e3):
+    for ev in (e1, e2, e2_zero, e3, e4):
         check(f"正例放行 {ev['event_id']}", q.enqueue(ev), True)
     check("相同 event_id 幂等去重返回 False", q.enqueue(e1), False)
-    check("队列恰有 4 条有效事件", len(q.pending()), 4)
-    check("seen_ids 记录 4 条", len(q.seen_ids()), 4)
+    check("相同基质 event_id 幂等去重返回 False", q.enqueue(e4), False)
+    check("队列恰有 5 条有效事件", len(q.pending()), 5)
+    check("seen_ids 记录 5 条", len(q.seen_ids()), 5)
 
     # 2. Adversarial negative cases: ALL MUST raise ValueError!
     bad_cases = [
@@ -326,6 +336,10 @@ def _part_friend_events_allowlist_and_integrations():
         ("终末地活动类别", dict(event_id="x4", category="endfield_activity_open", game="终末地", title="通知", text="正文")),
         ("终末地伪装成方舟活动", dict(event_id="x5", category="arknights_activity_open", game="终末地", title="🎉 活动开启", text="终末地活动")),
         ("鸣潮伪装成方舟活动", dict(event_id="x6", category="arknights_activity_open", game="鸣潮", title="🎉 活动开启", text="鸣潮活动")),
+        ("明日方舟伪装成终末地基质切刷垫子", dict(event_id="x6b", category="endfield_essence_filler", game="明日方舟", title="🎯 终末地基质刷取已切刷垫子", text="正文")),
+        ("鸣潮伪装成终末地基质切刷垫子", dict(event_id="x6c", category="endfield_essence_filler", game="鸣潮", title="🎯 终末地基质刷取已切刷垫子", text="正文")),
+        ("终末地基质切刷垫子带 days_left 硬拒", dict(event_id="x6d", category="endfield_essence_filler", game="终末地", days_left=1, title="🎯 终末地基质刷取已切刷垫子", text="正文")),
+        ("终末地基质切刷垫子伪装报警标题 ⚠️", dict(event_id="x6e", category="endfield_essence_filler", game="终末地", title="⚠️ 基质刷取没能切成刷垫子", text="正文")),
         ("未知游戏卡池", dict(event_id="x7", category="next_day_new_banner", game="原神", days_left=1, title="🎴 明天开新卡池", text="正文")),
         ("月卡剩余 6 天硬拒", dict(event_id="x8", category="monthcard_expiring_5d", game="明日方舟", days_left=6, title="💳 月卡快到期", text="还剩 6 天")),
         ("月卡已过期 -1 天硬拒", dict(event_id="x9", category="monthcard_expiring_5d", game="明日方舟", days_left=-1, title="💳 月卡快到期", text="已过期")),
@@ -379,6 +393,26 @@ def _part_friend_events_allowlist_and_integrations():
     check("月卡好友事件字段准确",
           (qmc.pending()[0]["category"], qmc.pending()[0]["game"], qmc.pending()[0]["days_left"]),
           ("monthcard_expiring_5d", "明日方舟", 3))
+
+    # 5. Category 4 helper: emit_endfield_essence_filler idempotency & schema.
+    tmp_ef = tmpdir("friend-ef-")
+    sd_ef = tmp_ef / "state"
+    sd_ef.mkdir()
+    sent_ef: list[dict] = []
+    ok1 = friend_events.emit_endfield_essence_filler(
+        sd_ef, "2026-11-27/endfield/MaaEnd-09-10-00", ["玉中身", "唤月"],
+        now=now, post=lambda ev: (sent_ef.append(ev) or ("ok", "")), sync=True,
+    )
+    ok2 = friend_events.emit_endfield_essence_filler(
+        sd_ef, "2026-11-27/endfield/MaaEnd-09-10-00", ["玉中身", "唤月"],
+        now=now, post=lambda ev: (sent_ef.append(ev) or ("ok", "")), sync=True,
+    )
+    check("终末地基质切刷垫子同 run_id 幂等只发 1 次", (ok1, ok2, len(sent_ef)), (True, False, 1))
+    check("终末地基质切刷垫子事件字段准确",
+          (sent_ef[0]["category"], sent_ef[0]["game"], sent_ef[0]["days_left"],
+           sent_ef[0]["recipient_wechat_id"], sent_ef[0]["event_id"]),
+          ("endfield_essence_filler", "终末地", None, "No1Urgot",
+           "endfield_essence_filler:2026-11-27/endfield/MaaEnd-09-10-00"))
 
 
 def _part_friend_events_dual_hardlock_and_http():
@@ -826,12 +860,15 @@ def _part_engine_tick_flush_and_dual_lock_transition():
         check("wechat 锁态：明日新卡池未被误标已播报", eng.state.banner_announced(banner_key), False)
         check("wechat 锁态：Mac 好友接收端 0 到达", len(received), 0)
 
-        # Also pre-seed one queued event while Mac was offline/locked to test Engine.tick() flush.
+        # Also pre-seed queued events while Mac was offline/locked to test Engine.tick() flush.
         friend_events.emit_arknights_activity_open(
             sd, "act_prequeued", "🎉 明日方舟活动开启", "离线滞留活动", now=now, url=url, sync=True
         )
+        friend_events.emit_endfield_essence_filler(
+            sd, "2026-11-27/endfield/MaaEnd-dual-lock", ["甜美交易"], now=now, url=url, sync=True
+        )
         q = friend_events.FriendEventQueue(sd)
-        check("wechat 锁态入队事件留在本地队列且未外发", (len(q.pending()), len(received)), (1, 0))
+        check("wechat 锁态入队事件留在本地队列且未外发", (len(q.pending()), len(received)), (2, 0))
 
         # Unlock HARDLOCK_WECHAT.json with valid W-01..W-03 release!
         (sd / "HARDLOCK_WECHAT.json").write_text(
@@ -839,23 +876,24 @@ def _part_engine_tick_flush_and_dual_lock_transition():
         )
         check("wechat 合规解锁后状态为未锁", hl.active(sd, "wechat"), False)
 
-        # Re-run real Engine.tick() + _announce_banners: all 3 send AND Engine._flush_pending drains queue!
+        # Re-run real Engine.tick() + _announce_banners: all paths send AND Engine._flush_pending drains queue!
         eng.tick()
         report._announce_banners(eng, now, nxt)
         deadline = time.monotonic() + 5.0
-        while time.monotonic() < deadline and (q.pending() or len(received) < 4):
+        while time.monotonic() < deadline and (q.pending() or len(received) < 5):
             eng._flush_pending()
             time.sleep(0.05)
 
-        check("wechat 解锁后：活动开启 + 新卡池均补发到群（2 条）", len(notifier.group_msgs), 2)
+        check("wechat 解锁后：活动开启 + 新卡池均补发到群（2 条，基质切刷垫子不进群）", len(notifier.group_msgs), 2)
         check("wechat 解锁后：月卡提醒补发（1 条）且标记今日已发",
               (len(notifier.sent_msgs), phone.due_notice(sd, today=today) is None), (1, True))
         check("wechat 解锁后：明日新卡池标记已播报", eng.state.banner_announced(banner_key), True)
         check("Engine.tick() 自动排空 friend-events-queue.json", q.pending(), [])
         got_ids = {r["event_id"] for r in received}
-        check("离线滞留事件 + 3 类补发事件全部经 HTTP 送达 Mac 好友接收端",
+        check("离线滞留事件 + 4 类事件全部经 HTTP 送达 Mac 好友接收端",
               "arknights_activity_open:act_prequeued" in got_ids
               and "arknights_activity_open:act_dual_lock" in got_ids
+              and "endfield_essence_filler:2026-11-27/endfield/MaaEnd-dual-lock" in got_ids
               and any(i.startswith("monthcard_expiring_5d:明日方舟:") for i in got_ids)
               and any(i.startswith("next_day_new_banner:明日方舟:") for i in got_ids),
               True)

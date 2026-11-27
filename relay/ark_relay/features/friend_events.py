@@ -1,15 +1,18 @@
-"""Strict 3-category allowlist event source for forwarding to the friend's WeChat.
+"""Strict 4-category allowlist event source for forwarding to the friend's WeChat.
 
-Only these three categories may ever be enqueued or delivered, and only to
+Only these four categories may ever be enqueued or delivered, and only to
 `recipient_wechat_id == "No1Urgot"`:
   1. `next_day_new_banner`: tomorrow's new-character banners for the three games
      (明日方舟 / 终末地 / 鸣潮).
   2. `monthcard_expiring_5d`: monthly card expiring within 0..5 days
      (明日方舟 / 终末地 / 鸣潮).
   3. `arknights_activity_open`: Arknights (明日方舟 only) new/rerun activity open.
+  4. `endfield_essence_filler`: Endfield (终末地 only) target-mode essence farming
+     finished and switched back to filler mode.
 
-Any other category, error/alarm, daily report, non-Arknights activity, >5-day or
-expired monthcard, or wrong recipient raises ValueError immediately.
+Any other category, error/alarm, daily report, non-Arknights activity, non-Endfield
+essence filler notice, >5-day or expired monthcard, or wrong recipient raises
+ValueError immediately.
 
 Events are persisted idempotently on disk under `state_dir` and synced to the
 Mac-side `friend_notify.py` receiver only when BOTH `HARDLOCK` and
@@ -37,11 +40,13 @@ log = logging.getLogger("ark.friend_events")
 CATEGORY_NEXT_DAY_BANNER = "next_day_new_banner"
 CATEGORY_MONTHCARD_5D = "monthcard_expiring_5d"
 CATEGORY_AK_ACTIVITY = "arknights_activity_open"
+CATEGORY_ENDFIELD_ESSENCE_FILLER = "endfield_essence_filler"
 
 ALLOWED_CATEGORIES = frozenset({
     CATEGORY_NEXT_DAY_BANNER,
     CATEGORY_MONTHCARD_5D,
     CATEGORY_AK_ACTIVITY,
+    CATEGORY_ENDFIELD_ESSENCE_FILLER,
 })
 ALLOWED_GAMES = frozenset({"明日方舟", "终末地", "鸣潮"})
 FRIEND_RECIPIENT_WECHAT_ID = "No1Urgot"
@@ -118,6 +123,10 @@ def _check_game(category: str, game: Any) -> str:
         if cleaned != "明日方舟":
             raise ValueError("活动开启提醒只允许明日方舟，不发其他游戏")
         return cleaned
+    if category == CATEGORY_ENDFIELD_ESSENCE_FILLER:
+        if cleaned != "终末地":
+            raise ValueError("基质刷取切刷垫子提醒只允许终末地，不发其他游戏")
+        return cleaned
     if category == CATEGORY_MONTHCARD_5D:
         if cleaned not in ALLOWED_GAMES:
             raise ValueError("月卡提醒只允许明日方舟、终末地或鸣潮")
@@ -140,6 +149,8 @@ def _check_days_left(category: str, days_left: Any) -> int | None:
             raise ValueError("次日新卡池提醒只允许提前 1 天")
         return 1
     if days_left is not None:
+        if category == CATEGORY_ENDFIELD_ESSENCE_FILLER:
+            raise ValueError("基质刷取切刷垫子提醒不带剩余天数")
         raise ValueError("活动开启提醒不带剩余天数")
     return None
 
@@ -150,7 +161,7 @@ def validate_event(event: Any) -> dict[str, Any]:
         raise ValueError("事件内容必须是字典")
     category = event.get("category")
     if not isinstance(category, str) or category not in ALLOWED_CATEGORIES:
-        raise ValueError("不支持的消息类别：只允许明日新卡池、月卡五天内到期、明日方舟新活动")
+        raise ValueError("不支持的消息类别：只允许明日新卡池、月卡五天内到期、明日方舟新活动、终末地基质切刷垫子")
     recipient = event.get("recipient_wechat_id")
     if recipient != FRIEND_RECIPIENT_WECHAT_ID:
         raise ValueError("接收微信号不对，只允许发给朋友号")
@@ -535,6 +546,27 @@ def emit_arknights_activity_open(cfg_or_dir: Any, activity_id: str, title: str, 
         days_left=None,
         title=title,
         text=text,
+        now=now,
+    )
+    return emit(cfg_or_dir, ev, url=url, post=post, sync=sync)
+
+
+def emit_endfield_essence_filler(cfg_or_dir: Any, run_id: str,
+                                 weapons: list[str] | None = None, *,
+                                 game: str = "终末地", title: str = "", text: str = "",
+                                 now: datetime | None = None, url: str | None = None,
+                                 post=None, sync: bool = False) -> bool:
+    """Emit an `endfield_essence_filler` event (strictly Endfield only)."""
+    from ark_relay.core import texts  # noqa: PLC0415
+    ev_title = title or texts.ESSENCE_FILLER_SWITCHED
+    ev_text = text or texts.essence_filler_friend_body(list(weapons or []))
+    ev = build_event(
+        event_id=f"{CATEGORY_ENDFIELD_ESSENCE_FILLER}:{run_id}",
+        category=CATEGORY_ENDFIELD_ESSENCE_FILLER,
+        game=game,
+        days_left=None,
+        title=ev_title,
+        text=ev_text,
         now=now,
     )
     return emit(cfg_or_dir, ev, url=url, post=post, sync=sync)

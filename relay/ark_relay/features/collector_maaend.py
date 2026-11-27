@@ -1306,8 +1306,11 @@ def _farm_one(text: str, lines: list[str], farm: str, start: int, end, skipped: 
         return out          # a weekday-skipped farming task farmed nothing
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
-    if _END_ESSENCE_MET.search(body) and not _END_ESSENCE_DONE.search(body):
+    met = bool(_END_ESSENCE_MET.search(body))
+    if met and not _END_ESSENCE_DONE.search(body):
         return {"maaend_essence_met": True}
+    if met:
+        out["maaend_essence_met"] = True
     out["maaend_farm"] = farm
     if m := _END_PLACE.search(body):
         out["maaend_farm_place"] = m.group(1)

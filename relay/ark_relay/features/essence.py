@@ -13,6 +13,8 @@
   collector_maaend._farm_one), and only while the master is still in target mode: the
   master's own mode is the idempotency key, so a later run already in filler mode, or one
   the owner put back in another mode by hand, is left alone until the next such ending.
+  Once switched, `step` writes the ledger note and enqueues an `endfield_essence_filler`
+  friend WeChat notice (`friend_events.py`, never pushed to the group).
 
 Every option name, case and default comes from MaaEnd's own definitions
 (tasks/AutoEssence/AutoEssence.json, Location/ChooseLocation.json, Target/Target.json,
@@ -26,6 +28,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -230,12 +233,22 @@ def apply(cfg, change, tag: str, *args) -> Result:
     return res
 
 
+_STAR_PREFIX = re.compile(r"^★\d+\s*")
+
+
 def weapon_names(maaend_dir, ids: list[str]) -> list[str]:
-    """Chinese names from MaaEnd's own language pack (iconRecognition.name.<id>); an id
-    it does not name stays as it is."""
+    """Chinese names from MaaEnd's own language pack (iconRecognition.name.<id>,
+    falling back to weapon.<id> without its leading ★N rarity prefix); an id it
+    does not name stays as it is."""
     from ark_relay.core import mastercfg  # noqa: PLC0415
     table = mastercfg._Locale(Path(maaend_dir) if maaend_dir else None).table
-    return [str(table.get(f"iconRecognition.name.{w}") or w) for w in ids]
+    out: list[str] = []
+    for w in ids:
+        name = table.get(f"iconRecognition.name.{w}")
+        if not name and (raw := table.get(f"weapon.{w}")):
+            name = _STAR_PREFIX.sub("", str(raw)).strip()
+        out.append(str(name or w))
+    return out
 
 
 # ---------------------------------------------------------------- the relay's part
@@ -274,7 +287,28 @@ def _give_up(st, run_id: str, why: str, errwatch) -> None:
     log.warning("%s", body, extra=errwatch.alarm(texts.ESSENCE_FILLER_FAILED, body))
 
 
-def step(eng, now: datetime | None = None) -> None:
+def _emit_friend_filler(eng, run_id: str, names: list[str], at: datetime,
+                        friend_post=None, friend_sync: bool = False) -> None:
+    """Enqueue an `endfield_essence_filler` friend WeChat notice (never to group)."""
+    cfg = eng.cfg
+    target = cfg if getattr(cfg, "state_dir", None) else getattr(getattr(eng, "state", None), "dir", None)
+    if target is None:
+        return
+    try:
+        from ark_relay.features import friend_events  # noqa: PLC0415
+        friend_events.emit_endfield_essence_filler(
+            target,
+            run_id=run_id,
+            weapons=names,
+            now=at,
+            post=friend_post,
+            sync=friend_sync,
+        )
+    except Exception:
+        log.warning("基质切刷垫子好友提醒入队失败（%s）", run_id, exc_info=True)
+
+
+def step(eng, now: datetime | None = None, *, friend_post=None, friend_sync: bool = False) -> None:
     """Engine tick step: carry out a pending switch to filler mode when it is safe."""
     st = _store(eng)
     pending = st.get(SECTION, PENDING)
@@ -311,11 +345,13 @@ def step(eng, now: datetime | None = None) -> None:
     if not res.changed:
         log.info("基质刷取：%s 之后没切（%s）", run_id, res.note)
         return
+    at = now or datetime.now(tz=SERVER_TZ)
     names = weapon_names(cfg.maaend_dir, res.names)
     eng.state.mark_raw(str(pending.get("day") or ""), run_id, RAW_KEY,
-                       {"at": (now or datetime.now(tz=SERVER_TZ)).isoformat(), "weapons": names})
+                       {"at": at.isoformat(), "weapons": names})
     log.info("基质刷取：已切成随机地区刷垫子、刻写券关了（%s 之后；%s → %s；原文件备份为 %s）",
              run_id, res.before, res.after, res.note)
+    _emit_friend_filler(eng, run_id, names, at, friend_post=friend_post, friend_sync=friend_sync)
     push = getattr(eng, "_push_state", None)
     if push is not None:
         try:

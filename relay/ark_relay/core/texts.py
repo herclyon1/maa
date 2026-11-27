@@ -417,12 +417,22 @@ def outcome_settings_only(msg: str) -> bool:
 # outcome.summarize names it on its own line; the daily report has one note.
 OUTCOME_ESSENCE_MET_HEAD = "勾选的武器基质已经齐了、没刷："
 ESSENCE_TARGET_MET = "基质刷取：勾选的武器要的基质都已经有了，这趟没刷、没花理智；可以换一把要刷的武器勾上"
+ESSENCE_TARGET_MET_AFTER_FARM = "基质刷取：勾选的武器要的基质这趟刷齐了；可以换一把要刷的武器勾上"
+ESSENCE_FILLER_SWITCHED = "🎯 终末地基质刷取已切刷垫子"
 
 
 def essence_filler_on(names: list[str]) -> str:
     """essence.step switched 基质刷取 to filler mode after a target-met run (daily report, once)."""
     who = "和".join(names) if names else "勾选的武器"
     return f"基质刷取：{who}的基质都齐了，已切成随机地区刷垫子，刻写券关了"
+
+
+def essence_filler_friend_body(names: list[str]) -> str:
+    """Friend WeChat notice body when essence.step switches target mode back to filler mode."""
+    clean = [str(w).strip() for w in names if str(w).strip()]
+    who = f"「{'、'.join(clean)}」" if clean else ""
+    return (f"终末地目标武器{who}基质已刷齐，已切回随机地区刷垫子，刻写券已关闭。\n"
+            "可按需勾选下一把要刷的目标武器。")
 
 
 # essence.step could not switch to filler mode (a group alarm).
@@ -1492,7 +1502,10 @@ def samples() -> list[str]:
         alarm_shutdown_aborted_body(False, 5, "", "", ""),
         alarm_early_shutdown_body("这一轮没干完", "2026-11-24 21:10", ALARM_EARLY_NO_1074),
         SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ESSENCE_FILLER_FAILED, essence_filler_failed("写进去之后读出来和写的不一样"),
-        essence_filler_on(["玉中身", "唤月"]), essence_filler_on([]), ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
+        ESSENCE_TARGET_MET_AFTER_FARM, ESSENCE_FILLER_SWITCHED,
+        essence_filler_on(["玉中身", "唤月"]), essence_filler_on([]),
+        essence_filler_friend_body(["玉中身", "唤月"]), essence_filler_friend_body([]),
+        ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
         CONFIG_CHANGED, CONFIG_FAILED, INBOX_APPLIED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, AK_ACTIVITY_OPEN,
         ak_activity_open_body("雪山降临1101", "支线活动", "11-22 04:00（东京 05:00）",

@@ -2053,7 +2053,32 @@ false green, not work done.
         require("parser: generic line alone is not target met",
                 "maaend_essence_met" not in graw and graw.get("maaend_farm") == "基质刷取", repr(graw.get("maaend_farm")))
 
-        for t in (texts.ESSENCE_TARGET_MET, texts.OUTCOME_ESSENCE_MET_HEAD):
+        print("[刷完 1+ 轮后在同一趟目标模式基质均已满足：保留刷取记录并打上 maaend_essence_met]")
+        mid_run_log = (
+            "[2026-11-26 21:00:00.000] 任务开始: 🪨基质刷取\n"
+            "[2026-11-26 21:00:10.000] 当前理智: 240/240\n"
+            "[2026-11-26 21:01:20.000] ✅已完成一次基质刷取\n"
+            "[2026-11-26 21:01:25.000] 🎯目标模式：勾选武器的基质均已满足，结束任务\n"
+            "[2026-11-26 21:01:26.000] 🎉目标模式：基质目标已满足或任务结束\n"
+            "[2026-11-26 21:01:27.000] 任务完成: 🪨基质刷取\n"
+            "[2026-11-26 21:01:30.000] 自动执行任务完成\n"
+        )
+        (d / "midrun.log").write_text(mid_run_log, encoding="utf-8")
+        mraw = parse_maaend_log(d / "midrun.log")
+        require("mid-run met: sets both maaend_essence_met and farm runs",
+                mraw.get("maaend_essence_met") is True
+                and mraw.get("maaend_farm") == "基质刷取"
+                and mraw.get("maaend_farm_runs") == 1, repr(mraw))
+        m_checks = maaend_checks(mid_run_log, [], own_log=True)
+        require("mid-run met: outcome green", bad(m_checks) == {}, repr(bad(m_checks)))
+        _mt, mbody = core.format_daily("2026-11-26", [ent(mraw, "")])
+        require("mid-run met daily note does not claim 0 runs",
+                texts.ESSENCE_TARGET_MET_AFTER_FARM in mbody and texts.ESSENCE_TARGET_MET not in mbody, mbody)
+
+        for t in (texts.ESSENCE_TARGET_MET, texts.ESSENCE_TARGET_MET_AFTER_FARM,
+                  texts.OUTCOME_ESSENCE_MET_HEAD, texts.ESSENCE_FILLER_SWITCHED,
+                  texts.essence_filler_friend_body(["玉中身", "唤月"]),
+                  texts.essence_filler_friend_body([])):
             require(f"plain language: {t}", texts.plain(t) == [], repr(texts.plain(t)))
 
         return 1 if fails else 0
@@ -3856,6 +3881,13 @@ essence is owned, switch to filler mode (刷垫子) by itself.
         require("the other tasks unchanged", others(after) == others(real))
         require("names from MaaEnd's language pack",
                 essence.weapon_names(FIX, ["wpn_claym_0018", "wpn_sword_0025"]) == ["玉中身", "唤月"])
+        loc_fb = TMP / "loc-fallback"
+        (loc_fb / "locales" / "interface").mkdir(parents=True)
+        (loc_fb / "locales" / "interface" / "zh_cn.json").write_text(
+            json.dumps({"weapon.wpn_lance_0017": "★6 甜美交易"}, ensure_ascii=False), encoding="utf-8"
+        )
+        require("weapon_names falls back to weapon.<id> without ★N prefix",
+                essence.weapon_names(loc_fb, ["wpn_lance_0017"]) == ["甜美交易"])
         again = essence.apply(cfg, essence.pick_weapons, "pick", ["wpn_claym_0018", "wpn_sword_0025"])
         require("run again: nothing written, no second backup", not again.changed and len(backups("pick")) == 1, again.note)
         picked = master()
@@ -3893,6 +3925,21 @@ essence is owned, switch to filler mode (刷垫子) by itself.
         require("one backup, the master before the switch", len(backups("filler")) == 1
                 and json.loads(backups("filler")[0].read_text(encoding="utf-8")) == picked)
         require("no group alarm", CATCH.alarms() == [], repr(CATCH.alarms()))
+        require("no alarm_hold set by filler switch",
+                e.state.store.get("shutdown", "alarm_hold") is None)
+        from ark_relay.features import friend_events
+        qf = friend_events.FriendEventQueue(e.cfg.state_dir)
+        require("switched: enqueues 1 endfield_essence_filler friend event to No1Urgot",
+                len(qf.pending()) == 1
+                and qf.pending()[0]["category"] == friend_events.CATEGORY_ENDFIELD_ESSENCE_FILLER
+                and qf.pending()[0]["game"] == "终末地"
+                and qf.pending()[0]["days_left"] is None
+                and qf.pending()[0]["recipient_wechat_id"] == "No1Urgot"
+                and qf.pending()[0]["event_id"] == f"endfield_essence_filler:{rec.run_id}"
+                and qf.pending()[0]["title"] == texts.ESSENCE_FILLER_SWITCHED
+                and "玉中身" in qf.pending()[0]["text"]
+                and "唤月" in qf.pending()[0]["text"],
+                repr(qf.pending()))
         require("pending cleared", e.state.store.get(essence.SECTION, essence.PENDING) is None)
         line = next((x for x in e.state.read_ledger(DAY) if x["run_id"] == rec.run_id), {})
         sw_raw = (line.get("raw") or {}).get(essence.RAW_KEY) or {}
@@ -3915,6 +3962,7 @@ essence is owned, switch to filler mode (刷垫子) by itself.
         require("already filler mode: no write, no new backup", master() == filler and len(backups("filler")) == 1)
         line2 = next((x for x in e.state.read_ledger(DAY) if x["run_id"] == rec2.run_id), {})
         require("... and no switch line for it", essence.RAW_KEY not in (line2.get("raw") or {}))
+        require("already filler mode / replay: no extra friend event", len(qf.pending()) == 1, repr(qf.pending()))
 
         print("[他自己改回目标选择：不跟他拧，等下一次「都齐了」才再切]")
         put_master(picked)
@@ -3925,6 +3973,10 @@ essence is owned, switch to filler mode (刷垫子) by itself.
         e._handle(rec3)
         e._essence_filler()
         require("the next target-met run switches again", ov(master())["AutoEssenceMenu"]["caseName"] == "Random")
+        require("second real switch enqueues a distinct friend event",
+                len(qf.pending()) == 2
+                and qf.pending()[1]["event_id"] == f"endfield_essence_filler:{rec3.run_id}",
+                repr(qf.pending()))
 
         print("[A 在刷垫子模式下拒绝（勾武器没意义）]")
         try:
@@ -3944,6 +3996,9 @@ essence is owned, switch to filler mode (刷垫子) by itself.
         require("master untouched", master() == picked)
         require("one group alarm under its own title", [t for t, _ in CATCH.alarms()] == [texts.ESSENCE_FILLER_FAILED],
                 repr(CATCH.alarms()))
+        require("failed switch: no friend event enqueued for MaaEnd-nodefs",
+                len(qf.pending()) == 2 and all("MaaEnd-nodefs" not in ev["event_id"] for ev in qf.pending()),
+                repr(qf.pending()))
 
         print("[母本一时被占着（OSError）：下一轮再试，后来成了只进日报；连着 OS_ATTEMPTS 次才进群（审计 11-08 D-10）]")
         put_master(picked)

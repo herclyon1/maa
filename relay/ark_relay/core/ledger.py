@@ -269,9 +269,10 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
         # The relay then switched 基质刷取 to filler mode (features/essence/essence.step).
         notes.append(texts.essence_filler_on(list(sw.get("weapons") or [])))
     elif raw.get("maaend_essence_met"):
-        # Target mode stopped at once: the ticked weapons' essences are owned
-        # (collector_maaend._farm_one). Nothing farmed; he can tick the next weapon.
-        notes.append(texts.ESSENCE_TARGET_MET)
+        # Target mode ended with ticked weapons' essences owned (collector_maaend._farm_one):
+        # either already owned before farming or finished after farming in this run.
+        notes.append(texts.ESSENCE_TARGET_MET_AFTER_FARM if raw.get("maaend_farm_runs")
+                     else texts.ESSENCE_TARGET_MET)
 
     return did, cost, out, left, notes
 

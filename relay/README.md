@@ -48,7 +48,7 @@ Shared parts live in `ark_relay/core/`, feature modules live flat in `ark_relay/
 | `endfield.py` | 终末地特许寻访卡池与公告解析 |
 | `wuwa.py` | 鸣潮卡池、版本资讯海报读图与历史台账核对 |
 | `echofarm.py` | 鸣潮 4C 声骸定时刷取与配置自动还原 |
-| `essence.py` | 终末地基质刷取目标集齐后自动切刷垫子模式 |
+| `essence.py` | 终末地基质刷取目标集齐后自动切刷垫子模式并入队好友微信提醒 |
 | `evidence.py` | 运行故障证据包打包上传与每日完整日志备份上传 |
 | `task_shots.py` | 终末地每个子任务结束时的桌面截图留档 |
 | `gameupdate.py` | 队列后游戏客户端更新调度与终末地母本开关核对 |
@@ -60,7 +60,7 @@ Shared parts live in `ark_relay/core/`, feature modules live flat in `ark_relay/
 | `makeup.py` | 明日方舟与终末地失败后的自动补跑及当天标记 |
 | `activity.py` | 鸣潮每日活跃度不足 100 时的晚班补齐与告警 |
 | `ak_activity.py` | 明日方舟新开与复刻活动检测（官网活动公告 + MAA `StageActivityV2.json`）、状态去重与群/好友双路提醒 |
-| `friend_events.py` | 好友微信 3 类严格白名单事件源（次日新卡池、5 天内月卡、明日方舟开活动）、幂等队列与双硬锁门禁 |
+| `friend_events.py` | 好友微信 4 类严格白名单事件源（次日新卡池、5 天内月卡、明日方舟开活动、终末地基质切刷垫子）、幂等队列与双硬锁门禁 |
 | `collect_retry.py` | 终末地自动采集失败路线单独补跑（最多两轮） |
 | `modes.py` | 调试模式与「下次跑完不关机」开关读写 |
 | `hardlock.py` | 硬锁（11-26 用户令）：锁着不派发、不补跑、不收信箱指令（调试模式除外）、不自更新；定时开机按设计关机；只有两步合格的解锁记录才解除 |
