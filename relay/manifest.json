@@ -1,8 +1,8 @@
 {
- "version": 20261128014517,
- "ref": "relay-20261128014517",
+ "version": 20261128015705,
+ "ref": "relay-20261128015705",
  "files": {
-  "RELEASE-NOTES.md": "e631458e8fd366112a6451f2a223c954730e0ef0",
+  "RELEASE-NOTES.md": "5c08b4c6092baf54bd636914b7b1acb80fbc70fe",
   "app_main.py": "979c212f2d53ce230dc3585fadc2f651973fac7d",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "c0a631ddcc33578f69f308469124c1ca716b3171",
@@ -52,7 +52,7 @@
   "ark_relay/features/hardlock.py": "02f67ea5c24a234b3036081f0aa079159f691a42",
   "ark_relay/features/maa_start_watchdog.py": "8dcb75a0ebc1edf8880a616052aab708c6b436d6",
   "ark_relay/features/maaend_launch.py": "2f21e95d07e55932e10927d7add5ebda70afdd15",
-  "ark_relay/features/maaend_watchdog.py": "2e6784fc8a8ec908fe0ea208957032f5d21db4db",
+  "ark_relay/features/maaend_watchdog.py": "f11dd97fccc441df0f62b65d183fc1da0b5e3c99",
   "ark_relay/features/machinecheck.py": "168be5609dd281c5e5ecb1ff2a795df8cd349be5",
   "ark_relay/features/machinechecks.py": "feaa45f750f04912fedf53025949157ff6d070c8",
   "ark_relay/features/macpush.py": "693a14c0c299981953415535f0fa0fa5195c229f",
@@ -88,7 +88,7 @@
   "watchdog_guard.py": "30e8a798a30b7404b09772caea11320901f4580d"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "e19f502b9993cb03368cbf5894b090fc337fab80d8a57b87ddd5ea5b59eb0279",
+  "RELEASE-NOTES.md": "99da34805bb9877130b63d729b696f6f46dfe7f1cb8f7cdc647410d70bb42273",
   "app_main.py": "615aa804364ebc9ce8f1b83fdc14a48381d7aff0fa91a1517e1ec86e15c47180",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7895467b7d9212cc1ece9932e52e114f5336168f833bbe06828a577b200d2389",
@@ -138,7 +138,7 @@
   "ark_relay/features/hardlock.py": "48b9dd4fab8fdf48bb4f6e35452bac0958725322c05d0b97b00553d5e0f37a62",
   "ark_relay/features/maa_start_watchdog.py": "1a1c7b8e01f813380f7d72a4eb076b1f644b311ec583b9e66b42b6259b66e484",
   "ark_relay/features/maaend_launch.py": "d08bc6d5e03017dcb17b19d196ed3f0c33410d1abd460bc3c9bd3825b543419b",
-  "ark_relay/features/maaend_watchdog.py": "4164fa748baaa1a9118f046d30c81bfa195dafffc2da7a68b91c02afa2a058b7",
+  "ark_relay/features/maaend_watchdog.py": "f203c5a6ce9f3366345dbc6d6f94cf6cf9f67600947d23fc8f793bb718e160ad",
   "ark_relay/features/machinecheck.py": "6233c709d334f75e932f355f2e3e41697f53f8928961f51bc0ca791146308c12",
   "ark_relay/features/machinechecks.py": "3c3fa6ed3345bb0f43e33c7dd4313379d93aaa08798c1020a76984a89a2b9017",
   "ark_relay/features/macpush.py": "fbc44c934c8ca433d272380a1d8f8d99970160272f4662a1455be6e506faa727",

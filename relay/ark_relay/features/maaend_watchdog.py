@@ -68,22 +68,26 @@ def _snapshot():
 def _tasklist() -> "list[tuple[str, int]] | None":
     """(image name, PID) of every process; None when tasklist itself failed."""
     try:
-        out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
-                             capture_output=True, timeout=20).stdout
+        r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],
+                           capture_output=True, timeout=20)
     except (OSError, subprocess.SubprocessError):
         return None
+    if r.returncode != 0:
+        return None
+    out = r.stdout or b""
     # Image names are ASCII; the session column may be GBK, which is never read.
     rows = []
     for rec in csv.reader(io.StringIO(out.decode("utf-8", "replace"))):
         if len(rec) >= 2 and rec[1].isdigit():
             rows.append((rec[0], int(rec[1])))
-    return rows
+    return rows or None
 
 
 _TASKKILL_RACE = (
     *_TASKKILL_GONE,
     "操作不被支持",
     "not supported",
+    "没有运行的带有指定标准的任务",
     "没有运行的任务匹配指定标准",
     "no tasks running with the specified criteria",
 )
@@ -111,11 +115,15 @@ def _taskkill(pid: int, image: str) -> "tuple[bool, str]":
     if r.returncode == 0 and ("成功" in out or "SUCCESS" in out):
         return True, ""
     low = out.lower()
-    if any(k in low for k in _TASKKILL_RACE):
+    is_plugin = image.lower() in PLUGINS
+    if (is_plugin and (r.returncode == 0 or any(k in low for k in _TASKKILL_RACE))) or (
+        r.returncode == 1 and any(k in low for k in _TASKKILL_RACE)
+    ):
         # 2026-11-28 09:34:55 / 09:39:55 (#210/#211): cpp-algo.exe's ParentProcessWatcher
-        # aborts milliseconds after MaaEnd.exe exits; taskkill on a mid-teardown PID returns
-        # rc=1 「原因: 操作不被支持。」 (or 「没有此任务的实例在运行」). Confirm via tasklist
-        # before treating it as a failure.
+        # aborts milliseconds after MaaEnd.exe exits; taskkill on an exiting or already-gone
+        # PID returns rc=1 「原因: 操作不被支持。」 / 「没有此任务的实例在运行」 or rc=0
+        # 「信息: 没有运行的带有指定标准的任务。」. Confirm via tasklist before treating it
+        # as a failure.
         for attempt in range(3):
             if _pid_alive(pid, image) is False:
                 log.info("taskkill PID %s（%s）后复核：进程已自行退出（退出码 %s：%s）",

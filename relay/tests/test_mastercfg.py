@@ -1837,6 +1837,18 @@ def _part_maaend_watchdog_main():
             check("_taskkill rc=1 操作不被支持且进程仍在 -> (False, '退出码 1')",
                   maaend_watchdog._taskkill(3224, "cpp-algo.exe"), (False, "退出码 1"))
             check("真没死时仍打 WARNING", len(_tk_warns), 1)
+            # Real zh-CN Windows rc=0 no-match output: 「信息: 没有运行的带有指定标准的任务。」
+            _tk_warns.clear()
+            rc0_bytes = "信息: 没有运行的带有指定标准的任务。\r\n".encode("gbk")
+            maaend_watchdog.subprocess.run = lambda *a, **kw: _sp.CompletedProcess(a[0], 0, rc0_bytes, b"")
+            maaend_watchdog._tasklist = lambda: [("System", 4)]
+            check("_taskkill rc=0 真实中文无匹配且进程已不在 -> (True, '')",
+                  maaend_watchdog._taskkill(3224, "cpp-algo.exe"), (True, ""))
+            check("rc=0 已自行退出不打 WARNING", _tk_warns, [])
+            # _tasklist fail-safe: non-zero returncode returns None (never [] -> false dead)
+            maaend_watchdog._tasklist = real_tl
+            maaend_watchdog.subprocess.run = lambda *a, **kw: _sp.CompletedProcess(a[0], 1, b"", b"err")
+            check("_tasklist 非零退出码返回 None，不误判进程已不在", maaend_watchdog._tasklist(), None)
         finally:
             maaend_watchdog.log.removeHandler(_h)
             maaend_watchdog.subprocess.run = real_run
