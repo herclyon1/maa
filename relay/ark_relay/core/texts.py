@@ -1139,7 +1139,14 @@ _FAULTS = (
     (re.compile(r"WinError 32\b|being used by another process", re.I), "文件正被其他程序占用"),
     (re.compile(r"PermissionError|WinError 5\b|Access is denied|Permission denied", re.I),
      "没有权限读写要用的文件，或者文件正被其他程序占用"),
-    (re.compile(r"HTTP ?Error (\d{3})\b|HTTPError:? (\d{3})\b|\bstatus(?: code)?[ =:]+(\d{3})\b", re.I),
+    # 外部命令退出码必须排在 HTTP 状态码之前，防止 `exit status 128/255/126` 被误判为 HTTP 状态码
+    (re.compile(r"(?:(?<![A-Za-z0-9_])(?:returned non-zero exit status|exit[ _-](?:status(?:[ _-]code)?|code)"
+                r"|return_?code)(?![A-Za-z0-9_])|退出码)[ =:：]*(-?\d+)(?![0-9A-Za-z_])"
+                r"|(?<![A-Za-z0-9_])CalledProcessError[ (=:：]+(-?\d+)(?![0-9A-Za-z_])", re.I),
+     "外部命令执行失败（退出码 {code}）"),
+    # HTTP 状态码仅匹配合法 1xx-5xx，并对 status 加 (?<!exit )/(?<!exit-) 负向断言，杜绝误吸 exit status
+    (re.compile(r"(?<![A-Za-z0-9_])HTTP(?:\s*Error|/\d(?:\.\d)?)?[ =:：]+([1-5]\d{2})(?![0-9A-Za-z_])"
+                r"|(?<!exit )(?<!exit-)(?<![A-Za-z0-9_])status(?:[ _]code)?[ =:：]+([1-5]\d{2})(?![0-9A-Za-z_])", re.I),
      "对方服务器返回了状态码 {code}"),
     (re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I), "找不到要用的文件"),
     (re.compile(r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data", re.I),
@@ -1149,8 +1156,6 @@ _FAULTS = (
     (re.compile(r"URLError|urlopen error|ConnectionError|WinError 1006[45]\b|Network is unreachable", re.I),
      "网络请求没发出去，或者没收到回答"),
     (re.compile(r"ModuleNotFoundError|ImportError", re.I), "运行环境缺少必需组件"),
-    (re.compile(r"(?:CalledProcessError|returned non-zero exit status|exit status|returncode|退出码)[ =:：]*(-?\d+)", re.I),
-     "外部命令执行失败（退出码 {code}）"),
     (re.compile(r"database is locked|OperationalError|DatabaseError", re.I), "本地数据库正被占用或损坏"),
     (re.compile(r"\bKeyError\b"), "读取数据时缺少必要内容"),
     (re.compile(r"\bAttributeError\b"), "程序对象缺少预期能力"),
@@ -1211,8 +1216,18 @@ _CMD_NAMES = (
     (re.compile(r"\bpythonw?(?:\.exe)?\b", re.I), "python.exe"),
 )
 
-_STATUS_CODE_RE = re.compile(r"(?:HTTP\s*Error|HTTPError|status(?:\s*code)?|状态码)[ =:：]*(\d{3})\b", re.I)
-_EXIT_CODE_RE = re.compile(r"(?:exit status|returncode|rc|退出码)[ =:：]*(-?\d+)\b", re.I)
+# 上下文补充提取：HTTP 状态码严禁误吸 exit status，退出码严禁误吸 src/crc 等含 rc 子串的词
+_STATUS_CODE_RE = re.compile(
+    r"(?:(?<![A-Za-z0-9_])HTTP(?:\s*Error|/\d(?:\.\d)?)?[ =:：]+"
+    r"|(?<!exit )(?<!exit-)(?<![A-Za-z0-9_])status(?:[ _]code)?[ =:：]+"
+    r"|状态码[ =:：]*)([1-5]\d{2})(?![0-9A-Za-z_])",
+    re.I,
+)
+_EXIT_CODE_RE = re.compile(
+    r"(?:(?<![A-Za-z0-9_])(?:exit[ _-](?:status(?:[ _-]code)?|code)|return_?code|rc)(?![A-Za-z0-9_])"
+    r"|退出码)[ =:：]*(-?\d+)(?![0-9A-Za-z_])",
+    re.I,
+)
 
 
 def fault_cause(what: str) -> str:

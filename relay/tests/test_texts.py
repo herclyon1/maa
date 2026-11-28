@@ -241,6 +241,63 @@ def _part_texts_wording():
     hits = [f.relative_to(ROOT).as_posix() for f in sorted((ROOT / "ark_relay").rglob("*.py")) if old in f.read_text(encoding="utf-8")]
     check("代码里不再有那句半截话（全仓彻底清零）", hits, [])
 
+    print("\n[外部命令退出码与 HTTP 状态码严格隔离：exit status 128/255/127/126 绝不误报为 HTTP 状态码]")
+    exit_cases = [
+        ("CalledProcessError: Command '['git', 'pull']' returned non-zero exit status 128.", "128"),
+        ("subprocess.CalledProcessError: Command '['pwsh', '-File', 'check.ps1']' returned non-zero exit status 255.", "255"),
+        ("CalledProcessError: Command '['adb', 'devices']' returned non-zero exit status 127.", "127"),
+        ("CalledProcessError: Command '['schtasks']' returned non-zero exit status 126.", "126"),
+        ("CalledProcessError: Command '['git', 'status']' returned non-zero exit status 500.", "500"),
+        ("任务执行失败 ｜ exit status 128", "128"),
+        ("任务执行失败 ｜ returncode=255", "255"),
+        ("CalledProcessError(127, 'adb')", "127"),
+    ]
+    for raw, code in exit_cases:
+        want = f"外部命令执行失败（退出码 {code}）"
+        body = texts.relay_error_body("ark.service", raw, "09:10:00")
+        check(f"退出码 {code} 准确识别且不串判 HTTP：{raw[:36]}",
+              (texts.fault_cause(raw), want in body, "状态码" in body,
+               texts._STATUS_CODE_RE.search(raw) is None, texts.plain(body)),
+              (want, True, False, True, []))
+
+    http_cases = [
+        ("推消息失败 ｜ status=502 Bad Gateway", "502"),
+        ("推消息失败 ｜ status_code=502 Bad Gateway", "502"),
+        ("拉取公告失败 ｜ status_code=429 Too Many Requests", "429"),
+        ("上传失败 ｜ status code 502 Bad Gateway", "502"),
+        ("森空岛请求受限 ｜ HTTP 429 Too Many Requests", "429"),
+        ("官方接口返回异常 ｜ HTTP/1.1 502 Bad Gateway", "502"),
+        ("公告取不到（HTTP Error 503: Service Unavailable）", "503"),
+    ]
+    for raw, code in http_cases:
+        want = f"对方服务器返回了状态码 {code}"
+        body = texts.relay_error_body("ark.banners", raw, "09:11:00")
+        check(f"真 HTTP 状态码 {code} 准确识别：{raw[:36]}",
+              (texts.fault_cause(raw), want in body, "退出码" in body, texts.plain(body)),
+              (want, True, False, []))
+
+    # 同源顺序冲突与上下文提取边界对照（Timeout + exit status、WinError 128、非法状态码、含 rc 子串词）
+    timeout_exit = "TimeoutError: command timed out, exit status 128"
+    body_te = texts.relay_error_body("ark.service", timeout_exit, "09:12:00")
+    check("超时伴随 exit status 128 只补退出码不误补 HTTP 状态码",
+          (texts.fault_cause(timeout_exit), "退出码 128" in body_te, "状态码" in body_te, texts.plain(body_te)),
+          ("连接或读写超时", True, False, []))
+    win128 = "OSError: [WinError 128] There are no child processes to wait for"
+    body_w128 = texts.relay_error_body("ark.service", win128, "09:12:01")
+    check("WinError 128 走系统错误码不误判 HTTP",
+          (texts.fault_cause(win128), "系统错误码 128" in body_w128, "状态码" in body_w128, texts.plain(body_w128)),
+          ("系统调用失败（系统错误码 128）", True, False, []))
+    check("超出 1xx-5xx 的 status=999 / status=001 不算 HTTP 状态码",
+          (texts.fault_cause("ValueError: invalid status=999"),
+           texts.fault_cause("ValueError: invalid status=001"),
+           texts._STATUS_CODE_RE.search("status=999"),
+           texts._STATUS_CODE_RE.search("status=001")),
+          ("数据数值或格式不对", "数据数值或格式不对", None, None))
+    check("含 rc 子串的普通英文词 src=128 不误提退出码",
+          (texts._EXIT_CODE_RE.search("RuntimeError: src=128 failed"),
+           "退出码" in texts.relay_error_body("ark.service", "RuntimeError: src=128 failed", "09:12:02")),
+          (None, False))
+
 
 def _part_user_switches():  # noqa: C901
 
