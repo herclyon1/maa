@@ -96,7 +96,7 @@ STRIP='import sys;d=open(sys.argv[1],"rb").read();d=d[3:] if d.startswith(b"\xef
 # 包括 `'Wuthering' 不是内部或外部命令`，以及本文件里清理残留那一行。
 # base64 之后管道里只有 A-Za-z0-9+/=，没有任何一层需要解析它。
 #
-# 一律用 pwsh 7：5.1 默认不是 UTF-8，读中文 JSON 必乱码。7 没装才退回 5.1。
+# 一律用最新版 pwsh 7：PowerShell 5.1 默认不是 UTF-8 且已被禁用，找不到 pwsh 7 直接 fail-closed 报错退出（RC=127），严禁退回 5.1。
 # 送出去之前先看一眼脚本本身。全盘扫描是**在远端**烧时间，本地看不见进度，
 # 而且十有八九一无所获——CLAUDE.md 里「不许全盘 rglob」这条已经被违反两次。
 # 真要扫，在文件里写一行 `# winrun: allow-scan` 明示，别让它默默发生。

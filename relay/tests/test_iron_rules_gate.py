@@ -266,8 +266,31 @@ _G4_PS51_RE = re.compile(
 _G4_WMIC_RE = re.compile(r"(?i)\bwmic(?:\.exe)?\b")
 _G4_USR_BIN_PY_RE = re.compile(r"/usr/bin/python3\b")
 _G4_VER_ID_RE = re.compile(r"\b(?:RELAY_)?PY3\d\d\b|Program Files\\+Python3\d\d\b")
-_G4_STATIC_FLOOR_RE = re.compile(r'"Python 3\.\d+\.\*"\s*\|\s*"Python 3\.\d+\.\*"')
+# 覆盖引号外/内通配符（"Python 3.16."* 与 "Python 3.16.*"）、单项或多项 case、以及 Python 静态版本下限判断
+_G4_STATIC_FLOOR_RE = re.compile(
+    r"""(?:["']Python\s+3\.\d+\.?["']\*|["']Python\s+3\.\d+\.\*["']|\bPython\\?\s+3\.\d+\.\*|\bsys\.version_info\s*(?:>=|<=|<|>|==|!=)\s*\(\s*3\s*,\s*\d+|\.startswith\(\s*\(?["']Python\s+3\.\d+)"""
+)
 _G4_BARE_PY3_RE = re.compile(r"(?:^|[;&|(\s`=])python3(?:\s|$)")
+
+# 按（相对路径 -> 行特征子串元组）精准豁免守卫脚本自身的规则定义/提示行，绝不做整文件豁免
+_G4_DETECTOR_LINE_MARKERS: dict[str, tuple[str, ...]] = {
+    "scripts/mac/lint-repo.sh": (
+        'echo "▶ 2/17 ',
+        'ok "全仓 0 处 ',
+        "re.compile(",
+        '", "wmic调用",',
+        '", "系统旧版Python",',
+    ),
+    "scripts/mac/lib/shutdown_guard.py": (
+        r"\bwmic(?:\.exe)?\b[^\r\n]*\bcall\s+(?:shutdown|reboot|Win32Shutdown)",
+        r"(?:shutdown|logoff|cmd|pwsh|powershell|wmic|rundll32)(?:\.exe)?$",
+    ),
+    "scripts/mac/winps.sh": (
+        r"grep -qE '\bssh\b|\bwmic\b'",
+        'echo "winps: 脚本里出现了 ssh 或 wmic',
+        'echo "       PowerShell 侧请用 Get-CimInstance 取代 wmic',
+    ),
+}
 
 
 def _strip_shell_quotes(line: str) -> str:
@@ -277,27 +300,22 @@ def _strip_shell_quotes(line: str) -> str:
 
 
 def _g4_is_detector_line(rel: str, st: str) -> bool:
-    """判断该行是否属于安全拦截守卫自身的规则定义行，避免自报。"""
-    if rel == "scripts/mac/lint-repo.sh":
-        return (
-            "grep -rn" in st or "grep -qi" in st or "禁止旧" in st or "PY3" in st
-            or st.startswith("echo ") or 're.compile(r"""' in st
-        )
-    if rel == "scripts/mac/lib/shutdown_guard.py":
-        return "re.compile" in st or "_WINGUI_BLOCKED_EXE" in st or "wmic" in st
-    if rel == "scripts/mac/winps.sh":
-        return "grep -qiE" in st or (st.startswith("echo ") and "wmic" in st)
+    """按行特征表精准判断该行是否属于守卫自身的规则定义/提示行，严禁整文件放行。"""
+    markers = _G4_DETECTOR_LINE_MARKERS.get(rel)
+    if markers and any(m in st for m in markers):
+        return True
     if rel == "relay/ark_relay/features/automas_keeper.py":
         return "powershell" in st.lower() and "process" in st.lower()
     return rel == "packaging/build.py" and "PY_VERSION" in st
 
 
 def _g4_scan_repo(root: Path) -> dict[str, list[str]]:
-    """全仓扫描 relay/ packaging/ scripts/ 违禁旧工具、硬编码版本号与裸 python3。"""
+    """全仓扫描 relay/ packaging/ scripts/ 违禁旧工具、静态版本 floor、硬编码版本号与裸 python3。"""
     skip_dirs = {"__pycache__", ".git", "fixtures", "tests", ".venv-relaytest"}
     code_exts = {".py", ".sh", ".ps1", ".cmd", ".bat", ".plist"}
     res: dict[str, list[str]] = {
-        "ps51": [], "wmic": [], "usr_py": [], "ver_id": [], "bare_py": [], "env_shebang": [],
+        "ps51": [], "wmic": [], "usr_py": [], "ver_id": [],
+        "static_floor": [], "bare_py": [], "env_shebang": [],
     }
     for base in (root / "relay", root / "packaging", root / "scripts"):
         if not base.exists():
@@ -319,7 +337,7 @@ def _g4_scan_repo(root: Path) -> dict[str, list[str]]:
 
 
 def _g4_scan_file_lines(rel: str, suffix: str, text: str, lines: list[str], res: dict[str, list[str]]) -> None:
-    """逐行检查单个源码文件的违禁工具调用与裸 python3。"""
+    """逐行检查单个源码文件的违禁工具调用、静态版本 floor 与裸 python3。"""
     check_bare = (
         suffix == ".sh"
         and (rel.startswith("scripts/mac/") or rel == "scripts/ci/relay-tests.sh")
@@ -340,6 +358,8 @@ def _g4_scan_file_lines(rel: str, suffix: str, text: str, lines: list[str], res:
                 res["usr_py"].append(f"{rel}:{idx}: {st[:80]}")
             if _G4_VER_ID_RE.search(raw):
                 res["ver_id"].append(f"{rel}:{idx}: {st[:80]}")
+            if _G4_STATIC_FLOOR_RE.search(raw):
+                res["static_floor"].append(f"{rel}:{idx}: {st[:80]}")
         if check_bare and not (rel == "scripts/mac/lint-repo.sh" and "bare_re" in st):
             code_part = _strip_shell_quotes(raw.split("#", 1)[0])
             if _G4_BARE_PY3_RE.search(code_part) and "/python3" not in code_part:
@@ -347,7 +367,7 @@ def _g4_scan_file_lines(rel: str, suffix: str, text: str, lines: list[str], res:
 
 
 def _g4_verify_macos_dynamic(root: Path) -> None:
-    """macOS 运行时动态核验：called_ver == max_installed_ver（零硬编码版本号）。"""
+    """macOS 运行时动态核验：called_ver == max_installed_ver（含 micro 补丁位，零硬编码版本号）。"""
     cellar = Path("/opt/homebrew/Cellar")
     installed: list[tuple[int, int, int]] = []
     if cellar.is_dir():
@@ -376,6 +396,17 @@ def _g4_verify_macos_dynamic(root: Path) -> None:
         res_ver = (int(m_res.group(1)), int(m_res.group(2)), int(m_res.group(3))) if m_res else None
         check("G4 macOS: relay-python.sh 返回解释器版本 == 最高版本", res_ver, max_ver)
 
+    # 补丁位动态拦截自证：伪造同主次版本更高 micro 补丁（如 cur + 1），relay-python.sh 必须返回 RC=4
+    fake_cellar = tmpdir("iron-g4-cellar-")
+    (fake_cellar / f"python@{cur_ver[0]}.{cur_ver[1]}" / f"{cur_ver[0]}.{cur_ver[1]}.{cur_ver[2] + 1}").mkdir(parents=True)
+    r_micro = subprocess.run(
+        ["bash", str(rp_sh)],
+        capture_output=True, text=True,
+        env={**os.environ, "RELAY_HOMEBREW_CELLAR": str(fake_cellar)},
+        timeout=15,
+    )
+    check("G4 macOS: relay-python.sh 同主次旧补丁版本拦截 (RC=4)", r_micro.returncode, 4)
+
 
 def _part_g4_zero_hardcode_tool_gate():
     """G4：核验全仓零 5.1 / 零 wmic / 零旧 Python 硬编码，且 macOS 动态满足 called_ver == max_installed_ver。"""
@@ -385,18 +416,9 @@ def _part_g4_zero_hardcode_tool_gate():
     check("G4: 全仓零 wmic 活跃调用", res["wmic"], [])
     check("G4: 全仓零 /usr/bin/python3 活跃调用", res["usr_py"], [])
     check("G4: 全仓零 PY3xx / Python3xx 硬编码命名与路径", res["ver_id"], [])
+    check("G4: 全仓零静态 Python 版本 floor（覆盖全 scripts/ 与 relay/）", res["static_floor"], [])
     check("G4: scripts/mac/*.sh 零裸 python3", res["bare_py"], [])
     check("G4: scripts/mac/*.py 零 #!/usr/bin/env python3", res["env_shebang"], [])
-
-    # 检查 lint-repo.sh 与 relay-python.sh 零静态版本 floor（如 "Python 3.14."*|"Python 3.15."*）
-    floor_hits: list[str] = []
-    for rel in ("scripts/mac/lint-repo.sh", "scripts/mac/lib/relay-python.sh"):
-        fp = root / rel
-        if fp.is_file():
-            for idx, ln in enumerate(fp.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-                if _G4_STATIC_FLOOR_RE.search(ln):
-                    floor_hits.append(f"{rel}:{idx}: {ln.strip()[:80]}")
-    check("G4: 闸门脚本零静态 Python 版本 floor", floor_hits, [])
 
     # B2 仓外演练脚本检查（仅在未用 ARK_IRON_GATE_ROOT 切向沙箱且文件存在时执行）
     b2_reh = Path("/Users/herclyon/Money/styl-work/remote-ref/tools/relay_shift_rehearsal.py")
@@ -468,8 +490,9 @@ def _part_g5_tiered_powercut_guard():
     b2_reh = Path("/Users/herclyon/Money/styl-work/remote-ref/tools/relay_shift_rehearsal.py")
     if not os.environ.get("ARK_IRON_GATE_ROOT") and b2_verify.is_file() and b2_reh.is_file():
         check("G5 B2: verify.py 接入第 1 层断电硬锁", "powercut_guard" in b2_verify.read_text(encoding="utf-8"), True)
-        check("G5 B2: relay_shift_rehearsal.py 接入第 2 层断电硬锁 RC=78",
-              "RC_POWERCUT_BLOCKED = 78" in b2_reh.read_text(encoding="utf-8"), True)
+        b2_reh_txt = b2_reh.read_text(encoding="utf-8")
+        check("G5 B2: relay_shift_rehearsal.py 复用 powercut_guard 第 2 层断电硬锁 RC=78",
+              ("RC_POWERCUT_BLOCKED = 78" in b2_reh_txt and "import powercut_guard" in b2_reh_txt), True)
 
     # 2. 公共 Python 库 7 边界时刻实测（API + CLI 子进程，全平台运行）
     pcg = _load_module_from("iron_powercut_guard", pc_py)
@@ -561,16 +584,18 @@ def _part_g5_tiered_powercut_guard():
                                env={**base_env, "ARK_CLOCK_OVERRIDE": ts}, timeout=15)
             check(f"G5 真实入口 Tier2 deploy-relay.sh @ {ts[11:19]} 放行 (RC!=78)", r.returncode != 78, True)
 
-        # B2 第 2 层入口实测（relay_shift_rehearsal.py，显式指向 127.0.0.1 与桩 ssh 确保零真连）
+        # B2 第 2 层入口实测（relay_shift_rehearsal.py，显式指向 127.0.0.1 与桩 ssh 确保零真连；同时覆盖 HH:MM:SS）
         if not os.environ.get("ARK_IRON_GATE_ROOT") and b2_reh.is_file():
             reh_cmd = [sys.executable, str(b2_reh), "--mode", "preflight", "--host", "127.0.0.1", "--ssh-timeout", "2"]
-            for ts in ("2026-11-28T08:25:00+08:00", "2026-11-28T08:40:00+08:00", "2026-11-28T08:46:00+08:00"):
+            for ts in ("08:22:00", "2026-11-28T08:25:00+08:00", "2026-11-28T08:40:00+08:00", "08:46:59"):
                 r = subprocess.run(reh_cmd, capture_output=True, text=True,
                                    env={**base_env, "ARK_CLOCK_OVERRIDE": ts}, timeout=15)
-                check(f"G5 B2 Tier2 relay_shift_rehearsal.py @ {ts[11:19]} -> RC=78", r.returncode, 78)
-            r_47 = subprocess.run(reh_cmd, capture_output=True, text=True,
-                                  env={**base_env, "ARK_CLOCK_OVERRIDE": "2026-11-28T08:47:00+08:00"}, timeout=15)
-            check("G5 B2 Tier2 relay_shift_rehearsal.py @ 08:47:00 放行 (RC!=78)", r_47.returncode != 78, True)
+                check(f"G5 B2 Tier2 relay_shift_rehearsal.py @ {ts} -> RC=78", r.returncode, 78)
+            for ts in ("08:21:59", "08:47:00"):
+                r_ok = subprocess.run(reh_cmd, capture_output=True, text=True,
+                                      env={**base_env, "ARK_CLOCK_OVERRIDE": ts}, timeout=15)
+                check(f"G5 B2 Tier2 relay_shift_rehearsal.py @ {ts} 放行进桩探活 (RC=20，非崩溃/非78)",
+                      r_ok.returncode, 20)
 
 
 # ---------------------------------------------------------------------------

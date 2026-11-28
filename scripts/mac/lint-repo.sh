@@ -36,8 +36,9 @@ else
 fi
 
 # PowerShell 5.1 默认非 UTF-8 且已被用户永久禁用，wmic 在 Win11 25H2 不存在；
-# 扫描覆盖 relay/ packaging/ scripts/（包含 .ps1），0 容忍拦截 5.1 / else (powershell / wmic 与旧版本号命名。
-echo "▶ 2/17 不许用 PowerShell 5.1 / wmic / 硬编码旧版 Python 路径"
+# 扫描覆盖 relay/ packaging/ scripts/（包含 .ps1），0 容忍拦截 5.1 / else (powershell / wmic /
+# /usr/bin/python3 / 静态 Python 版本 floor 与旧版本号命名。
+echo "▶ 2/17 不许用 PowerShell 5.1 / wmic / /usr/bin/python3 / 静态版本 floor / 硬编码旧版 Python 路径"
 if "$RELAY_HOST_PY" - <<'PY' >"$LINT_TMP"
 import re, sys
 from pathlib import Path
@@ -50,11 +51,15 @@ SKIP_EXACT = {
     "relay/tests/test_iron_rules_gate.py",
     "relay/tests/fx_samples.json",
 }
-# 合法拦截守卫（它们写正则/错误提示是为了禁止别人调 5.1 或 wmic）
-GUARD_ONLY_EXEMPT = {
-    "scripts/mac/lib/shutdown_guard.py",
-    "scripts/mac/winps.sh",
-}
+# 按（文件, 规则标签, 行特征子串）精准豁免守卫脚本自身的规则定义/提示行，严禁整文件放行
+GUARD_LINE_EXEMPTS = (
+    ("scripts/mac/lib/shutdown_guard.py", "wmic调用", r"\bwmic(?:\.exe)?\b[^\r\n]*\bcall\s+(?:shutdown|reboot|Win32Shutdown)"),
+    ("scripts/mac/lib/shutdown_guard.py", "wmic调用", r"(?:shutdown|logoff|cmd|pwsh|powershell|wmic|rundll32)(?:\.exe)?$"),
+    ("scripts/mac/winps.sh", "wmic调用", r"grep -qE '\bssh\b|\bwmic\b'"),
+    ("scripts/mac/winps.sh", "wmic调用", 'echo "winps: 脚本里出现了 ssh 或 wmic'),
+    ("scripts/mac/winps.sh", "wmic调用", 'echo "       PowerShell 侧请用 Get-CimInstance 取代 wmic'),
+    ("relay/tests/test_ops_gates.py", "系统旧版Python", 'sys_py = Path("/usr/bin/python3")'),
+)
 
 PATTERNS = [
     ("PS5.1可执行", re.compile(r"powershell\.exe", re.I)),
@@ -62,10 +67,18 @@ PATTERNS = [
     ("PS5.1兜底", re.compile(r"else\s*\(\s*powershell\b", re.I)),
     ("裸powershell调用", re.compile(r"""(?:['"]powershell['"]|\bpowershell\s+-(?:NoProfile|Command|EncodedCommand|ExecutionPolicy|File|WindowStyle|NonInteractive)\b)""", re.I)),
     ("wmic调用", re.compile(r"""(?:^|[\s'"\x60(;&|])wmic(?:\.exe)?(?=$|[\s'"\x60);&|])""", re.I)),
+    ("系统旧版Python", re.compile(r"/usr/bin/python3\b")),
+    ("静态Python版本floor", re.compile(r"""(?:["']Python\s+3\.\d+\.?["']\*|["']Python\s+3\.\d+\.\*["']|\bPython\\?\s+3\.\d+\.\*|\bsys\.version_info\s*(?:>=|<=|<|>|==|!=)\s*\(\s*3\s*,\s*\d+|\.startswith\(\s*\(?["']Python\s+3\.\d+)""")),
     ("旧版本号变量名", re.compile(r"\b(?:RELAY_)?PY3\d\d\b")),
     ("Windows硬编码Python3xx目录", re.compile(r"Program Files[\\/]+Python3\d\d", re.I)),
     ("旧3.12.0路径", re.compile(r"automas[\\/]+environment[\\/]+python[\\/]+python\.exe", re.I)),
 ]
+
+def _is_line_exempt(rel: str, label: str, line: str) -> bool:
+    for ex_rel, ex_label, marker in GUARD_LINE_EXEMPTS:
+        if rel == ex_rel and label == ex_label and marker in line:
+            return True
+    return False
 
 hits = []
 for top in ROOTS:
@@ -93,8 +106,8 @@ for top in ROOTS:
                 continue
             for label, pat in PATTERNS:
                 if pat.search(line):
-                    # 守卫脚本仅豁免其拦截正则/提示里的 powershell/wmic 字样
-                    if rel in GUARD_ONLY_EXEMPT and label in ("PS5.1可执行", "裸powershell调用", "wmic调用"):
+                    # 按行特征表精准豁免守卫脚本的规则定义/提示行（绝不做整文件豁免）
+                    if _is_line_exempt(rel, label, line):
                         continue
                     # 历史单测模拟命令行样本或中文测试标题打印（如 "没有 wmic 的机器"）不视作活跃调用
                     if rel.startswith("relay/tests/") and (
@@ -110,7 +123,7 @@ if hits:
     sys.exit(1)
 PY
 then
-  ok "全仓 0 处 PowerShell 5.1 / wmic / PY3xx / Python3xx / 旧 3.12 路径"
+  ok "全仓 0 处 PowerShell 5.1 / wmic / /usr/bin/python3 / 静态版本 floor / PY3xx / Python3xx / 旧 3.12 路径"
 else
   note "发现违禁旧工具或硬编码版本路径："
   head -12 "$LINT_TMP" | sed 's/^/       /'

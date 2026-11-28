@@ -171,6 +171,8 @@ write the result JSON the way agent.ps1 does.
     check("旧的纯子串匹配没了", "Where-Object { ($_.text -replace '\\s', '') -like \"*$want*\" }" in ps, False)
     check("AGENT_PS 已移除 PowerShell 5.1 ContentType=WindowsRuntime", "ContentType=WindowsRuntime" not in ps, True)
     check("AGENT_PS 委派 OCR 到 Python WinRT helper", "ocr_helper.py" in ps and "ConvertFrom-Json" in ps, True)
+    ocr_fn_blk = ps.split("function Ocr([string]$path)", 1)[1].split("function OcrWindow", 1)[0]
+    check("AGENT_PS Ocr() 分离 stderr 不合并 2>&1 污染 JSON", "2>&1" not in ocr_fn_blk and "2>$errFile" in ocr_fn_blk, True)
     check("OCR_HELPER_PY 使用 Python WinRT 并按 text_angle 旋回原图",
           "winrt.windows.media.ocr" in ocr_py and "text_angle" in ocr_py and "math.cos" in ocr_py, True)
     # 实测 _deskew_rect 旋转纠偏：0 度保持不变，非零倾角把坐标旋回原图

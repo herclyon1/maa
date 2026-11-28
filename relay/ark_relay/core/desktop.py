@@ -458,16 +458,24 @@ public class ArkD {
     $pyExe = if ($r.python) { [string]$r.python } else { 'C:\Program Files\ArkRelay\runtime\python\python.exe' }
     if ($pyExe -match 'pythonw\.exe$') { $pyExe = $pyExe -replace 'pythonw\.exe$', 'python.exe' }
     $helper = if ($r.ocr_helper) { [string]$r.ocr_helper } else { Join-Path $PSScriptRoot 'ocr_helper.py' }
+    $errFile = [IO.Path]::GetTempFileName()
     $oldEnc = [Console]::OutputEncoding
+    $oldEap = $ErrorActionPreference
     [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    $ErrorActionPreference = 'Continue'
     try {
-      $raw = (& $pyExe -X utf8 $helper $path 2>&1)
+      # 拆分 stderr 到临时文件，防止外部 Warning 污染 stdout JSON；仅非零退出时带出错误详情
+      $raw = (& $pyExe -X utf8 $helper $path 2>$errFile)
       $code = $LASTEXITCODE
+      $errText = if (Test-Path -LiteralPath $errFile) { ([IO.File]::ReadAllText($errFile, [Text.Encoding]::UTF8)).Trim() } else { '' }
     } finally {
+      $ErrorActionPreference = $oldEap
       [Console]::OutputEncoding = $oldEnc
+      Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
     }
     if ($code -ne 0) {
-      throw ("Python WinRT OCR 失败（退出码 $code）：" + (($raw | Out-String).Trim()))
+      $detail = (@($errText, ($raw | Out-String).Trim()) | Where-Object { $_ }) -join ' | '
+      throw ("Python WinRT OCR 失败（退出码 $code）：" + $detail)
     }
     $text = ($raw | Out-String).Trim()
     $lines = New-Object System.Collections.ArrayList

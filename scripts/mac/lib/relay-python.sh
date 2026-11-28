@@ -16,20 +16,31 @@ if [ ! -x "$RELAY_BASE_PY" ]; then
   exit 3
 fi
 
-# 动态比对 called_ver == max_installed_ver（零硬编码任何版本号字符串）
-BASE_VER="$("$RELAY_BASE_PY" -c 'import re, sys; from pathlib import Path
-cur = (sys.version_info[0], sys.version_info[1])
-cellar = Path("/opt/homebrew/Cellar")
+# 动态比对 called_ver == max_installed_ver（按 major.minor.micro 三段完整语义版本比对，零硬编码任何版本号字符串）
+BASE_VER="$("$RELAY_BASE_PY" -c 'import os, re, sys; from pathlib import Path
+cur = (sys.version_info[0], sys.version_info[1], sys.version_info[2])
+cellar = Path(os.environ.get("RELAY_HOMEBREW_CELLAR") or "/opt/homebrew/Cellar")
 if cellar.is_dir():
     vers = []
     for p in cellar.glob("python@*"):
-        m = re.search(r"(\d+)\.(\d+)", p.name)
-        if m:
-            vers.append((int(m.group(1)), int(m.group(2))))
+        if not p.is_dir():
+            continue
+        found_sub = False
+        for vd in p.iterdir():
+            if vd.is_dir():
+                m3 = re.match(r"^(\d+)\.(\d+)\.(\d+)", vd.name)
+                if m3:
+                    vers.append((int(m3.group(1)), int(m3.group(2)), int(m3.group(3))))
+                    found_sub = True
+        if not found_sub:
+            m2 = re.search(r"(\d+)\.(\d+)", p.name)
+            if m2:
+                vers.append((int(m2.group(1)), int(m2.group(2)), 0))
     if vers and cur != max(vers):
-        sys.stderr.write(f"relay-python: 调用版本 {cur[0]}.{cur[1]} != 本机 Homebrew 最高版本 {max(vers)[0]}.{max(vers)[1]}\n")
+        top = max(vers)
+        sys.stderr.write(f"relay-python: 调用版本 {cur[0]}.{cur[1]}.{cur[2]} != 本机 Homebrew 最高版本 {top[0]}.{top[1]}.{top[2]}\n")
         sys.exit(4)
-print(f"{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}")')"
+print(f"{cur[0]}.{cur[1]}.{cur[2]}")')"
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 common=$(git -C "$here" rev-parse --path-format=absolute --git-common-dir)
