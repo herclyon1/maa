@@ -1028,7 +1028,7 @@ docs/SILENT-FAILURES-AUDIT.md, plan.py rows).
     fresh()
     bad = farm_dir("{not json")
     got = plan._okww_extra_bit(bad, ["Teleport and Farm 4C Echo"], {"Teleport and Farm 4C Echo": "传送刷4C声骸"})
-    check("unreadable -> says the slot cannot be read, not the 4C name", got, "附加 周本/4C 设置读不到")
+    check("unreadable -> omitted from daily plan (never writes 读不到 or guesses 4C name)", got, "")
     check("unreadable -> one WARNING", len(grab.warnings()), 1)
     plan._okww_extra_bit(bad, ["Teleport and Farm 4C Echo"], {})
     check("same condition again -> no second WARNING", len(grab.warnings()), 0)
@@ -1050,8 +1050,7 @@ docs/SILENT-FAILURES-AUDIT.md, plan.py rows).
     broken = mock.patch("ark_relay.features.weeklyboss.WeeklyBossGate.settings", side_effect=OSError("state.json locked"))
     with broken:
         got = plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
-        check("unknown -> says it cannot tell, not 「明天会打」", got,
-              "附加 周本 战歌重奏第 2 个（90 级），本周打没打满读不到")
+        check("unknown -> omitted from daily plan (never writes 读不到 or 明天会打)", got, "")
         check("unknown -> one WARNING", len(grab.warnings()), 1)
         plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
         check("same condition again -> no second WARNING", len(grab.warnings()), 0)
@@ -1079,8 +1078,8 @@ docs/SILENT-FAILURES-AUDIT.md, plan.py rows).
 
     bad_root = automas("{broken")
     bits = plan._okww_plan_bits(bad_root)
-    check("unreadable -> 附加任务读不到 instead of the master's list",
-          [b for b in bits if b.startswith("附加")], ["附加任务读不到"])
+    check("unreadable -> omitted from daily plan (never writes 附加任务读不到 or master list)",
+          [b for b in bits if b.startswith("附加")], [])
     check("unreadable -> one WARNING", len(grab.warnings()), 1)
     plan._okww_plan_bits(bad_root)
     check("same condition again -> no second WARNING", len(grab.warnings()), 0)
@@ -1181,9 +1180,25 @@ def _part_plan_stage_modes():
     got = maa_block({"Stage": "-"})
     require("no '理智 -'", not any(b.startswith("理智 -") for b in got) and "理智 没设关卡（固定）" in got, repr(got))
 
-    print("[no StageMode read, no annihilation: still one line]")
-    got = maa_block({"StageMode": "", "Annihilation": ""})
-    require("a line saying the stage setting was not read", got == ["理智 读不到关卡设置"], repr(got))
+    print("[no StageMode read, no annihilation: omitted from daily plan, alerts via WARNING]")
+    import logging as _logging
+    _w_stage: list[str] = []
+
+    class _StageWarn(_logging.Handler):
+        def emit(self, record):
+            if record.levelno >= _logging.WARNING:
+                _w_stage.append(record.getMessage())
+
+    _sh = _StageWarn()
+    plan.log.addHandler(_sh)
+    plan._last_error.clear()
+    try:
+        got = maa_block({"StageMode": "", "Annihilation": ""})
+    finally:
+        plan.log.removeHandler(_sh)
+    require("daily plan omits unreadable stage setting (never writes 读不到)", got == [], repr(got))
+    require("group WARNING emitted for unreadable stage setting",
+            any("明日方舟关卡设置读不到" in m for m in _w_stage), repr(_w_stage))
 
     print("[\"*\" and fallback stages]")
     got = maa_block({"Stage": "*", "Stage_1": "1-7", "Stage_2": "-", "Stage_3": "CE-6"})

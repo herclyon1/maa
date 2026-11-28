@@ -265,7 +265,7 @@ log = logging.getLogger("ark.errwatch")
 ARK = log.name.rsplit(".", 1)[0]
 
 # 日志记录扩展标记（通过 logging 的 `extra=` 传入）：
-# 彻底废除旧版“自愈只进日报”分流，任何真实 WARNING/ERROR 一律走企微群报警通道，绝不压出群。
+# 彻底废除旧版自愈压报警分流，任何真实 WARNING/ERROR 一律走企微群报警通道，绝不压出群。
 PUSHED = "ark_group_pushed"     # 调用方已直接推送至企微群，避免重复发群
 ALARM = "ark_alarm"             # 指定推送的 (标题, 正文)，替代通用中继报错模板
 # Threads of the push path; a record logged on one of them is never pushed.

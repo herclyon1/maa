@@ -1001,10 +1001,9 @@ class Heartbeat:
         """PUT the beat to hb_key(topic). Never raises; a failure is one log
         line (until it works again) and does not touch the ntfy beat.
 
-        A failed beat is INFO and decided by the next ones: one that works
-        again -> one WARNING marked errwatch.recovered(), the daily report only
-        (why: USER-SWITCHES.txt at heartbeat.py:Heartbeat.cos_beat);
-        still failing COS_OUTAGE_SEC after the first -> one WARNING, pushed."""
+        A failed beat is INFO at first: still failing COS_OUTAGE_SEC after the
+        first -> one WARNING pushed to the group; recovery afterwards logs INFO
+        closure (never written into the daily report)."""
         if self.cos is None or not self.topic:
             return False
         self._cos_last = time.time()
@@ -1676,11 +1675,9 @@ def _fetch(url: str, timeout: int = 20, attempts: int = 3) -> dict | None:
     When only one door answers (or none of them carries a version), fall back
     to "use whatever was fetched", which keeps backward compatibility.
 
-    A round in which no door answered is the fault (one door failing is not).
-    When a later round gets the file, the relay got over it by itself: one
-    WARNING marked errwatch.recovered(), the daily report only (why:
-    USER-SWITCHES.txt at inbox.py:_got_on_retry).
-    Every round failing stays the WARNING below, pushed.
+    A round in which no door answered is retried: a later round succeeding logs
+    INFO only (never written into the daily report); every round failing stays
+    the WARNING below, pushed to the group.
 
     COS goes first in every round (see the module docstring) but is one door
     among the others: its copy wins only by carrying the highest version, so
@@ -2321,7 +2318,7 @@ class Mailbox:
         except Exception as exc:  # noqa: BLE001 - any failure: read again from listen()
             self.backlog_missed = True
             self.backlog_why = _why(exc)
-            log.info("开机读手机信箱没成（%s），手机通道连上后再补读；补读到了写进日报", self.backlog_why)
+            log.info("开机读手机信箱没成（%s），手机通道连上后再补读，补读完成后经群告警通道上报", self.backlog_why)
             return []
         self.backlog_missed = False
         return out
@@ -2417,12 +2414,8 @@ class Mailbox:
     # A channel that stays down OUTAGE_SEC is a fault: the phone's presses wait
     # in ntfy and the page gets no answer. One WARNING when an outage reaches
     # it (the same outage going on is not a new fault).
-    # The reconnect decides the rest (why: USER-SWITCHES.txt at
-    # mailbox.py:Mailbox._connected): an outage with a fault in it (a 5xx, a reset, a
-    # connection that could not be made) ends in ONE WARNING marked
-    # errwatch.recovered() - the daily report only; a stream that only timed
-    # out reading while it was open (idle) and came straight back is normal
-    # and stays INFO.
+    # 重连后的处理策略（见 _connected）：期间未报群但因真实故障断连的保持 WARNING 直推企微群；
+    # 期间已报群的重连记 INFO 闭环；仅空闲读超时的正常重连记 INFO（绝不进日报）。
     OUTAGE_SEC = 600
 
     def _late_backlog(self, on_cmd, on_backlog) -> None:

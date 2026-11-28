@@ -364,15 +364,18 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
     # stopping after one echo; the spots farmed come from the nest task's own
     # options. So it is folded into this line, not listed as an additional task.
     scope = (nest.get("Only Farm These Nests") or "").strip()
-    # 「Only Farm These Nests」 is read only by our OK-WW override: when it is not
-    # bound, every nest is farmed whatever the config says, and the line says that.
+    # 「Only Farm These Nests」仅由中继的 OK-WW 覆盖补丁读取：
+    # 补丁未贴上时直推企微群报警，日报严格省略该项，绝不把「⚠️ 补丁没贴上」塞进日报。
     import os as _os  # noqa: PLC0415
     from ark_relay.features.okww_overlay import nest_patch_present  # noqa: PLC0415
     patched = nest_patch_present(_os.environ.get("ARK_OKWW_DIR"))
     if scope and patched is False:
-        where = f"⚠️ 本该只打{scope}，但巢穴补丁没贴上，这一轮不会刷巢穴"
-    else:
-        where = f"只打{scope}" if scope else "全部点位"
+        _say_once("nest_patch", scope,
+                  "鸣潮残像聚落本该只打%s，但巢穴补丁没贴上，这一轮不会刷巢穴", scope)
+        return ""
+    if scope and patched is True:
+        _last_error.pop("nest_patch", None)
+    where = f"只打{scope}" if scope else "全部点位"
     if _NEST_FULL in adds:
         return f"{nest_label} {where}，刷到打满"
     if daily.get("Farm Nightmare Nest for Daily Echo"):
@@ -398,9 +401,8 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
         farm_cfg = json.loads(farm_f.read_text(encoding="utf-8")) if farm_f.is_file() else {}
         _last_error.pop("farm", None)
     except (OSError, ValueError) as exc:
-        # Unread, the slot may be the weekly boss or the echo farm, so it is
-        # named as unreadable.
-        _say_once("farm", exc, "鸣潮 FarmEchoTask.json 读不到（%s），明日安排那一项写成「周本/4C 设置读不到」",
+        # 配置文件读不到时直推企微群报警，日报严格省略该项（绝不往日报写「读不到」）。
+        _say_once("farm", exc, "鸣潮 FarmEchoTask.json 读不到（%s），明日安排已省略周本/4C 设置项",
                   exc)
         farm_cfg, unreadable = {}, True
     weekly = str(farm_cfg.get("Teleport to Boss") or "") == "Weekly Challenge"
@@ -409,15 +411,20 @@ def _okww_extra_bit(cfg_dir: Path, adds: list[str], zh: dict[str, str]) -> str:
         if a == _NEST_FULL:
             continue
         if a == "Teleport and Farm 4C Echo" and unreadable:
-            rest.append("周本/4C 设置读不到")
+            # 日报严格白名单：读不到的周本/4C 配置直接省略，异常已由上方 _say_once 推企微群。
+            continue
         elif a == "Teleport and Farm 4C Echo" and weekly:
             lvl = str(farm_cfg.get("Boss Level") or "")
             idx = int(farm_cfg.get("Which Weekly Boss to Teleport") or 1)
             done, nm = _weekly_boss_state()
+            if done is None:
+                # 周本打满进度读不到时直推企微群报警，日报严格省略该项（绝不写「读不到」）。
+                if "weekly_boss" not in _last_error:
+                    _say_once("weekly_boss", "none", "周本本周打满进度读不到，明日安排已省略周本项")
+                continue
             label = f"周本 {nm or f'战歌重奏第 {idx} 个'}" + (f"（{lvl} 级）" if lvl else "")
             # Once the week's quota is full the line says it will not be fought.
-            rest.append(label + ("，本周打没打满读不到" if done is None
-                                 else "，本周已打满，明天不打" if done else "，明天会打"))
+            rest.append(label + ("，本周已打满，明天不打" if done else "，明天会打"))
         else:
             rest.append(zh.get(str(a), str(a)))
     if rest:
@@ -450,7 +457,9 @@ def _okww_plan_bits(automas_dir: Path | None,
             nest_f = d / "NightmareNestTask.json"
             nest = (json.loads(nest_f.read_text(encoding="utf-8"))
                     if nest_f.is_file() else {})
-        except (OSError, ValueError):
+            _last_error.pop(f"okww_cfg:{d}", None)
+        except (OSError, ValueError) as exc:
+            _say_once(f"okww_cfg:{d}", exc, "鸣潮配置文件读不到（%s）：%s", d, exc)
             continue
         # Quick config overrides the corresponding master keys with Task.* from
         # the AUTO-MAS user config, so the master's values are not the ones that run.
@@ -461,9 +470,8 @@ def _okww_plan_bits(automas_dir: Path | None,
         zh = _okww_zh(okww_dir)
         adds = [str(a) for a in (daily.get(
             "Additional Tasks to Run After Daily Task") or [])]
-        # Unread, the quick config may replace the master's additional tasks, so
-        # the master's list is not shown.
-        extra = ("附加任务读不到" if quick is _UNREADABLE
+        # 快速配置读不到时已由 _okww_quick_overrides 推企微群报警；日报严格省略附加任务项，绝不写「附加任务读不到」。
+        extra = ("" if quick is _UNREADABLE
                  else _okww_extra_bit(d, adds, zh))
         return [b for b in (_okww_farm_bit(daily, zh),
                             _okww_nest_bit(daily, nest, adds, zh),
@@ -481,7 +489,7 @@ def _weekly_boss_state() -> "tuple[bool | None, str]":
         state = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
         v = WeeklyBossGate(state).settings()
     except Exception as exc:  # noqa: BLE001
-        _say_once("weekly_boss", exc, "周本记账读不到（%s），明日安排写「本周打没打满读不到」", exc,
+        _say_once("weekly_boss", exc, "周本记账读不到（%s），明日安排已省略周本项", exc,
                   exc_info=True)
         return None, ""
     _last_error.pop("weekly_boss", None)
@@ -509,7 +517,7 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
     try:
         root = masconfig.read(f)
     except (OSError, ValueError) as exc:
-        _say_once("quick", exc, "AUTO-MAS ScriptConfig.json 读不到（%s），明日安排鸣潮写「附加任务读不到」", exc)
+        _say_once("quick", exc, "AUTO-MAS ScriptConfig.json 读不到（%s），明日安排已省略鸣潮附加任务", exc)
         return _UNREADABLE
     _last_error.pop("quick", None)
     mapping = {
@@ -556,7 +564,9 @@ def _maaend_extra_bits(automas_dir, maaend_dir: Path | None, when) -> list[str]:
         return []
     try:
         d = json.loads(f.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, ValueError):
+        _last_error.pop(f"maaend_master:{f}", None)
+    except (OSError, ValueError) as exc:
+        _say_once(f"maaend_master:{f}", exc, "终末地主配置读不到（%s）：%s", f.name, exc)
         return []
     days = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3,
             "Friday": 4, "Saturday": 5, "Sunday": 6}
@@ -600,8 +610,9 @@ def _stage_bits(cfg_dir: Path, s: dict, when) -> list[str]:
     if mode != "Fixed":
         node = _load(cfg_dir / "PlanConfig.json").get(mode)
         if not isinstance(node, dict):
-            _say_once("plan_table", mode, "MAA 计划表 %s 在 PlanConfig.json 里找不到", mode)
-            return [f"理智 读不到计划表（{mode}）"]
+            # 找不到计划表时直推企微群报警，日报严格省略理智关卡项（绝不写「读不到计划表」）。
+            _say_once("plan_table", mode, "MAA 计划表 %s 在 PlanConfig.json 里找不到，明日安排已省略理智关卡项", mode)
+            return []
         _last_error.pop("plan_table", None)
         pinfo = node.get("Info") or {}
         day = when.strftime("%A") if pinfo.get("Mode") == "Weekly" else "ALL"
@@ -625,24 +636,22 @@ def _stage_bits(cfg_dir: Path, s: dict, when) -> list[str]:
 
 
 def _annihilation_done_tomorrow(automas_dir) -> "bool | None":
-    """Whether AUTO-MAS will skip annihilation tomorrow: its record of the completed
-    game-week (Data.AnnihilationCompletedWeek) is tomorrow's week. Since the
-    2026-10-11 hand-over (item 13) that record, not a "Close" switch, is what
-    makes annihilation once a week. None when it cannot be read - settings()
-    says so with None, and raises on a ScriptConfig.json of the wrong shape (a
-    top-level list: AttributeError in annihilation._maa_users), which is logged
-    once here. The plan then writes 「本周打没打满读不到」, as for the weekly boss.
+    """检查明天是否跳过剿灭（读取 AUTO-MAS 记录的 Data.AnnihilationCompletedWeek）：
+    读不到或抛异常时经 _say_once 直推企微群报警并返回 None，日报严格省略该项（绝不写「读不到」）。
     """
     from ark_relay.features.annihilation import WeeklyGate  # noqa: PLC0415
     tomorrow_noon = _tomorrow().replace(hour=12, minute=0, second=0, microsecond=0)
     try:
         done = WeeklyGate(None, automas_dir).settings(tomorrow_noon)["本周已完成"]
     except Exception as exc:  # noqa: BLE001
-        _say_once("annihilation", exc, "剿灭本周进度读不到，明日安排里剿灭写「本周打没打满读不到」",
+        _say_once("annihilation", exc, "剿灭本周进度读不到，明日安排已省略剿灭项",
                   exc_info=True)
         return None
+    if done is None:
+        _say_once("annihilation", "none", "剿灭本周进度读不到，明日安排已省略剿灭项")
+        return None
     _last_error.pop("annihilation", None)
-    return None if done is None else bool(done)
+    return bool(done)
 
 
 def _collect_route_count(ov: dict) -> int:
@@ -754,6 +763,28 @@ _AFTER_ZH = {"Shutdown": "关机", "ShutdownForce": "强制关机", "Reboot": "�
              "Logoff": "注销"}
 
 
+def _maaend_plan_bits(automas_dir: Path | None, s: dict, tomorrow) -> list[str]:
+    """读取终末地明日理智计划与自动采集安排：读不懂的异常页签直推企微群，日报仅保留正常白名单项。"""
+    from ark_relay.features import sanity_plan  # noqa: PLC0415 - avoids a cycle
+    bits: list[str] = []
+    sp = sanity_plan.read(automas_dir, when=tomorrow, maaend_dir=s.get("path"))
+    if sp.get("understood") is False:
+        bad_labels = [d.get("label") or d.get("tab") or "未知页签"
+                      for d in (sp.get("tasks") or [sp]) if not d.get("understood", True)]
+        _say_once("maaend_sanity_plan", "；".join(bad_labels),
+                  "终末地理智计划配置读不懂（%s），明日安排已省略异常项", "；".join(bad_labels))
+        good_labels = [d.get("label") for d in (sp.get("tasks") or [])
+                       if d.get("understood", True) and d.get("label")]
+        if good_labels:
+            bits.append("理智用于 " + "，用完再 ".join(good_labels))
+    else:
+        _last_error.pop("maaend_sanity_plan", None)
+        if label := sp.get("label"):
+            bits.append(f"理智用于 {label}" if sp.get("enabled", True) else label)
+    bits += _maaend_extra_bits(automas_dir, s.get("path"), tomorrow)
+    return bits
+
+
 def next_plan(automas_dir: Path | None) -> str:
     """Human-readable summary of what will run next. '' if it cannot be read."""
     if not automas_dir:
@@ -803,26 +834,26 @@ def next_plan(automas_dir: Path | None) -> str:
                 if anni == "Close":
                     bits.append("剿灭 关闭")
                 elif (done := _annihilation_done_tomorrow(automas_dir)) is None:
-                    bits.append("剿灭 本周打没打满读不到")
+                    # 剿灭本周打满状态读不到：已由 _annihilation_done_tomorrow 推企微群（兜底防单测直返 None），日报严格省略。
+                    if "annihilation" not in _last_error:
+                        _say_once("annihilation", "none", "剿灭本周进度读不到，明日安排已省略剿灭项")
                 elif done:
                     bits.append("剿灭 本周已打满，跳过")
                 else:
                     bits.append(f"剿灭 {zh.get(anni, anni)}")
             if s.get("kind") == "MaaEnd":
-                # AUTO-MAS's SanityTaskType is only the tab; sanity_plan resolves
-                # which item the chain actually farms.
-                from ark_relay.features import sanity_plan  # noqa: PLC0415 - avoids a cycle
-                # Tomorrow's weekday ticks count, as _maaend_extra_bits does for AutoCollect.
-                sp = sanity_plan.read(automas_dir, when=_tomorrow(), maaend_dir=s.get("path"))
-                if label := sp.get("label"):
-                    bits.append(f"理智用于 {label}" if sp.get("enabled", True) else label)
-                bits += _maaend_extra_bits(automas_dir, s.get("path"), _tomorrow())
+                bits += _maaend_plan_bits(automas_dir, s, _tomorrow())
             elif s.get("sanity_use"):
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
                 bits += _okww_plan_bits(automas_dir, s.get("path"))
-            if s.get("kind") == "MAA" and not bits:
-                bits.append("理智 读不到关卡设置")
+            if s.get("kind") == "MAA":
+                if bits:
+                    _last_error.pop(f"maa_stage:{uid}", None)
+                elif s.get("fight") is not False and not s.get("stage_mode") and not s.get("annihilation"):
+                    # 明日方舟关卡设置读不到：直推企微群报警，日报严格省略该项（绝不写「读不到关卡设置」）。
+                    _say_once(f"maa_stage:{uid}", "missing",
+                              "明日方舟关卡设置读不到（脚本 %s），明日安排已省略该项", s.get("name") or uid)
             # One thing per line: a phone wraps one long line into several.
             label = s.get("name", "?")
             game = _GAME_OF.get(str(s.get("kind") or ""), "")

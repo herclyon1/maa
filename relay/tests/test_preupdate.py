@@ -3263,7 +3263,7 @@ def _part_maaend_windowed_start():  # noqa: C901
 
     warned, sent = outcome(True)
     check("not back: one WARNING", len(warned), 1)
-    check("the routes still count as walked (daily report only)", sent, [(texts.COLLECT_RETRY_OK, False)])
+    check("补跑走通直推企微群（排查首趟失败）", sent, [(texts.COLLECT_RETRY_OK, True)])
     check("back: no WARNING", outcome(False)[0], [])
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))

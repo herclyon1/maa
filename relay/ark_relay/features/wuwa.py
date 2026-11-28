@@ -1323,12 +1323,8 @@ def _wuwa_first_end_poster(ver: str, now: datetime, read_image, tr: "Trace", get
 def _wuwa_name_from_notice(home: dict, nameless: "dict[str, Exception]",
                            debut: "list[tuple[str, str]]", notice_banners: "list[Banner]"
                            ) -> "list[Banner]":
-    """The banners parse_wuwa left out because the wiki gave their character no name,
-    named from the official notices where they name the same banner: the version
-    bulletin's debuts, then the in-game banner posts. A name found that way is a
-    fault the relay got over (WARNING marked recovered, the daily report only; why:
-    USER-SWITCHES.txt at wuwa.py:_wuwa_name_from_notice); one found nowhere is the
-    plain WARNING it always was, and the banner stays out.
+    """库街区条目标题缺角色名时，用官方公告/版本前瞻补全角色名；
+    补全后与找不到均保持 WARNING 直推企微群暴露数据源异常（绝不压出群、绝不进日报）。
     """
     by_pool = {p: w for w, p in debut if p}
     for x in notice_banners:

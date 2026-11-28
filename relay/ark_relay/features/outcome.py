@@ -370,9 +370,9 @@ def check_round(eng, rec) -> "list[tuple[str, int]]":
     """Push the unregistered ERROR lines of a round AUTO-MAS booked as a success.
 
     One WARNING per round, titled and worded for him (texts.gamelog_unknown_errors),
-    the raw lines to the technical log as one red item. Lines of `recovered` entries:
-    one WARNING marked recovered per round (red item, not pushed); `not-a-fault`
-    entries: nothing. Returns what was unregistered.
+    the raw lines to the technical log as one red item. Known upstream self-healing
+    entries in gamelog_errors.txt log INFO only (never written to the daily report);
+    `not-a-fault` entries: nothing. Returns what was unregistered.
     Never raises: a log that cannot be read is said (a WARNING), never taken as clean."""
     from ark_relay.core import statestore as techlog, texts  # noqa: PLC0415
     from ark_relay.core.config import GAME_ZH  # noqa: PLC0415

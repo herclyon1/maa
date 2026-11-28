@@ -295,7 +295,7 @@ Server酱, zero alarms in the group.
 | ⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ … | log | the answer is on the remote App: per-row receipts for settings, 「机器最近的回执」 for actions |
 | ⚙️ 配置已更新 | log | the receipt of our own order (`scripts/mac/order.sh`, the repo inbox: `phone.Inbox.poll`, sent by `boot_stages._make_collect`) whose every line went through: written to relay.log only (CLAUDE.md 「测试不进他眼」). A batch with any ✗ line is 「📱 配置没改成：<name>」, group (row above) |
 | 🗂️ 证据包已送出机器 | log | the link is in the failure alarm and in the technical log (「日报各行的证据包、版本和文件」), not in the daily report |
-| ✅ 自动采集：补跑后全部走完 | log | the daily report has a 「自动采集补跑：走通 … / 仍失败 …」 line |
+| ⚠️ 自动采集：首趟失败，补跑后全部走完 | group | the morning gathering had failed routes that were retried and walked; pushed to the group so the original failure is investigated (never in the daily report) |
 | ⚠️ 自动采集：补跑仍有路线没走通 / 🚩 自动采集：有路线连续两天补跑失败，是复发性问题 | group | a route failing its retry is a failure (`collect_retry.py`); the daily line says it too. |
 | 🩹 OK-WW 补丁（N 条） | log | the healthy case |
 | 🥚 开始刷声骸 | log | acknowledgement of his order |

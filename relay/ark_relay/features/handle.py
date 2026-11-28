@@ -698,9 +698,10 @@ def _mark_task_trails(eng, rec: RunRecord) -> None:
     a restart, a file could not be read - or the log, rotated or cleared inside the run,
     does not reach back to that task's start), how many MaaEnd runs in a row that is,
     this one included (_trail_miss_streak); 0 otherwise. Below
-    maaend_fwlog.TRAIL_MISS_FAIL the unread tasks are left unjudged - said at INFO and
-    in the daily report (core.maaend_unjudged), not pushed - as #28 does; the tasks the
-    log does hold are judged as usual.
+    maaend_fwlog.TRAIL_MISS_FAIL the unread tasks are left unjudged - logged at
+    INFO and written to the technical log (reported to the group by
+    report._alert_daily_missing_readings and never put into the daily report) -
+    as #28 does; the tasks the log does hold are judged as usual.
 
     Booked here, while MaaFW's log still holds the run: MaaEnd clears its debug folder
     when it restarts. Keys of their own, so collector.refresh_raw keeps them. Always
@@ -727,7 +728,7 @@ def _mark_task_trails(eng, rec: RunRecord) -> None:
         rec.raw["tasks_trail_miss"] = miss
         unread = [t for t, e in table.items() if e.get("unread")]
         log.info("%s：%s 在终末地自己的记录里读不到（%s），连续第 %d 趟；%s", rec.run_id, "、".join(unread), why,
-                 miss, "到了次数，按没证据算" if miss >= maaend_fwlog.TRAIL_MISS_FAIL else "这一趟先不判，写进日报")
+                 miss, "到了次数，按没证据算" if miss >= maaend_fwlog.TRAIL_MISS_FAIL else "这一趟先不判，写入技术日志")
         if unread and miss < maaend_fwlog.TRAIL_MISS_FAIL:
             try:
                 from ark_relay.core import statestore as techlog  # noqa: PLC0415
@@ -2720,7 +2721,7 @@ def _book(eng, rec: RunRecord) -> None:
         # held like a failure - unless an earlier failure of the same script is held
         # already, which stays (it is the one a later success heals or the final
         # alarm names). A later success moves the held record to the self-heal path
-        # (_retry_healed): daily report only (what recovered by itself). A later
+        # 后续成功记录到达后由 _retry_healed 结算（正常更新重启记 INFO，真实业务失败直推企微群，绝不进日报）。
         # failure replaces it and is alarmed on as usual; no later attempt at all,
         # and the final alarm names this one (_flush_pending).
         _hold_restart(eng, rec, key)
@@ -2857,8 +2858,7 @@ def _flush_pending(eng) -> None:
                 # A person would restart the game and run just the failed part once
                 # more before calling it a fault (makeup.py). Held until the make-up is
                 # over. Still failed, or no make-up for it -> the group hears of it now,
-                # every time (unresolved.py). Went through -> recovered: the daily report
-                # only, its make-up line and the failed run's row say it.
+                # 补跑未成推未解决故障群告警；补跑走通同样通过 alert=True 直推企微群排查原故障（绝不进日报）。
                 from ark_relay.features import makeup  # noqa: PLC0415
                 # MAA refused the config itself: no make-up can help, so it is refused
                 # here and the alarm goes out on this tick, not after maybe_run's.

@@ -942,9 +942,7 @@ def _locale(maaend_dir: Path) -> dict:
 
 
 def _clock(iso) -> str:
-    """A stamp's ISO time as 「10-22 16:44」 on the machine's clock. These WARNINGs reach the
-    group as written, and only when they read as plain words (texts.plain): the ISO form's
-    「T16」 turned the 10-22 21:48 alarm into 「原话有术语没翻译」 (ledger #110)."""
+    """将 ISO 时间戳转为机器本地「10-22 16:44」白话格式，避免 ISO 的「T16」触发 texts.plain 英文告警。"""
     from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     try:
         return datetime.fromisoformat(str(iso)).astimezone(SERVER_TZ).strftime("%m-%d %H:%M")
@@ -1049,23 +1047,25 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     atomic_write_text(stamp, json.dumps({"run_id": last["run_id"], "routes": routes, "blocked": list(blocked),
                                          "started": now.isoformat(), "cut_off": cut_off}))
     names = "、".join(route_label(r, zh) for r in routes)
-    # The start is logged, not pushed (USER-SWITCHES.txt, collect_retry.py:maybe_run):
-    # routes still failing after the retry go to the group below; all walked goes to
-    # the daily report only (report.retry_line).
-    log.info("%s：%s（来自 %s），只进日报，补跑的结果再定进不进群", texts.COLLECT_RETRY_START, names, last["run_id"])
-    seen: dict = {}
+    # 启动补跑先记日志；补跑完成后（无论全部走通还是仍有失败/复发）一律走 alert=True 直推企微群，绝不进日报。
+    log.info("%s：%s（来自 %s），补跑完成后结果直推企微群", texts.COLLECT_RETRY_START, names, last["run_id"])
+    ev: dict = {}
     try:
         verdict, note = run_retry(Path(cfg.maaend_dir), routes, WEEKDAYS[now.weekday()],
-                                  spawn=_spawn_interactive, evidence=seen, state_dir=state_dir)
+                                  spawn=_spawn_interactive, evidence=ev, state_dir=state_dir)
     except Exception as exc:  # the retry must never take the service down
         log.exception("补跑本身出错")
         verdict, note = {r: None for r in routes}, f"补跑没跑起来：{type(exc).__name__}"
+    from ark_relay.features import errwatch  # noqa: PLC0415
     from ark_relay.features.preupdate import going_down  # noqa: PLC0415
     if going_down():
-        # A stop cut the retry short (efstart.run_on_desktop stops waiting, STOPPED): nothing
-        # was judged. The stamp stays without `finished`, so the next start closes what is
-        # left and runs it once more (the stale-stamp branch above); no verdict, no alarm.
-        log.info("自动采集补跑：中继正在停止，补跑停在一半（%s），下次启动再补", note or "没有结论")
+        # 中继正在停止打断了补跑（尚未得出路线结论）：印记不写 finished，留待下次启动补跑；
+        # 同时推企微群并经 errwatch 保底落盘，绝不静默跳过。
+        cut_body = f"中继正在停止，自动采集补跑停在一半（{note or '没有结论'}），下次启动会再补一次。\n待补路线：{names}"
+        errs = eng.notifier.send(texts.COLLECT_RETRY_FAILED, cut_body, alert=True)
+        log.warning("自动采集补跑：中继正在停止，补跑停在一半（%s），下次启动再补", note or "没有结论",
+                    extra=errwatch.alarm(texts.COLLECT_RETRY_FAILED, cut_body) if errs
+                    else errwatch.group_pushed(texts.COLLECT_RETRY_FAILED, errs, eng.notifier))
         return True
     passed = [r for r, v in verdict.items() if v is True]
     failed = [r for r, v in verdict.items() if v is False]
@@ -1077,8 +1077,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     done = {"run_id": last["run_id"], "routes": routes, "blocked": list(blocked), "passed": passed,
             "failed": failed, "unknown": unknown, "recurrent": rec,
             "note": note, "finished": datetime.now(tz=SERVER_TZ).isoformat(),
-            "nodes": seen.get("nodes") or {}, "blocked_again": seen.get("blocked") or {},
-            "second_round": list(seen.get("second_round") or [])}
+            "nodes": ev.get("nodes") or {}, "blocked_again": ev.get("blocked") or {},
+            "second_round": list(ev.get("second_round") or [])}
     atomic_write_text(stamp, json.dumps(done, ensure_ascii=False))
     # Hand the outcome to the machine checks: the retry ran and judged each route.
     from ark_relay.features import makeup  # noqa: PLC0415
@@ -1087,24 +1087,24 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     body = texts.collect_retry_body([route_label(r, zh) for r in passed],
                                     [route_label(r, zh) for r in failed],
                                     [route_label(r, zh) for r in unknown], note)
-    if seen.get("second_round"):
-        body += "\n" + texts.collect_second_round([route_label(r, zh) for r in seen["second_round"]])
-    if seen.get("blocked"):
-        body += "\n" + texts.collect_blocked_row([route_label(r, zh) for r in seen["blocked"]], again=True)
-    # A route still failing (or without a verdict) goes to the group. All walked:
-    # COLLECT_RETRY_OK takes notify's log route (daily report only). The daily
-    # report carries every outcome (report.retry_line).
-    from ark_relay.features import errwatch  # noqa: PLC0415
-    if not failed and not unknown and seen.get("not_restored"):
-        # The routes are fine (daily report only), the display is not: the group hears that.
+    if ev.get("second_round"):
+        body += "\n" + texts.collect_second_round([route_label(r, zh) for r in ev["second_round"]])
+    if ev.get("blocked"):
+        body += "\n" + texts.collect_blocked_row([route_label(r, zh) for r in ev["blocked"]], again=True)
+    # 11-28 14:45 铁律：首趟采集存在真实失败路线，补跑结果无论全通还是仍有失败/复发，
+    # 一律经 alert=True 直推企微群暴露原故障（绝不进日报、绝不吞进 log-only 静默黑洞）。
+    if not failed and not unknown and ev.get("not_restored"):
+        # 路线虽已走通，但窗口未恢复全屏仍须独立报警。
         log.warning("自动采集补跑：路线都走通了，但游戏开成窗口后没改回全屏（%s）；下次调度程序跑完终末地会改回",
-                    seen["not_restored"])
+                    ev["not_restored"])
     if not failed and not unknown:
-        # Only the gathering's own undone item: another task's (基质刷取 ...) still stands.
+        # 仅清除采集自身未完成项；首趟失败但补跑走通仍直推企微群报闭环并排查首趟失败原因。
         eng.state.clear_incomplete_items(day, last["run_id"], GATHERING_UNDONE)
-        eng.notifier.send(texts.COLLECT_RETRY_OK, body)
-        # Healed by the retry, so not pushed - and one red item, so a session looks at
-        # why the routes failed the first time (techlog.self_heal).
+        errs = eng.notifier.send(texts.COLLECT_RETRY_OK, body, alert=True)
+        log.warning("自动采集补跑：首趟失败路线已补跑走通（%s），原故障仍须排查",
+                    "、".join(route_label(r, zh) for r in routes),
+                    extra=errwatch.alarm(texts.COLLECT_RETRY_OK, body) if errs
+                    else errwatch.group_pushed(texts.COLLECT_RETRY_OK, errs, eng.notifier))
         from ark_relay.core import statestore as techlog  # noqa: PLC0415
         techlog.self_heal(f"MaaEnd {last['run_id']} 自动采集", "补跑走通了，第一次没走通的路线："
                           + "、".join(route_label(r, zh) for r in routes), state_dir=state_dir)

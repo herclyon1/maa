@@ -406,7 +406,7 @@ _LOG_ONLY_PREFIXES = (
     "📱 配置已修改",             # acknowledgement of a phone order
     "⚙️ 配置已更新",             # texts.INBOX_APPLIED: our own order.sh batch, all through (a ✗ is 📱 配置没改成)
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
-    "✅ 自动采集：补跑后全部走完",
+    # 首趟采集失败后的补跑结果不再压入 log-only 黑洞，一律走 alert=True 直推企微群暴露原故障。
     # Failures are never on this list. texts.COLLECT_RETRY_START is not sent at
     # all (collect_retry.maybe_run): the retry's outcome is.
     "🩹 OK-WW 补丁",            # all patches bound - the healthy case; ⚠️ variant still goes out
@@ -768,7 +768,7 @@ def call(fn, what: str, limit: float, *, detail: str = "", clock=None, sleep=Non
     """fn(seconds) -> its result: the first attempt gets `limit`, each later one what is left
     of it. A transient failure is tried again while time is left after the pause; anything
     else, the last attempt's failure, or no time left raises. `what` names the request in
-    plain words (the recovered WARNING's first line is quoted in the daily report); `detail`
+    plain words (transient retries log INFO only; exhausted retries raise and alert the group); `detail`
     (a key, a URL) and the first failure go on its second line. `clock` / `sleep` (default
     time.monotonic / the module's _sleep, looked up at call time) are the tests' doors."""
     clock = clock or time.monotonic

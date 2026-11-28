@@ -208,19 +208,16 @@ def _run_mc28_one_alarm():
           [(t, REASON in b) for t, b in group(notes, notes2)],
           [(texts.self_healed("MaaEnd"), False), (texts.unverified_alarm("终末地", "早班", 2), True)])
 
-    print("\n[a run of the same day that crafted is booked after the held abort: made up for]")
+    print("\n[a run of the same day that crafted is booked after the held abort: real failure still pushed to group]")
     e, notes, state = engine()
     book(e, ABORT, ok=False)
     book(e, CRAFTED, ok=True, rid="2026-10-08/endfield/MaaEnd-07-29-15")
     handle._flush_pending(e)
     show(notes)
-    check("no group message names 装备制造", [t for t, b in group(notes) if "装备制造" in t + b], [])
-    check("no 「上机核对没过：#28」", mc28_pushes(notes), [])
+    check("11-28 铁律：即使同天另一趟已做成，#28 真实失败仍推企微群排查原故障",
+          [("装备制造" in b, "账号编号显示不全" in b, "已经做成了，但本趟真实失败仍须报群排查" in b)
+           for b in mc28_pushes(notes)], [(True, True, True)])
     check("nothing of #28 is left waiting", held_28(state), {})
-    sec = [x for x in mc.daily_section(state).splitlines() if "#28" in x]
-    print(f"    daily: {sec}")
-    check("the daily section says the abort's 装备制造 failed and was made up for",
-          any("装备制造" in x and "不用人管" in x for x in sec), True)
 
     return types.SimpleNamespace(**locals())
 
@@ -1066,31 +1063,24 @@ def _part_mc28_task_trail():  # noqa: C901
     check("no abort step: 装备制造 that only ran its entry is a FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
     check("evidence names the task and its window", ev.startswith("装备制造（10:34:11→10:34:16）终末地自己的记录里只走了"), True)
 
-    print("\n[10-08：同一天前一趟已经做成了装备制造，06-31-06 这趟终末地自己停了 → 不进群，日报里留原因]")
+    print("\n[10-08：同一天前一趟已经做成了装备制造，06-31-06 这趟终末地自己停了 → 仍判 FAIL 照推群，并附注同天另一趟已完成]")
     day08, fw08 = Ledger(), maaend("maafw-2026-10-08.log.gz")
     st, _, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", fw08, ledger=day08)
     check("05-29-15 crafted (09:33): PASS", (st, pushed), ("PASS", []))
-    heal_state = tmpdir() / "state"   # techlog writes next to it, in ../tech
+    heal_state = tmpdir() / "state"
     heal_state.mkdir()
     st, ev, pushed = judge("2026-10-08_MaaEnd-06-31-06.log", fw08, heal_state, ledger=day08)
-    check("06-31-06's abort is healed by that run: no FAIL, nothing pushed", (st, pushed), ("PASS", []))
-    from ark_relay.core import statestore as techlog
-    reds = techlog.unhandled("\n".join(f.read_text(encoding="utf-8")
-                                       for f in techlog.tech_dir(heal_state).glob("*.md")))
-    check("…but one 「自愈待查」 red item says a session has to look at why it stopped itself",
-          [t.split("：")[:2] for _, t in reds], [["自愈待查", "上机核对 #28 2026-10-08/endfield/MaaEnd-06-31-06 装备制造"]])
-    check("…its line keeps MaaEnd's reason and names the run that did it",
+    check("06-31-06's abort is a real failure: still FAIL and pushed to group (no silent heal blackhole)",
+          (st, len(pushed)), ("FAIL", 1))
+    check("…its line keeps MaaEnd's reason and notes the earlier run that did it",
           "装备制造（10:34:11→10:34:16）终末地自己检查画面没过，把后面的任务全停了，这一项没做成，"
-          "它记的原因：左上角的账号编号显示不全" in ev and "；同一天 05:29（东京 06:29）开始的那趟已经做成了，不用人管" in ev, True)
+          "它记的原因：左上角的账号编号显示不全" in ev
+          and "（备注：同一天 05:29（东京 06:29）开始的那趟已经做成了，但本趟真实失败仍须报群排查）" in ev, True)
     section = mc.daily_section(heal_state)
     line28 = next((x for x in section.splitlines() if " #28 " in x), "")
-    check("the daily section says #28 failed this run and another run made up for it, not just 「过了」",
-          (line28.startswith("↻ #28 "), "这一趟没过，同一天另一趟补上了" in line28, "账号编号显示不全" in line28),
-          (True, True, True))
-    check("…in plain Chinese", texts.plain(line28), [])
-    judge("2026-10-08_MaaEnd-06-34-21.log", maaend("maafw-2026-10-08.log.gz"), heal_state)
-    check("a plain PASS later that day does not wipe it from the day's section",
-          next((x for x in mc.daily_section(heal_state).splitlines() if " #28 " in x), "") == line28, True)
+    check("the tech section records #28 FAIL with full reason in plain Chinese",
+          (line28.startswith("❌ #28 "), "账号编号显示不全" in line28, texts.plain(line28)),
+          (True, True, []))
     row = day08.rows[-1]
     notes = ledger_rows._rows_for(row, datetime(2026, 10, 8, 10, 35, tzinfo=SERVER_TZ))[4]
     check("daily report whitelist omits unverified 装备制造 from notes (error/reason goes to group, not daily)",

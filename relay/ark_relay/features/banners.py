@@ -562,14 +562,8 @@ def crosscheck_fix(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | 
 
 
 def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None:
-    """`b` is open by the official sources `by` and missing from the game's main
-    source `main` (a wiki that has not listed it yet, or listed it nameless); the
-    caller puts it in the report. Said in the trace as a cross-check and once in
-    the log: with its end known it is a fault the relay got over (WARNING marked
-    recovered, the daily report only; why: USER-SWITCHES.txt at
-    banners.py:official_fill); with no end published it is a ✗, which machine
-    check #66 pushes to the group once (the log line is INFO: a WARNING of its own
-    rang the group a second time for the same banner).
+    """主数据源漏掉已开启的官方当期卡池时按官方来源补全；
+    已知结束时间时打 WARNING 直推企微群暴露主源漏漏项，未知结束时间时由 #66 报群（绝不进日报）。
     """
     when = f"{b.start:%m-%d %H:%M}" if b.start else (b.start_note or "开始时刻没写")
     if b.end is not None:
@@ -791,14 +785,8 @@ def _past_end(state_dir, game: str, who: str, start: datetime) -> "datetime | No
 
 def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "list[str]",
                      tr: "Trace") -> None:
-    """The cross-day gate. A banner an earlier report announced (its group notice
-    said 「明天开」) that has opened must be in today's 当期, unless the game is
-    already listed as not read. When every source lost it: put back with its end
-    from the announcement or the history ledger (a fault the relay got over, a
-    WARNING marked recovered - why: USER-SWITCHES.txt at banners.py:check_continuity),
-    or, with no end anywhere, the game is listed as not read - never 「当期无新角色
-    卡池」 - and the verdict in `tr.continuity` makes machine check #68 push it to
-    the group once (the log line is INFO, as in official_fill).
+    """跨日连续性检查：之前预告已开启的卡池若今天全源缺失，有结束时间时按预告补回并打 WARNING 直推企微群；
+    无结束时间时记入 failed 并由 #68 报群，日报严格省略该游戏（绝不写「当期无新角色卡池」）。
     """
     tr.continuity = []
     for game, (start, who, end, snap) in sorted(_announced(state_dir, now).items()):
@@ -827,7 +815,7 @@ def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "li
             continue
         failed.append(f"{game}（{start:%m-%d %H:%M} 已预告开的{who}）")
         tr.continuity.append([game, "lost", f"{said}，今天各来源都没有，按没读到报"])
-        log.info("%s：之前预告 %s 开的%s今天哪个来源都没读到，日报这一游戏按没读到报，不写「当期无新角色卡池」",
+        log.info("%s：之前预告 %s 开的%s今天哪个来源都没读到，日报已省略该游戏，不写「当期无新角色卡池」",
                  game, f"{start:%m-%d %H:%M}", who)
 
 

@@ -701,7 +701,7 @@ def _age(row: dict, now: datetime) -> float:
 
 
 def _pb_lines(ctx, since: datetime, where: tuple, *, old=(), alarm=()) -> tuple[list, list]:
-    """核验指定模块自 `since` 起的 WARNING / ERROR：旧错不得复现，真错必须全部直推企微群（废除旧「只进日报」假设）。"""
+    """核验指定模块自 `since` 起的 WARNING / ERROR：旧错不得复现，真错必须全部直推企微群（废除旧压错假设）。"""
     state_dir, now = ctx.get("state_dir"), _now(ctx)
     bad: list[str] = []
     notes: list[str] = []
@@ -1848,13 +1848,8 @@ def _c28(ctx):
     alarm.records._mark_task_trails), so MaaFW's log is read once a run; a record
     without them is read here the same way.
 
-    A task another MaaEnd run of the same day did (or found nothing to do in) does not
-    need a person: it is no FAIL, its line says which run did it, and the run's own
-    ledger row keeps the cause for the daily report (core.maaend_unverified). On
-    2026-10-08 MaaEnd stopped itself in 装备制造 at 10:34:16 (MaaEnd-06-31-06) after
-    the 09:33 run (MaaEnd-05-29-15) had crafted. Only runs booked before this one are
-    seen: a later run that does the task comes after this verdict. Such a verdict is a
-    PASS marked healed, which the daily section says as failed and made up for.
+    11-28 14:45 铁律：任务真实失败即使同一天另一趟已经做成，也绝不得静默压掉或退回日报；
+    本趟真实失败必须照常判 FAIL 推企微群排查根因，同时在证据中附注同天另一趟已完成作为上下文。
 
     A task MaaFW's log does not cover (maaend_fwlog.trail_unread: a rotated or cleared
     log beginning inside the run, or none of the four in it) is not judged until that
@@ -1905,7 +1900,7 @@ def _c28(ctx):
         return _fail_28(ctx, done, f"连续 {misses} 趟，{'、'.join(done)} 在终末地自己的记录里都找不到，做成没有看不出来")
     files = raw.get("tasks_shot_files") or {}
     state = Path(state_dir or ".")
-    good, bad, healed = [], [], False
+    good, bad = [], []
     for t in done:
         e = table[t]
         t0, t1 = datetime.fromisoformat(e["t0"]), datetime.fromisoformat(e["t1"])
@@ -1920,25 +1915,17 @@ def _c28(ctx):
                 line += f"；{note}"
         if e.get("ok"):
             good.append(line)
-        elif by := _done_elsewhere(ctx, t):
-            # The work got done that day: no FAIL, but a session looks at why this run
-            # did not do it (one 「自愈待查」 red item, techlog.self_heal).
-            good.append(f"{line}；{by}，不用人管")
-            healed = True
-            rid = getattr(ctx.get("rec"), "run_id", "")
-            _log_runs.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, t, by)
-            try:
-                from ark_relay.core import statestore as techlog  # noqa: PLC0415
-                techlog.self_heal(f"上机核对 #28 {rid} {t}", f"{line}；{by}", state_dir=state_dir)
-            except Exception:  # noqa: BLE001 - the verdict stands; the group hears the failure to write
-                _log_runs.warning("自愈待查的红项没写进技术日志：#28 %s %s", rid, t, exc_info=True)
         else:
+            # 11-28 14:45 铁律：真实任务失败即使同天另一趟已做成，也绝不得静默压错或退回日报，
+            # 照常判 FAIL 直推企微群排查根因，并在证据中附注同天另一趟已完成。
+            if by := _done_elsewhere(ctx, t):
+                line = f"{line}（备注：{by}，但本趟真实失败仍须报群排查）"
             bad.append((t, line))
     tail = f"；{waits}" if waits else ""
     if bad:
         return _fail_28(ctx, [t for t, _ in bad], "；".join(x for _, x in bad)
                         + (f"。做成的：{'；'.join(good)}" if good else "") + tail)
-    return mc.Result(PASS, "；".join(good) + tail, healed=healed)
+    return mc.Result(PASS, "；".join(good) + tail)
 
 
 # The alarm a #28 FAIL rides along with (pushes._push_unverified, its kind 「没证据」).
@@ -2032,21 +2019,12 @@ def _alerted(alerted):
 
 
 def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
-    """Settle each held #28 FAIL whose hold is over (`hold_over(script, user)`: no record
-    of that script and user held any more, the script not running): the tasks a
-    「没证据」 alarm sent for them carries (covered_28) are in the group already; a task
-    another run of the day did (`ledger(day)`, _done_elsewhere) was made up for, which
-    the daily report says, as for a FAIL healed at once; any other task is pushed now
-    as the check's own FAIL, with the evidence of the held run. A push that did not go
-    out is kept and tried again at the next settle.
-
-    A push that went out is pushed once: it is marked sent (`alerted`: (already(day,
-    key), mark(day, key)), the engine's state.json day marks, as unresolved.send keys
-    its pushes; without them, this process's _PUSHED_28) before anything else is
-    written, and its entry is dropped from HELD_28 right then, entry by entry. A
-    HELD_28 that cannot be written is an ERROR; the mark, in another file, keeps the
-    next settle from pushing it again. Rewording the recorded verdict (mc.restate)
-    comes last and its failure is only a warning."""
+    """结算暂存的 #28 失败记录（等重试结束且脚本不在跑时执行）：
+    - 已被本趟同步「没证据」群报警带上的任务不再重复发；
+    - 其余任务一律按 #28 真实失败推送企微群（即使同天另一趟已做成，也绝不静默压掉或退回日报，
+      仅在正文中附注另一趟已完成作为上下文）；
+    - 推送失败时保留记录待下一轮重推，推送成功后打已推标记并从 HELD_28 移除。
+    """
     held = _state_get(state_dir, HELD_28)
     if not isinstance(held, dict) or not held:
         return
@@ -2062,18 +2040,24 @@ def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
         was = evidence + HELD_NOTE
         day = e.get("day") or ""
         ctx = {"rec": type("Held", (), {"run_id": rid})(), "ledger": ledger(day)}
-        healed = {t: by for t in tasks if t not in covered and (by := _done_elsewhere(ctx, t))}
-        rest = [t for t in tasks if t not in covered and t not in healed]
+        # 11-28 14:45 铁律：只要未被本趟「没证据」群报警带上，哪怕同天另一趟已做成，
+        # 本趟真实失败仍必须推企微群暴露根因（彻底删除旧静默压错黑洞）。
+        rest = [t for t in tasks if t not in covered]
+        done_by = {t: by for t in rest if (by := _done_elsewhere(ctx, t))}
+        final_ev = evidence
+        if done_by:
+            by_note = "；".join(f"{t}：{b}" for t, b in done_by.items())
+            final_ev = f"{evidence}（备注：{by_note}，但本趟真实失败仍须报群排查）"
         key = f"#28|{rid}"
         if rest and already(day, key):
             _log_runs.info("上机核对 #28：%s 这一条已经进过群（上回没从等重试的单子上划掉），不重推", rid)
         elif rest:
             errs = notifier.send(texts.machinecheck_failed("#28", what),
-                                 texts.machinecheck_failed_body(what, evidence), alert=True)
+                                 texts.machinecheck_failed_body(what, final_ev), alert=True)
             if errs:
                 _log_runs.error("上机核对 #28 没过（%s 等重试的那一趟），推送也没推出去，下一轮再推：%s", rid, "；".join(errs))
                 continue
-            _log_runs.info("上机核对 #28 没过，%s 的重试完了，%s 没有别的报警带上，已报群：%s", rid, "、".join(rest), evidence[:120])
+            _log_runs.info("上机核对 #28 没过，%s 的重试完了，%s 没有别的报警带上，已报群：%s", rid, "、".join(rest), final_ev[:120])
             try:
                 mark(day, key)
             except Exception:  # noqa: BLE001 - HELD_28 below is the other record of it
@@ -2082,19 +2066,10 @@ def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
                       f"#28 已结掉的 {rid}（等重试的单子上还留着它）")
         try:
             if rest:
-                mc.restate(state_dir, "#28", was, evidence)
+                mc.restate(state_dir, "#28", was, final_ev)
             elif covered:
                 _log_runs.info("上机核对 #28 没过，%s 已写在「没证据」那条报警里进群，不另发：%s", rid, evidence[:120])
                 mc.restate(state_dir, "#28", was, evidence + RODE_ALONG)
-            else:
-                by = "；".join(f"{t}：{b}" for t, b in healed.items())
-                _log_runs.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, "、".join(healed), by)
-                mc.restate(state_dir, "#28", was, f"{evidence}；{by}，不用人管", healed=True)
-                try:
-                    from ark_relay.core import statestore as techlog  # noqa: PLC0415
-                    techlog.self_heal(f"上机核对 #28 {rid} {'、'.join(healed)}", f"{evidence}；{by}", state_dir=state_dir)
-                except Exception:  # noqa: BLE001 - the verdict stands; the group hears the failure to write
-                    _log_runs.warning("自愈待查的红项没写进技术日志：#28 %s", rid, exc_info=True)
         except OSError:
             _log_runs.warning("上机核对 #28：%s 的结论没改写进 machinecheck.json", rid, exc_info=True)
 

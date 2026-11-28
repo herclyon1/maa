@@ -242,8 +242,9 @@ def _part_collect_main():
     check("连续两天：报群", [x for x in got if x[0] == _texts.COLLECT_RECURRENT], [(_texts.COLLECT_RECURRENT, True)])
     got, sd = _retry_outcome({"AutoCollectRoute15": True})
     check("补跑走通：开始那条不发", [x for x in got if x[0] == _texts.COLLECT_RETRY_START], [])
-    check("补跑走通：只有「补跑后全部走完」一条，不带 alert", got, [(_texts.COLLECT_RETRY_OK, False)])
-    check("…它走日志，不推", _route_of(_texts.COLLECT_RETRY_OK), "log")
+    check("补跑走通：发「首趟失败，补跑后全部走完」且带 alert=True 进群排查原故障",
+          got, [(_texts.COLLECT_RETRY_OK, True)])
+    check("…它走企微群，不进 log 黑洞", _route_of(_texts.COLLECT_RETRY_OK, alert=True), "group")
     check("日报 retry_line 严格为空（补跑细节仅进技术日志）",
           (_report.retry_line(sd, "2026-09-12"),
            _report._retry_tech_line(sd, "2026-09-12").startswith("自动采集补跑：走通 ")), ("", True))
@@ -600,8 +601,9 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
 
     asked, sent, stamp, (sd, md) = maybe_run(True)
     check("补的是路线10（没有「采集失败」那一行也补）", asked, [["AutoCollectRoute10"]])
-    check("补跑走通：不进群，只进日报", [(t, route_of(t, alert=a)) for t, _, a in sent],
-          [(texts.COLLECT_RETRY_OK, "log")])
+    check("补跑走通：直推企微群排查原故障（绝不进日报、绝不走 log 黑洞）",
+          [(t, route_of(t, alert=a)) for t, _, a in sent],
+          [(texts.COLLECT_RETRY_OK, "group")])
     check("日报 retry_line 严格为空；技术日志写清为什么补",
           (report.retry_line(sd, "2026-10-08", md),
            report._retry_tech_line(sd, "2026-10-08", md)),
@@ -1023,8 +1025,9 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("正文是人话", texts.plain(sent[0][1]), [])
     check("当天的记号记了第二轮", stamp2.get("second_round"), ["AutoCollectRoute10"])
     sent, stamp2 = maybe_run2(True)
-    check("第二轮走通：只进日报，不进群", [(t, route_of(t, alert=a)) for t, _, a in sent], [(texts.COLLECT_RETRY_OK, "log")])
-    check("……日报那条也写了补过第二轮", texts.collect_second_round([R10]) in sent[0][1], True)
+    check("第二轮走通：直推企微群闭环（绝不进日报、绝不走 log 黑洞）",
+          [(t, route_of(t, alert=a)) for t, _, a in sent], [(texts.COLLECT_RETRY_OK, "group")])
+    check("……群告警正文也写了补过第二轮", texts.collect_second_round([R10]) in sent[0][1], True)
     cr.run_retry = saved_rr
 
     print("\nall checks passed" if not fails else f"\nFAILED: {len(fails)}")

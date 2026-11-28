@@ -609,12 +609,19 @@ def _part_annihilation_unreadable_none():
     sc.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
     plan._tomorrow = lambda: TUE_NOON
     with mock.patch.object(A, "_maa_user", lambda d: {}):
-        check("_annihilation_done_tomorrow -> None", plan._annihilation_done_tomorrow(automas), None)
-        lines = [ln.strip() for ln in plan.next_plan(automas).splitlines() if "剿灭" in ln]
-    check("the plan line", sorted(set(lines)), ["剿灭 本周打没打满读不到"])
+        plan._last_error.clear()
+        g_plan = Grab()
+        plan.log.addHandler(g_plan)
+        try:
+            check("_annihilation_done_tomorrow -> None", plan._annihilation_done_tomorrow(automas), None)
+            lines = [ln.strip() for ln in plan.next_plan(automas).splitlines() if "剿灭" in ln]
+        finally:
+            plan.log.removeHandler(g_plan)
+    check("the plan line is omitted when unreadable (never writes 读不到)", lines, [])
+    check("unreadable emits WARNING to group", any("剿灭本周进度读不到" in r.getMessage() for r in g_plan.records), True)
     with mock.patch.object(A, "_maa_user", lambda d: not_done):
         lines = [ln.strip() for ln in plan.next_plan(automas).splitlines() if "剿灭" in ln]
-    check("readable, not done: the map, as before", sorted(set(lines)) != ["剿灭 本周打没打满读不到"] and bool(lines), True)
+    check("readable, not done: the map, as before", bool(lines) and all("读不到" not in ln for ln in lines), True)
 
     print("\n[a ScriptConfig.json of the wrong shape: settings() raises, the plan still says 读不到]")
     bad = tmpdir() / "bad"
@@ -1942,9 +1949,24 @@ def _part_nest_patch_visible():
         check("贴上了就照常说只打南丘", "只打落渊南丘" in good, True)
         okww_overlay.last_report = lambda: {
             "applied": [], "skipped": [{"what": "NightmareNestTask.find_nest", "why": "结构变了"}]}
-        bad = plan._okww_nest_bit({}, nest, [], zh)
-        check("没贴上就说实话", "这一轮不会刷巢穴" in bad, True)
-        check("而且点名了本该只打哪", "本该只打落渊南丘" in bad, True)
+        import logging as _logging
+        _nest_warns: list[str] = []
+
+        class _NW(_logging.Handler):
+            def emit(self, record):
+                if record.levelno >= _logging.WARNING:
+                    _nest_warns.append(record.getMessage())
+
+        _nwh = _NW()
+        plan.log.addHandler(_nwh)
+        plan._last_error.clear()
+        try:
+            bad = plan._okww_nest_bit({}, nest, [], zh)
+        finally:
+            plan.log.removeHandler(_nwh)
+        check("没贴上时日报省略该项（绝不塞警告文案）", bad, "")
+        check("没贴上时改走 WARNING 推企微群并点名本该只打哪",
+              any("本该只打落渊南丘" in m and "这一轮不会刷巢穴" in m for m in _nest_warns), True)
     okww_overlay.last_report = _real_report
     os.environ.pop("ARK_OKWW_DIR", None)
 

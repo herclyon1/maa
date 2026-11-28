@@ -220,9 +220,9 @@ ENDFIELD_NO_LAUNCHER = ("调度程序会拒绝开终末地：它从游戏所在�
 # so it stays on the launcher's fullscreen start, which MaaEnd reads only with DirectX 11 ticked.
 ENDFIELD_NO_MAAEND_START = ("调度程序没法让 MaaEnd 把终末地开成窗口，只能退回经官方启动器全屏开："
                             "官方启动器上「DirectX 11 启动」那一格没勾时，MaaEnd 每一趟都会认不出游戏画面")
-# Not pushed: collect_retry.maybe_run logs it; the retry's outcome decides.
+# 采集补跑启动仅记日志；补跑最终结果（无论全通还是仍有失败/复发）一律直推企微群暴露首趟故障，绝不进日报、绝不静默吞错。
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
-COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
+COLLECT_RETRY_OK = "⚠️ 自动采集：首趟失败，补跑后全部走完"
 COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
 COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
@@ -1320,6 +1320,12 @@ def format_fault_reason(what: str) -> str:
         parts.append(cause)
     if not parts:
         parts.append("程序发生运行异常")
+    elif not cause and not any(k in lead for k in (
+        "失败", "没", "无法", "不能", "不到", "不对", "超时", "断开", "拒绝",
+        "异常", "崩", "错", "停", "卡", "缺", "坏", "丢", "拒", "满", "冲突", "无效",
+    )):
+        # 剥离模糊词后若主干仅剩动作短语（如“解析活动数据”），补齐失败谓词避免读起来像正常语句
+        parts.append("发生运行异常")
     msg = "——".join(parts)
     if ctx:
         msg += f"（{'，'.join(ctx)}）"
@@ -1347,7 +1353,7 @@ def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: s
 
 
 def relay_faults_section(rows: list) -> str:
-    """技术日志中的当日中继报错汇总（仅写入技术日志，绝不进入用户日报；无「只进日报/原话有术语」盲盒）。"""
+    """技术日志中的当日中继报错汇总（仅写入技术日志，绝不进入用户日报；一律输出结构化白话错因）。"""
     if not rows:
         return ""
     lines = []

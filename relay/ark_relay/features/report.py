@@ -127,12 +127,61 @@ def _alert_daily_missing_readings(entries: list[dict]) -> None:
                 and not raw.get("sanity_exhausted")
             ):
                 log.warning("终末地理智消耗读数异常，已从日报省略（记录 %s）", rid)
+        elif script == "OK-WW":
+            unread_steps = [str(s) for s in (raw.get("okww_steps") or [])
+                            if "没读到" in str(s) and core.UNVERIFIED_STEP not in str(s)]
+            if unread_steps:
+                log.warning("鸣潮今日有 %d 项步骤未读到完整结果，已从日报省略：%s（记录 %s）",
+                            len(unread_steps), "、".join(unread_steps), rid)
     for script, items in core.day_unverified_items(entries):
         log.warning("%s 今日有 %d 项没读到游戏内完成证据，已从日报省略：%s",
                     core._game(script), len(items), "、".join(items))
     if unjudged := core.day_unjudged_items(entries):
         log.warning("终末地今日有 %d 项日志未读到核验记录，已从日报省略：%s",
                     len(unjudged), "、".join(unjudged))
+
+
+def _has_day_external_anomalies(state_dir, day: str) -> bool:
+    """检查当日外部异常状态（采集补跑失败/未结、脚本补跑失败/未结、关卡门拦截），
+    任一为真时阻止日报标题误标「全绿 ✅」，改为中性白名单标题「今日日报」。
+    """
+    if not state_dir:
+        return False
+    # 1. 当日自动采集补跑记录存在失败、无结论、复发、二次受阻、未结案或文件损坏
+    retry_file = Path(state_dir) / "collect-retry" / f"{day}.json"
+    if retry_file.is_file():
+        try:
+            retry_doc = json.loads(retry_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return True
+        if not isinstance(retry_doc, dict):
+            return True
+        if ("passed" not in retry_doc and "failed" not in retry_doc) or any(
+            retry_doc.get(k) for k in ("failed", "unknown", "recurrent", "blocked_again")
+        ):
+            return True
+    # 2. 当日脚本自动补跑存在失败、无记录、放弃或未结案（或补跑标记文件损坏）
+    try:
+        from ark_relay.features import makeup  # noqa: PLC0415
+        marker = makeup.read_marker(state_dir, day)
+        if (str(state_dir), day) in makeup._unreadable:
+            return True
+        for ent in marker.values():
+            if isinstance(ent, dict) and ent.get("result") != makeup.OK:
+                return True
+    except Exception:
+        log.warning("检查当日自动补跑状态失败，日报标题按非全绿处理", exc_info=True)
+        return True
+    # 3. 当日关卡门存在拦截或关卡走不到告警记录（verdict == NO）
+    try:
+        from ark_relay.features import stagegate  # noqa: PLC0415
+        dues = stagegate._dues(state_dir).get(day) or {}
+        if any(isinstance(row, dict) and row.get("verdict") == stagegate.NO for row in dues.values()):
+            return True
+    except Exception:
+        log.warning("检查当日关卡门拦截记录失败，日报标题按非全绿处理", exc_info=True)
+        return True
+    return False
 
 
 def _fill_single_run_sanity(entries: list[dict]) -> None:
@@ -351,7 +400,9 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
     _alert_daily_missing_readings(entries)
     shifts = _shifts(eng)
-    title2, runs_body = core.format_daily(day, entries, "", "", shifts=shifts)
+    ext_anomalies = _has_day_external_anomalies(eng.cfg.state_dir, day)
+    title2, runs_body = core.format_daily(day, entries, "", "", shifts=shifts,
+                                          extra_anomalies=ext_anomalies)
     if tests:
         log.info("日报：%d 条测试窗口里的记录不列出来（%s）", len(tests),
                  "、".join(m.get("run_id", "?") for m in tests))

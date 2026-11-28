@@ -931,13 +931,50 @@ def _annihilation_note(raw: dict) -> str:
     return ""
 
 
+def _maaend_sanity_missing(raw: dict) -> bool:
+    """判断终末地这一趟是否存在理智消耗读数异常或缺失（有刷图但没读到理智消耗）。"""
+    if raw.get("maaend_sanity_unfit"):
+        return True
+    farm = raw.get("maaend_farm")
+    runs = raw.get("maaend_farm_runs") or raw.get("protocol_runs") or 0
+    return bool(
+        farm and runs
+        and not raw.get("maaend_sanity_spent")
+        and not raw.get("maaend_medicine")
+        and not raw.get("sanity_exhausted")
+    )
+
+
+def _maaend_collect_partial_fail(raw: dict) -> bool:
+    """判断终末地自动采集是否存在未走通路线或完成路线数少于总路线数。"""
+    if raw.get("maaend_collect_failed"):
+        return True
+    total = int(raw.get("maaend_collect_total") or 0)
+    if total > 0:
+        done_cnt = int(raw.get("maaend_collect_done") or 0)
+        if done_cnt < total:
+            return True
+    return False
+
+
+def _okww_step_unread(raw: dict) -> bool:
+    """判断鸣潮步骤列表中是否包含未核实或「没读到」异常项。"""
+    return any(
+        UNVERIFIED_STEP in str(step) or "没读到" in str(step)
+        for step in (raw.get("okww_steps") or [])
+    )
+
+
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "", tech: "list[str] | None" = None,
-                 shifts: "list[tuple[str, str]] | None" = None) -> tuple[str, str]:
+                 shifts: "list[tuple[str, str]] | None" = None,
+                 extra_anomalies: bool = False) -> tuple[str, str]:
     """按严格白名单渲染当日运行日报：
     - 仅输出白名单允许的正常业务产出（成功完成轮次、正常维护跳过、手动停止、理智不够跳过）与明日排班；
     - 严禁输出任何失败、没干完、没证据、没读到、重试成功、更新重启次数等报错/自愈文案；
-    - 证据包、未完成明细、重启与失败记录仅写入 `tech` 技术日志，真错一律由企微群告警通道推送。
+    - 证据包、未完成明细、重启与失败记录仅写入 `tech` 技术日志，真错一律由企微群告警通道推送；
+    - 只要存在任一账本内异常（理智缺失、采集部分失败、鸣潮步骤没读到、失败/未完/未核/待核、剿灭未读）
+      或外部当日异常（extra_anomalies：采集补跑失败、脚本补跑失败、关卡门拦截），标题必为中性「今日日报」，绝不误标全绿。
     """
     _ = shifts
     tech = tech if tech is not None else []
@@ -957,7 +994,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     foot = footnote_tasks(entries)
     lines: list[str] = []
     shown_kinds: dict[str, str] = {}
-    has_anomalies = bool(day_unverified_items(entries) or day_unjudged_items(entries))
+    has_anomalies = bool(extra_anomalies or day_unverified_items(entries) or day_unjudged_items(entries))
     for e, attempts in _collapse_retries(entries, kinds):
         started = datetime.fromisoformat(e["started"])
         finished = datetime.fromisoformat(attempts[-1]["finished"])
@@ -1000,10 +1037,14 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，本轮未刷"
             lines += [_row("备注", [note]), ""]
             continue
-        # 正常完成的轮次：若带 incomplete，未完成明细仅记技术日志（早已直推企微群），日报只展示已完成的正常产出
+        # 正常完成的轮次：若带 incomplete 或隐藏异常，标题不得标全绿（明细已推群并记技术日志），日报只展示已完成的正常产出
         if e.get("incomplete"):
             has_anomalies = True
             tech.append(f"{e['run_id']} {_incomplete_note(str(e['incomplete']))}")
+        if e.get("script") == "MaaEnd" and (_maaend_sanity_missing(raw) or _maaend_collect_partial_fail(raw)):
+            has_anomalies = True
+        if e.get("script") == "OK-WW" and _okww_step_unread(raw):
+            has_anomalies = True
         if raw.get("annihilation"):
             anote = _annihilation_note(raw)
             if not anote:
@@ -1015,11 +1056,10 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines += [_row("备注", [anote]), ""]
             continue
         did, cost, out, left, notes = _rows_for(e, finished, foot)
-        # 若整行正常产出为空且存在未核实/待核项（即全部内容被白名单过滤），不在日报中输出空壳
+        # 若整行正常产出为空且存在未核实/待核/未读到项（即全部内容被白名单过滤），不在日报中输出空壳
         if not (did or cost or out or left or notes) and (
             (e.get("script") == "MaaEnd" and (maaend_unverified(raw) or maaend_unjudged(raw)))
-            or (e.get("script") == "OK-WW"
-                and any(UNVERIFIED_STEP in str(s) for s in (raw.get("okww_steps") or [])))
+            or (e.get("script") == "OK-WW" and _okww_step_unread(raw))
         ):
             continue
         lines.append("✅" + f" {_game(e['script'])}　"

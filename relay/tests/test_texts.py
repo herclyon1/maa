@@ -239,8 +239,7 @@ def _part_texts_wording():
     check("修过又出现的那种也说原因", ("连接或读写超时" in again, texts.plain(again)), (True, []))
     old = "原话有术语" + "没翻译"
     hits = [f.relative_to(ROOT).as_posix() for f in sorted((ROOT / "ark_relay").rglob("*.py")) if old in f.read_text(encoding="utf-8")]
-    check("代码里不再有那句半截话（collect_retry.py 的说明里提到它是历史）", hits,
-          ["ark_relay/features/collect_retry.py"])
+    check("代码里不再有那句半截话（全仓彻底清零）", hits, [])
 
 
 def _part_user_switches():  # noqa: C901

@@ -601,10 +601,8 @@ Two of the four things that can wake the loop live here: the backend dying,
         self.shell_only_since = None
         self.shell_grace_noted = False
         self.next_check = 0.0
-        # An exit nothing explained (_exited), until it is decided: the backend
-        # back (_adopted: daily report only), still not back at the
-        # REVIVE_ALERT_AFTER-th check (_revive: group) or at the stop (stopping:
-        # group). {"at", "clock", "said", "how", "installer", "checks", "decided"}.
+        # 记录一次尚未定性的后台退出（_exited）：后续拉起恢复在 _adopted 按原因记日志或推群，
+        # 达到 REVIVE_ALERT_AFTER 次未起或服务停止时推群告警。
         self.gone = None
 
     def cap_wait(self, wait_s: float) -> float:
@@ -804,7 +802,7 @@ Two of the four things that can wake the loop live here: the backend dying,
                      "said": said, "how": how, "installer": installer, "checks": 0, "decided": False}
         self.log.info("AUTO-MAS 后台%s退出了（退出码 %s，%s）；%s，查 %d 次还没起来报到群里",
                       "" if installer else "意外", said, how,
-                      "装完更新重新起来了写进日报" if installer else "重新起来了也报到群里（退出的原因还没查清）",
+                      "装完更新重新起来了记入日志" if installer else "重新起来了也报到群里（退出的原因还没查清）",
                       REVIVE_ALERT_AFTER)
 
     def _gone_line(self) -> str:

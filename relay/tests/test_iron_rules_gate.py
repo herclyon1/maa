@@ -202,15 +202,26 @@ def _part_g1_d1010_shutdown():
 # ---------------------------------------------------------------------------
 
 _G2_FORBIDDEN_DAILY_WORDS = (
-    "失败", "没读到", "没干完", "没跑成", "没证据", "没走通", "没能开跑",
-    "还是没成", "自己好了", "只进日报", "扣下", "未能读取", "没按你的设置跑",
-    "重试", "不算失败", "报错", "异常", "待核", "❌", "⚠️", "↪️", "↻",
+    "失败", "没读到", "读不到", "读不懂", "没贴上", "没干完", "没跑成", "没证据",
+    "没走通", "没能开跑", "还是没成", "自己好了", "只进日报", "写进日报", "扣下",
+    "未能读取", "没按你的设置跑", "重试", "不算失败", "报错", "异常", "待核",
+    "❌", "⚠️", "↪️", "↻",
 )
-_G2_BLIND_BOX_TOKENS = ("这种报错中继还不认识", "原话有术语", "自己好了，只进日报", "只进日报")
+_G2_BLIND_BOX_TOKENS = (
+    "这种报错中继还不认识",
+    "原话有术语没翻译",
+    "原话有术语",
+    "自己好了，只进日报",
+    "不进群，只进日报",
+    "只进日报",
+    "写进日报",
+)
 
 
 def _g2_ast_scan(root: Path) -> dict[str, list[str]]:
-    """全仓 AST 扫描 relay/（不含 tests/），封禁 errwatch.recovered / RECOVERED / _note_recovered / _recovered 与盲盒文案。"""
+    """全仓 AST 扫描 relay/（不含 tests/），统一封禁 errwatch.recovered / RECOVERED /
+    _note_recovered / _recovered 与全仓盲盒/只进日报/写进日报文案。
+    """
     relay_dir = root / "relay"
     skip_dirs = {"tests", "fixtures", "__pycache__", "okww_files"}
     hits: dict[str, list[str]] = {
@@ -236,14 +247,13 @@ def _g2_ast_scan(root: Path) -> dict[str, list[str]]:
                 continue
             doc_ids = _docstring_ids(tree)
             is_errwatch = py_file.name == "errwatch.py"
-            is_texts = py_file.name == "texts.py"
-            _g2_walk_ast(rel, tree, doc_ids, is_errwatch, is_texts, hits)
+            _g2_walk_ast(rel, tree, doc_ids, is_errwatch, hits)
     return hits
 
 
 def _g2_walk_ast(rel: str, tree: ast.AST, doc_ids: set[int], is_errwatch: bool,
-                 is_texts: bool, hits: dict[str, list[str]]) -> None:
-    """检查单个 Python 文件的 AST 节点是否残留违禁压错或盲盒符号。"""
+                 hits: dict[str, list[str]]) -> None:
+    """检查单个 Python 文件的 AST 节点是否残留违禁压错或盲盒/只进日报文案（全仓统一拦截，无文件白名单盲区）。"""
     for node in ast.walk(tree):
         ln = getattr(node, "lineno", 0)
         if isinstance(node, ast.Attribute):
@@ -270,22 +280,100 @@ def _g2_walk_ast(rel: str, tree: ast.AST, doc_ids: set[int], is_errwatch: bool,
         elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in doc_ids:
             if "ark_recovered" in node.value:
                 hits["ark_recovered_const"].append(f"{rel}:{ln}: {node.value[:60]}")
-            if is_texts and any(tok in node.value for tok in _G2_BLIND_BOX_TOKENS):
+            if any(tok in node.value for tok in _G2_BLIND_BOX_TOKENS):
                 hits["blind_box_texts"].append(f"{rel}:{ln}: {node.value[:60]}")
 
 
+def _g2_make_broken_automas(base: Path) -> Path:
+    """在临时目录构造缺配置/未贴补丁/坏 JSON 的真实 AUTO-MAS 目录，用于无 mock 实测 plan.next_plan()。"""
+    automas = base / "bad_automas"
+    cfg = automas / "config"
+    cfg.mkdir(parents=True)
+    # 排班：早班 09:00 包含 MAA1(缺计划表+剿灭读不到)、MAA2(缺关卡设置)、MaaEnd(未知页签)、OK-WW(坏 FarmEchoTask + 巢穴未贴补丁)
+    (cfg / "QueueConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "q1"}],
+        "q1": {
+            "Info": {"Name": "Morning", "TimeEnabled": True, "AfterAccomplish": "NoAction"},
+            "SubConfigsInfo": {
+                "TimeSet": {"t1": {"Info": {"Enabled": True, "Time": "09:00"}}},
+                "QueueItem": {
+                    "i1": {"Info": {"ScriptId": "s_maa1"}},
+                    "i2": {"Info": {"ScriptId": "s_maa2"}},
+                    "i3": {"Info": {"ScriptId": "s_end"}},
+                    "i4": {"Info": {"ScriptId": "s_ww"}},
+                },
+            },
+        },
+    }, ensure_ascii=False), encoding="utf-8")
+    (cfg / "ScriptConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "s_maa1"}, {"uid": "s_maa2"}, {"uid": "s_end"}, {"uid": "s_ww"}],
+        "s_maa1": {
+            "Info": {"Name": "MAA-1", "Path": r"D:\ark\maa"},
+            "SubConfigsInfo": {"UserData": {"u1": {
+                "Info": {"Name": "u1", "StageMode": "missing_plan_uid", "Annihilation": "Annihilation"},
+                "Task": {"IfFight": True},
+            }}},
+        },
+        "s_maa2": {
+            "Info": {"Name": "MAA-2", "Path": r"D:\ark\maa"},
+            "SubConfigsInfo": {"UserData": {"u2": {"Info": {"Name": "u2"}, "Task": {}}}},
+        },
+        "s_end": {
+            "Info": {"Name": "MaaEnd", "Path": r"D:\ark\maaend"},
+            "SubConfigsInfo": {"UserData": {"u3": {"Info": {"Name": "u3"}, "Task": {}}}},
+        },
+        "s_ww": {
+            "Info": {"Name": "OK-WW", "Path": r"D:\ark\okww"},
+            "SubConfigsInfo": {"UserData": {"u4": {"Info": {"Name": "u4"}, "Task": {}}}},
+        },
+    }, ensure_ascii=False), encoding="utf-8")
+    (cfg / "PlanConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
+    # OK-WW 母本：正常体力刷模拟领域 + 坏 FarmEchoTask.json + 指定巢穴但补丁未贴上
+    ww_d = automas / "data" / "s_ww" / "Default" / "ConfigFile"
+    ww_d.mkdir(parents=True)
+    (ww_d / "DailyTask.json").write_text(json.dumps({
+        "Which to Farm": "Simulation Challenge",
+        "Material Selection": "Shell Credit",
+        "Additional Tasks to Run After Daily Task": [
+            "Auto Farm all Nightmare Nest",
+            "Teleport and Farm 4C Echo",
+        ],
+    }, ensure_ascii=False), encoding="utf-8")
+    (ww_d / "NightmareNestTask.json").write_text(json.dumps({
+        "Only Farm These Nests": "梦枢天罗、落渊南丘",
+    }, ensure_ascii=False), encoding="utf-8")
+    (ww_d / "FarmEchoTask.json").write_text("{broken json", encoding="utf-8")
+    # MaaEnd 母本：未知 ProtocolSpace 页签
+    end_d = automas / "data" / "s_end" / "Default" / "ConfigFile"
+    end_d.mkdir(parents=True)
+    (end_d / "mxu-MaaEnd.json").write_text(json.dumps({
+        "instances": [{
+            "id": "automas",
+            "tasks": [{
+                "taskName": "ProtocolSpace",
+                "enabled": True,
+                "optionValues": {"ProtocolSpaceTab": {"caseName": "UnknownTabV9"}},
+            }],
+        }],
+    }, ensure_ascii=False), encoding="utf-8")
+    return automas
+
+
 def _g2_schema_and_negative_behavior(root: Path) -> None:
-    """G2 正向白名单 Schema 校验 + 5 类真实异常注入（卡池崩/采集失败/补跑失败/关卡拦截/瞬态耗尽+账本失败）。"""
+    """G2 正向白名单 Schema 校验 + 真实无 mock plan.next_plan() 坏配置 + 多类异常注入。"""
     import logging
+    from unittest import mock
 
     relay_str = str(root / "relay")
     if relay_str not in sys.path:
         sys.path.insert(0, relay_str)
 
-    from ark_relay.core import notify
+    from ark_relay.core import notify, plan as plan_mod
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.ledger import State
-    from ark_relay.features import banners, errwatch, maintenance, makeup, report, stagegate
+    from ark_relay.features import (
+        annihilation, banners, errwatch, maintenance, makeup, okww_overlay, report, stagegate,
+    )
 
     # 1. 正向白名单 Schema 门禁：注册表非空，合法区块放行，非白名单区块硬抛出 ValueError
     check("G2 Schema: DAILY_WHITELIST_SECTIONS 非空", len(report.DAILY_WHITELIST_SECTIONS) >= 5, True)
@@ -304,11 +392,12 @@ def _g2_schema_and_negative_behavior(root: Path) -> None:
     check("G2 Schema: 非白名单区块全部被硬拒绝", rejected,
           ["errors", "self_heal", "makeup_failed", "collect_retry", "stagegate"])
 
-    # 2. 负向行为门禁：在隔离目录同时注入 5 类异常 + 账本失败/未完/未核实/未读理智
+    # 2. 负向行为门禁：真实构造坏配置 AUTO-MAS 目录 + 5 类外部/账本异常
     day = "2026-11-28"
     tmp = tmpdir("iron-g2-")
     sd = tmp / "state"
     sd.mkdir()
+    bad_automas = _g2_make_broken_automas(tmp)
     (sd / "collect-retry").mkdir()
     (sd / "collect-retry" / f"{day}.json").write_text(json.dumps({
         "run_id": f"{day}/endfield/c1", "routes": ["AutoCollectRoute16"],
@@ -362,23 +451,22 @@ def _g2_schema_and_negative_behavior(root: Path) -> None:
     ]
 
     eng = types.SimpleNamespace(
-        cfg=types.SimpleNamespace(automas_dir=None, history_dir=None, maaend_dir=None,
+        cfg=types.SimpleNamespace(automas_dir=bad_automas, history_dir=None, maaend_dir=None,
                                   skland_token="", state_dir=sd),
         state=State(sd),
         _announce_banners=lambda *a, **k: None,
     )
 
-    real_plan = report.plan
     real_banners = report.banners
     real_sleep = notify._sleep
     real_urlopen = maintenance.urllib.request.urlopen
+    real_maint_lines = plan_mod.maintenance_lines
+    real_act_cd = plan_mod.activity_countdown
+    plan_mod._last_error.clear()
     try:
-        # 注入 1a: 卡池 collect 整体崩溃
-        report.plan = types.SimpleNamespace(
-            schedule=lambda _d: [{"name": "早班", "times": ["09:00"]}],
-            next_plan=lambda _d: "明天 09:00 早班",
-            activity_countdown=lambda _d: "",
-        )
+        # 严禁 mock plan.next_plan！仅屏蔽外部联网与本地缓存路径，真实运行 plan.next_plan(bad_automas)
+        plan_mod.maintenance_lines = lambda _d: []
+        plan_mod.activity_countdown = lambda _d: ""
         report.banners = types.SimpleNamespace(
             collect=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("卡池源连接超时")),
             image_reader=lambda _sd: None,
@@ -387,13 +475,40 @@ def _g2_schema_and_negative_behavior(root: Path) -> None:
             save_trace=lambda *a, **k: None,
             update_history=lambda *a, **k: [],
         )
-        title_crash, body_crash = report._compose_daily(eng, day, entries)
+        with mock.patch.object(okww_overlay, "nest_patch_present", return_value=False), \
+             mock.patch.object(annihilation.WeeklyGate, "settings", return_value={"本周已完成": None, "当前": ""}):
+            title_crash, body_crash = report._compose_daily(eng, day, entries)
         bad_hits_crash = [w for w in _G2_FORBIDDEN_DAILY_WORDS if w in (title_crash + body_crash)]
-        check("G2 负向(卡池崩+5类异常): 日报标题与正文 0 字节报错/失败/自愈/没读到词", bad_hits_crash, [])
-        check("G2 负向(卡池崩+5类异常): 日报仍保留正常白名单产出与中性标题",
+        check("G2 负向(真实 plan.next_plan + 卡池崩 + 多类异常): 日报 0 字节报错/读不到/补丁未贴文案",
+              bad_hits_crash, [])
+        check("G2 负向(真实 plan.next_plan): 日报保留正常白名单产出、明日安排正常项与中性标题",
               ("今日日报" in title_crash, "全绿" in title_crash,
-               "✅ 明日方舟" in body_crash, "✅ 终末地" in body_crash, "明天 09:00 早班" in body_crash),
-              (True, False, True, True, True))
+               "✅ 明日方舟" in body_crash, "✅ 终末地" in body_crash,
+               "📅 明日安排" in body_crash, "体力刷 模拟领域" in body_crash),
+              (True, False, True, True, True, True))
+
+        # 补充直测 plan.py 另外两处读不到：周本记账读不到 + ScriptConfig.json 坏 JSON
+        wb_dir = tmp / "wb_cfg"
+        wb_dir.mkdir()
+        (wb_dir / "FarmEchoTask.json").write_text(json.dumps({
+            "Teleport to Boss": "Weekly Challenge", "Boss Level": "90", "Which Weekly Boss to Teleport": 1,
+        }), encoding="utf-8")
+        with mock.patch("ark_relay.features.weeklyboss.WeeklyBossGate.settings", side_effect=OSError("locked")):
+            wb_out = plan_mod._okww_extra_bit(wb_dir, ["Teleport and Farm 4C Echo"], {})
+        check("G2 负向(周本记账读不到): 日报省略该项且 0 读不到词", wb_out, "")
+
+        bad_quick = tmp / "bad_quick"
+        (bad_quick / "config").mkdir(parents=True)
+        (bad_quick / "config" / "ScriptConfig.json").write_text("{bad", encoding="utf-8")
+        qd = bad_quick / "data" / "ww" / "Default" / "ConfigFile"
+        qd.mkdir(parents=True)
+        (qd / "DailyTask.json").write_text(json.dumps({
+            "Which to Farm": "Simulation Challenge", "Material Selection": "Shell Credit",
+            "Additional Tasks to Run After Daily Task": ["Some Task"],
+        }), encoding="utf-8")
+        q_bits = plan_mod._okww_plan_bits(bad_quick)
+        check("G2 负向(ScriptConfig 坏 JSON): 日报省略附加任务且 0 读不到词",
+              any("读不到" in b or "附加" in b for b in q_bits), False)
 
         # 注入 1b: 单游戏卡池拉取失败 + render 仅出白名单正常行
         pool_partial = banners.render(
@@ -430,18 +545,148 @@ def _g2_schema_and_negative_behavior(root: Path) -> None:
               (got_m, failed_maint, len(tries)), ({}, ["明日方舟"], maintenance.GET_ATTEMPTS))
     finally:
         ark_logger.removeHandler(spy)
-        report.plan = real_plan
+        plan_mod.maintenance_lines = real_maint_lines
+        plan_mod.activity_countdown = real_act_cd
+        plan_mod._last_error.clear()
         report.banners = real_banners
         notify._sleep = real_sleep
         maintenance.urllib.request.urlopen = real_urlopen
 
-    # 校验报错通道 100% 收到卡池崩、未读/未核实/待核告警与瞬态耗尽告警
+    # 校验报错通道 100% 收到卡池崩、plan 全部 7+1 处异常、未读/未核实告警与瞬态耗尽告警
     msgs = "\n".join(m for _, m in spy.captured)
     check("G2 告警通道收到卡池崩溃 WARNING", "卡池那一段整体失败" in msgs, True)
     check("G2 告警通道收到终末地未核实/未读理智 WARNING",
           ("没读到游戏内完成证据" in msgs and "理智" in msgs), True)
     check("G2 告警通道收到瞬态耗尽 WARNING",
           any("维护公告：明日方舟 官方公告取不到" in m for _, m in spy.captured), True)
+    check("G2 告警通道 100% 收到 plan.next_plan 全部读不到/未贴补丁 WARNING",
+          ("巢穴补丁没贴上" in msgs, "FarmEchoTask.json 读不到" in msgs,
+           "周本记账读不到" in msgs, "ScriptConfig.json 读不到" in msgs,
+           "PlanConfig.json 里找不到" in msgs, "剿灭本周进度读不到" in msgs,
+           "明日方舟关卡设置读不到" in msgs, "终末地理智计划配置读不懂" in msgs),
+          (True, True, True, True, True, True, True, True))
+
+
+def _g2_title_and_no_blackhole_checks(root: Path) -> None:
+    """G2 补充实测：杜绝日报标题误标全绿（6 类隐性异常逐一核验）+ 消灭采集补跑/#28 静默黑洞。"""
+    relay_str = str(root / "relay")
+    if relay_str not in sys.path:
+        sys.path.insert(0, relay_str)
+
+    from ark_relay.core import notify, texts
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.ledger import State
+    from ark_relay.features import machinecheck as mc, machinechecks as runs, makeup, report, stagegate
+
+    day = "2026-11-28"
+    clean_entry = {
+        "run_id": f"{day}/ark/clean1", "script": "MAA", "user": "arknights", "ok": True,
+        "started": f"{day}T09:00:00+08:00", "finished": f"{day}T09:10:00+08:00",
+        "failed_tasks": [], "raw": {"stages": ["1-7"], "run_times": 4, "sanity_spent": 48, "sanity": 20},
+    }
+
+    def compose(entries: list[dict], setup_state=None) -> tuple[str, str]:
+        tmp = tmpdir("iron-g2-title-")
+        sd = tmp / "state"
+        sd.mkdir()
+        if setup_state:
+            setup_state(sd)
+        eng = types.SimpleNamespace(
+            cfg=types.SimpleNamespace(automas_dir=None, history_dir=None, maaend_dir=None,
+                                      skland_token="", state_dir=sd),
+            state=State(sd),
+            _announce_banners=lambda *a, **k: None,
+        )
+        real_banners = report.banners
+        report.banners = types.SimpleNamespace(
+            collect=lambda *a, **k: ([], {}), image_reader=lambda _sd: None,
+            render=lambda *a, **k: "", Trace=types.SimpleNamespace(new=lambda: None),
+            save_trace=lambda *a, **k: None, update_history=lambda *a, **k: [],
+        )
+        try:
+            return report._compose_daily(eng, day, entries)
+        finally:
+            report.banners = real_banners
+
+    # 0. 全干净基线：必须保持 全绿 ✅
+    t_clean, _ = compose([clean_entry])
+    check("G2 标题基线: 全干净无异常保持 全绿 ✅", t_clean, "📋 11-28 · 全绿 ✅")
+
+    # 1. MaaEnd 理智消耗读数缺失
+    e_sanity = {
+        "run_id": f"{day}/endfield/s1", "script": "MaaEnd", "user": "endfield", "ok": True,
+        "started": f"{day}T09:15:00+08:00", "finished": f"{day}T09:25:00+08:00",
+        "failed_tasks": [], "raw": {"maaend_farm": "基质刷取", "maaend_farm_runs": 2},
+    }
+    t_s, b_s = compose([clean_entry, e_sanity])
+    check("G2 标题防误绿(MaaEnd 理智缺失): 中性「今日日报」且 0 报错词",
+          (t_s, [w for w in _G2_FORBIDDEN_DAILY_WORDS if w in (t_s + b_s)]),
+          ("📋 11-28 · 今日日报", []))
+
+    # 2. MaaEnd 自动采集部分失败（done < total）
+    e_collect = {
+        "run_id": f"{day}/endfield/c1", "script": "MaaEnd", "user": "endfield", "ok": True,
+        "started": f"{day}T09:15:00+08:00", "finished": f"{day}T09:30:00+08:00",
+        "failed_tasks": [], "raw": {"maaend_collect_done": 2, "maaend_collect_total": 5},
+    }
+    t_c, b_c = compose([clean_entry, e_collect])
+    check("G2 标题防误绿(MaaEnd 采集 2/5 部分失败): 中性「今日日报」且 0 报错词",
+          (t_c, [w for w in _G2_FORBIDDEN_DAILY_WORDS if w in (t_c + b_c)]),
+          ("📋 11-28 · 今日日报", []))
+
+    # 3. OK-WW 步骤含「没读到」
+    e_ww = {
+        "run_id": f"{day}/wuwa/w1", "script": "OK-WW", "user": "wuwa", "ok": True,
+        "started": f"{day}T09:35:00+08:00", "finished": f"{day}T09:45:00+08:00",
+        "failed_tasks": [], "raw": {"okww_runs": 2, "okww_farm": "无音区",
+                                    "okww_steps": ["周常乐园（没读到）"]},
+    }
+    t_w, b_w = compose([clean_entry, e_ww])
+    check("G2 标题防误绿(OK-WW 步骤没读到): 中性「今日日报」且 0 报错词",
+          (t_w, [w for w in _G2_FORBIDDEN_DAILY_WORDS if w in (t_w + b_w)]),
+          ("📋 11-28 · 今日日报", []))
+
+    # 4. 当日 collect-retry 失败
+    def _add_retry_fail(sd: Path) -> None:
+        (sd / "collect-retry").mkdir()
+        (sd / "collect-retry" / f"{day}.json").write_text(
+            json.dumps({"passed": [], "failed": ["AutoCollectRoute16"]}), encoding="utf-8")
+
+    t_cr, _ = compose([clean_entry], _add_retry_fail)
+    check("G2 标题防误绿(collect-retry 失败): 中性「今日日报」", t_cr, "📋 11-28 · 今日日报")
+
+    # 5. 当日 makeup 失败
+    t_mk, _ = compose([clean_entry], lambda sd: makeup._write_marker(sd, day, {
+        "MAA": {"result": makeup.FAILED, "run_id": "r1", "note": "还是没成"},
+    }))
+    check("G2 标题防误绿(makeup 失败): 中性「今日日报」", t_mk, "📋 11-28 · 今日日报")
+
+    # 6. 当日 stagegate 拦截
+    t_sg, _ = compose([clean_entry], lambda sd: stagegate._note_due(
+        sd, datetime(2026, 11, 28, 9, 0, tzinfo=SERVER_TZ), "早班",
+        {"verdict": stagegate.NO, "alarm_only": True, "stage": "YW-4", "why": "走不到"},
+    ))
+    check("G2 标题防误绿(stagegate 拦截): 中性「今日日报」", t_sg, "📋 11-28 · 今日日报")
+
+    # 7. 消灭自愈静默黑洞：COLLECT_RETRY_OK 必走企微群（非 log-only），且 #28 真实失败同天另一趟做成仍判 FAIL
+    check("G2 零黑洞: COLLECT_RETRY_OK 走企微群 route='group'",
+          notify.route_of(texts.COLLECT_RETRY_OK, alert=True), "group")
+    rec = types.SimpleNamespace(run_id=f"{day}/endfield/r2", script="MaaEnd", user="endfield",
+                                started=datetime(2026, 11, 28, 10, 0, tzinfo=SERVER_TZ))
+    earlier = {
+        "run_id": f"{day}/endfield/r1", "script": "MaaEnd", "started": f"{day}T09:00:00+08:00",
+        "ok": True, "raw": {"tasks_trail": {"装备制造": {"ok": True}}},
+    }
+    res28 = runs._c28({
+        "rec": rec, "log_text": "", "state_dir": tmpdir("iron-g2-c28-"), "held": [],
+        "ledger": [earlier],
+        "raw": {"tasks_trail": {"装备制造": {
+            "found": True, "ok": False, "said": "终末地自己停了",
+            "t0": f"{day}T10:01:00+08:00", "t1": f"{day}T10:02:00+08:00",
+        }}},
+    })
+    check("G2 零黑洞: #28 真实失败即使同天另一趟做成仍判 FAIL 且 healed=False",
+          (res28 is not None and res28.status, res28 is not None and res28.healed), (mc.FAIL, False))
 
 
 def _g2_hardening_checks(root: Path) -> None:
@@ -462,12 +707,15 @@ def _g2_hardening_checks(root: Path) -> None:
     r_http = texts.relay_error_body("ark.banners", "公告拉取失败 ｜ HTTP Error 503: Service Unavailable", "09:05:00")
     r_key = texts.relay_error_body("ark.service", "Traceback: KeyError 'stage'", "09:06:00")
     r_file = texts.relay_error_body("ark.config", "FileNotFoundError: [Errno 2] 'QueueConfig.json'", "09:07:00")
+    r_alien = texts.format_fault_reason("解析活动数据出错 ｜ CustomAlienProtocolFailure: 0xdeadbeef")
     check("G2 去盲盒: HTTP 503 输出状态码且无英文/盲盒",
           ("状态码 503" in r_http, texts.plain(r_http), "这种报错中继还不认识" in r_http), (True, [], False))
     check("G2 去盲盒: KeyError 输出直白原因且无盲盒",
           ("读取数据时缺少必要内容" in r_key, texts.plain(r_key), "这种报错中继还不认识" in r_key), (True, [], False))
     check("G2 去盲盒: FileNotFoundError 输出原因并保留文件名",
           ("找不到要用的文件" in r_file, "QueueConfig.json" in r_file, texts.plain(r_file)), (True, True, []))
+    check("G2 去盲盒: 未知异常剥离模糊词后仍保留失败谓词与错误码",
+          ("发生运行异常" in r_alien, "0xdeadbeef" in r_alien, texts.plain(r_alien)), (True, True, []))
 
     # 2. notify.py alarm_hold 落盘异常 fail-closed：必记 ERROR + 置内存级留机锁 + 阻止自动关机
     tmp = tmpdir("iron-g2-hold-")
@@ -558,9 +806,10 @@ def _part_g2_daily_whitelist_and_no_mute():
     check("G2 AST: 全 relay/ 零 _note_recovered 符号", hits["note_recovered"], [])
     check("G2 AST: 全 relay/ 零 eng._recovered 旁路", hits["eng_recovered"], [])
     check("G2 AST: errwatch.py 零 RECOVERED/recovered 定义", hits["errwatch_symbols"], [])
-    check("G2 AST: texts.py 零盲盒/只进日报文案", hits["blind_box_texts"], [])
+    check("G2 AST: 全 relay/ 零盲盒与只进日报/写进日报文案", hits["blind_box_texts"], [])
 
     _g2_schema_and_negative_behavior(root)
+    _g2_title_and_no_blackhole_checks(root)
     _g2_hardening_checks(root)
 
 
