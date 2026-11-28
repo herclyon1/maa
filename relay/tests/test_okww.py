@@ -141,10 +141,12 @@ def _part_okww_drift():
     # v3.7.2's find_nest differs from v3.7.3's in the box top only (diff of the two releases).
     V372 = V373.replace("counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)",
                         "counts = self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re)")
-    # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED): the pins are its bodies.
+    # The OK-WW the machine runs: pins match v3.7.14-beta.2 except DailyTask.py (re-pinned to v3.8.18).
     INST = fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
     VINST = (INST / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
-    DAILY_INST = (INST / "DailyTask.py.txt").read_text(encoding="utf-8")
+    DAILY_V3714 = (INST / "DailyTask.py.txt").read_text(encoding="utf-8")
+    DAILY_INST = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.8.18" / "src" / "task"
+                  / "DailyTask.py.txt").read_text(encoding="utf-8")
 
     def okww(nest_text, extra=None):
         root = tmpdir()
@@ -164,17 +166,20 @@ def _part_okww_drift():
 
     print("\n[the two copies that check their own fingerprint are pinned too (audit 2026-10-13, A3)]")
     check("six pins in all", len(okww_overlay.pins()), 6)
-    check("get_total_daily_points pinned to v3.7.14-beta.2, not adapted",
-          got.get("DailyTask.get_total_daily_points"), ("b082b5c41b29", False))
+    check("get_total_daily_points pinned to v3.8.18, not adapted",
+          got.get("DailyTask.get_total_daily_points"), ("1a3c22b367e2", False))
     check("claim_daily pinned to v3.7.14-beta.2, not adapted", got.get("DailyTask.claim_daily"), ("555de9348dc7", False))
     check("claim_battle_pass pinned to v3.7.14-beta.2, not adapted",
           got.get("DailyTask.claim_battle_pass"), ("0a11121c349a", False))
-    check("upstream v3.7.14-beta.2 DailyTask on disk: no drift",
+    check("upstream v3.8.18 DailyTask on disk: no drift",
           okww_overlay.drift(okww(VINST, {"DailyTask.py": DAILY_INST})), [])
+    check("older v3.7.14-beta.2 DailyTask on disk: get_total_daily_points drifts",
+          [x["what"] for x in okww_overlay.drift(okww(VINST, {"DailyTask.py": DAILY_V3714}))],
+          ["DailyTask.get_total_daily_points"])
     changed = DAILY_INST.replace("    def claim_daily(self):\n", "    def claim_daily(self):\n        pass\n", 1)
     d = okww_overlay.drift(okww(VINST, {"DailyTask.py": changed}))
     check("a changed claim_daily is found before the run", [x["what"] for x in d], ["DailyTask.claim_daily"])
-    changed = DAILY_INST.replace("points_boxes[0].name", "points_boxes[-1].name", 1)
+    changed = DAILY_INST.replace("self._read_daily_points()", "self._read_daily_points_v2()", 1)
     d = okww_overlay.drift(okww(VINST, {"DailyTask.py": changed}))
     check("a changed get_total_daily_points is found before the run", [x["what"] for x in d],
           ["DailyTask.get_total_daily_points"])
@@ -2792,19 +2797,25 @@ def _part_okww_farm_hook():  # noqa: C901
             EV.append("claim_battle_pass")
 
     # get_total_daily_points is replaced only while upstream's body hashes to the pin, so the
-    # stand-in carries the installed v3.7.14-beta.2 body, from a file (inspect.getsource).
+    # stand-in carries the installed v3.8.18 body, from a file (inspect.getsource).
     import ast
-    UP_DAILY = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
+    UP_DAILY = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.8.18" / "src" / "task"
                 / "DailyTask.py.txt").read_text(encoding="utf-8")
-    _fn = next(x for c in ast.parse(UP_DAILY).body if isinstance(c, ast.ClassDef) and c.name == "DailyTask"
-               for x in c.body if isinstance(x, ast.FunctionDef) and x.name == "get_total_daily_points")
+    _up_cls = next(c for c in ast.parse(UP_DAILY).body if isinstance(c, ast.ClassDef) and c.name == "DailyTask")
+    _up_lines = UP_DAILY.splitlines(keepends=True)
+    _up_defs = "".join(
+        "".join(_up_lines[x.lineno - 1:x.end_lineno])
+        for x in _up_cls.body if isinstance(x, ast.FunctionDef)
+        and x.name in ("get_total_daily_points", "_read_daily_points")
+    )
     _up_file = tmpdir() / "_upstream_daily_points.py"
-    _up_file.write_text("import re\n\nnumber_re = re.compile(r'(\\d+)')\n\n\nclass DailyTask:\n"
-                        + "".join(UP_DAILY.splitlines(keepends=True)[_fn.lineno - 1:_fn.end_lineno]), encoding="utf-8")
+    _up_file.write_text("import re\n\n\nclass DailyTask:\n" + _up_defs, encoding="utf-8")
     _scope = {}
     exec(compile(_up_file.read_text(encoding="utf-8"), str(_up_file), "exec"), _scope)
     UPSTREAM_POINTS = _scope["DailyTask"].get_total_daily_points
+    UPSTREAM_READ_POINTS = _scope["DailyTask"]._read_daily_points
     DailyTask.get_total_daily_points = UPSTREAM_POINTS
+    DailyTask._read_daily_points = UPSTREAM_READ_POINTS
 
     mods = {
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
@@ -2845,9 +2856,14 @@ def _part_okww_farm_hook():  # noqa: C901
 
     NOISE = [pbox("4", 195, 2, 210, 16), pbox("+40", 180, 2, 215, 14), pbox("20", 180, 4, 205, 16),
              pbox("140", 225, 15, 295, 65)]
-    t = points_task(NOISE)
-    check("上游原来的写法读成 4（就是 11-17 那条 total daily points 4）", (UPSTREAM_POINTS(t), t.info),
-          (4, {"total daily points": 4}))
+    t = points_task([pbox("140", 225, 15, 295, 65)])
+    t._read_daily_points = lambda: UPSTREAM_READ_POINTS(t)
+    check("上游 v3.8.18 写法把 >100 的 140 判成 0（<=100 上限）", (UPSTREAM_POINTS(t), t.info),
+          (0, {"total daily points": 0}))
+    t = points_task([pbox(".160", 225, 15, 295, 65)])
+    t._read_daily_points = lambda: UPSTREAM_READ_POINTS(t)
+    check("上游 v3.8.18 写法把 #186 的「.160」也判成 0", (UPSTREAM_POINTS(t), t.info),
+          (0, {"total daily points": 0}))
     t = points_task(NOISE)
     check("换上的读成 140", DailyTask.get_total_daily_points(t), 140)
     check("写进 total daily points", t.info, {"total daily points": 140})
@@ -5769,6 +5785,20 @@ def _part_okww_overlay_main():
         check("part-way: an applied one is not listed as not applied",
               "revive_action" not in line.split("没生效")[1], True)
         check("part-way: still the error and its trouble words", "KeyError" in line and "自己报错了" in line, True)
+        import os
+        stale_root = tmpdir()
+        dest = okww_overlay.target(stale_root)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        okww_overlay.REPORT.write_text(json.dumps(
+            {"applied": [], "skipped": [{"what": "DailyTask.get_total_daily_points", "why": "stale"}]}),
+            encoding="utf-8")
+        dest.write_text("# newly installed fix\n", encoding="utf-8")
+        now = dest.stat().st_mtime
+        os.utime(okww_overlay.REPORT, (now - 60, now - 60))
+        check("report older than freshly installed overrides is ignored", okww_overlay.report_line(stale_root), "")
+        os.utime(okww_overlay.REPORT, (now + 5, now + 5))
+        check("report written after current overrides is still reported",
+              "DailyTask.get_total_daily_points" in okww_overlay.report_line(stale_root), True)
     finally:
         okww_overlay.REPORT = real
 

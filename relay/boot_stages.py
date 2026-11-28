@@ -560,7 +560,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
             except _overlay.OverlayTrouble as exc:
                 notes.append(str(exc))
                 faults.append(str(exc))
-        if line := _overlay.report_line():
+        if line := _overlay.report_line(okww_at_boot):
             notes.append(line)
         if line := _overlay.drift_line(okww_at_boot, cfg.state_dir):
             notes.append(line)

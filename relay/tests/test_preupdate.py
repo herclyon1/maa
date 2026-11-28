@@ -1551,7 +1551,8 @@ relay-opt-round3-1108 O-02).
 
 
     INST = fx_dir(HERE, "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
-    DAILY = (INST / "DailyTask.py.txt").read_text(encoding="utf-8")
+    DAILY = (fx_dir(HERE, "gamesim") / "upstream" / "okww-v3.8.18" / "src" / "task"
+             / "DailyTask.py.txt").read_text(encoding="utf-8")
 
 
     def overrides_shape():
@@ -1572,6 +1573,7 @@ relay-opt-round3-1108 O-02).
     src.mkdir()
     for f in INST.glob("*.py.txt"):
         (src / f.name[:-4]).write_text(f.read_text(encoding="utf-8"), encoding="utf-8")
+    (src / "DailyTask.py").write_text(DAILY, encoding="utf-8")
     classes = ov._classes(src)
     samples = []
     for cls, (lines, methods, _bases) in classes.items():
@@ -1624,7 +1626,7 @@ relay-opt-round3-1108 O-02).
 
     print("\n[改了坐标或调用：形状变了 —— 照旧不换、每次开机都说]")
     for label, changed in (("坐标", DAILY.replace("self.click_relative(0.86, 0.05)", "self.click_relative(0.87, 0.05)")),
-                           ("少了一步", DAILY.replace("self.ensure_main()", "pass", 1))):
+                           ("少了一步", DAILY.replace("self.ensure_main()\n\n    def open_daily", "pass\n\n    def open_daily", 1))):
         check(f"{label}：确实改了正文", changed != DAILY, True)
         d = [x for x in ov.drift(okww(changed)) if not x["adapt"]]
         check(f"{label}：算不上（跳过）", bool(d) and all(not x["words"] for x in d), True)

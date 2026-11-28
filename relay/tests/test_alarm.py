@@ -2451,7 +2451,7 @@ def _part_every_failure_pushed():
             okww_overlay.report_line, okww_overlay.drift_line, preupdate.run_okww)
     okww_overlay.install = lambda okww: ""
     okww_overlay.write_master_pointer = lambda automas_dir: ""
-    okww_overlay.report_line = lambda: ""
+    okww_overlay.report_line = lambda *a, **k: ""
     okww_overlay.drift_line = lambda okww, state_dir: BAD[0]
     preupdate.run_okww = lambda okww, problems=None, **_k: ""
     notes = _Notes()

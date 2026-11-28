@@ -183,12 +183,23 @@ def report_snapshot() -> dict:
     return out
 
 
-def report_line() -> str:
+def report_line(okww_dir=None) -> str:
     """A plain-Chinese line when something did not take. '' when all is well.
 
     Only speaks up about trouble: 「全都贴上了」 every boot is noise, a skipped
-    override is the whole reason this file exists.
+    override is the whole reason this file exists. When `okww_dir` is given and
+    the report predates the installed overrides file (e.g. a fix just deployed
+    before OK-WW next starts), that report belongs to the replaced file and is
+    ignored here; `drift_line` still checks the newly installed copy immediately.
     """
+    if okww_dir is not None:
+        dest = target(okww_dir)
+        if dest is not None:
+            try:
+                if dest.is_file() and REPORT.is_file() and REPORT.stat().st_mtime < dest.stat().st_mtime:
+                    return ""
+            except OSError:
+                pass
     got = last_report()
     if not got:
         return ""

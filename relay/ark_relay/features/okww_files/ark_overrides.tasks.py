@@ -81,7 +81,7 @@ _LOG_CALLS = frozenset({"log_info", "log_debug", "log_error", "log_warning"})
 # same shapes.
 _SHAPES = {
     "DailyTask.claim_daily": "bb38fbec282a",
-    "DailyTask.get_total_daily_points": "3801bf94c417",
+    "DailyTask.get_total_daily_points": "7ffd5e81aa5f",
     "DailyTask.claim_battle_pass": "18db027b93ca",
     "FarmEchoTask.click_team_challenge": "d669deb3d44c",
     "BaseWWTask.get_stamina": "63b1734dc1bb",
@@ -1533,8 +1533,10 @@ def _read_stamina(task, in_dialog):
 _CLAIM_DAILY_SHA = "555de9348dc7"       # upstream claim_daily as copied in _claim_daily_checked
 # (v3.7.14-beta.2, 2026-11-02: v3.7.4..v3.7.13 were 2b4977b62f7c; the new body only wraps its two
 # log sentences in self.tr(), so the copy is unchanged and keeps English lines the relay reads)
-_GET_POINTS_SHA = "b082b5c41b29"        # upstream get_total_daily_points, replaced by _read_points
-# (v3.7.14-beta.2 fixture, tests/gamesim/upstream/okww-v3.7.14-beta.2/src/task/DailyTask.py.txt)
+_GET_POINTS_SHA = "1a3c22b367e2"        # upstream get_total_daily_points, replaced by _read_points
+# (v3.8.18, 2026-11-28, ledgers #207/#208: v3.7.14-beta.2 was b082b5c41b29; v3.8.18 delegates to
+# _read_daily_points() with the same int/info_set contract, but still rejects totals > 100 and
+# background-speck readings like 「.160」, so _read_points remains required)
 DAILY_TIERS = (20, 40, 60, 80, 100)
 DAILY_POINTS_LINE = "活跃奖励：活跃度 "
 DAILY_OK = "活跃奖励：领完核对通过"
