@@ -35,42 +35,85 @@ VAGUE = ("未知错误", "这一步", "有问题", "出错",
          "多半", "可能", "大概", "大约", "应该是", "似乎", "疑似", "也许", "或许",
          "估计", "差不多", "左右", "好像", "不确定", "貌似", "大致", "约 ", "约一", "不一定")
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
-# A link is something the reader taps or copies whole; it is not English prose.
-# Neither is a file path (a report may name 「文件位于 AntiCheatExpert\\pld.dat」):
-# anything with a separator and an extension, or a Windows drive.
-_URL = re.compile(r"https?://\S+")
+# 网址按 RFC 3986 仅匹配纯 ASCII 网址字符，允许成对圆/方括号（如 IPv6 [::1] 或路径中的 (x)），
+# 绝不跨越中文字符与中文标点（：；，。！？、（）【】《》）、引号或未配对括号，尾端不吞句末标点。
+_URL = re.compile(
+    r"https?://(?:\([A-Za-z0-9\-._~:/?#@!$&*+,;=%]*\)"
+    r"|\[[A-Za-z0-9\-._~:/?#@!$&*+,;=%]*\]"
+    r"|[A-Za-z0-9\-._~:/?#@!$&*+,;=%])+(?<![.,;:!?])"
+)
 # An error code (0xc0000005) is copied whole and searched for, like a link; it
 # is not English prose.
 _HEX = re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])")
-# 文件结尾是否为真实文件扩展名（含 .cmd；用于区分 MIME 类型如 image/png 与真实路径如 image/shot.png）。
-_FILE_EXT_END_RE = re.compile(
-    r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|cmd|ps1|sh"
-    r"|toml|yaml|yml|md|txt|html|db|ini|cfg|png|jpg))+$",
-    re.I,
-)
-# 协议版本号（如 HTTP/1.0、HTTP/1.1、HTTP/2）与常见 MIME 类型（如 application/json、text/html）：
-# 它们不是文件路径，plain() 必须按英文拦截，故障解析中也必须先剥离再提取文件。
-_PROTOCOL_VER_RE = re.compile(
-    r"(?<![A-Za-z0-9_/:.-])(?:HTTPS?|TLS|SSL|SSH|FTP|SOCKS|WSS?)/\d+(?:\.\d+)?(?![A-Za-z0-9_.-])",
-    re.I,
-)
-_MIME_TYPE_RE = re.compile(
-    r"(?<![A-Za-z0-9_/:.-])(?:application|text|image|audio|video|font|multipart|message|model)"
-    r"/[A-Za-z0-9][A-Za-z0-9.+-]*(?![A-Za-z0-9_.-])",
-    re.I,
-)
-_PATH = re.compile(
-    r"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\|/(?!/))\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+"
-    # 独立出现的文件名（如「MXU file_ops.rs」「maafw.log.gz」「run.cmd」）：仅放行带真实扩展名的文件。
-    r"|(?<![A-Za-z0-9_/:.-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
-    r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|cmd|ps1|sh|toml|yaml|yml"
-    r"|md|txt|html|db|ini|cfg|png|jpg))+(?![A-Za-z0-9_])",
-    re.I,
-)
+
+
+def _build_path_patterns() -> tuple[
+    re.Pattern[str], re.Pattern[str], re.Pattern[str], re.Pattern[str], re.Pattern[str]
+]:
+    """统一构建文件路径、协议版本号与 MIME 类型词法正则，避免在模块全局残留原始正则字符串。"""
+    exts = (
+        r"py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|cmd|ps1|sh"
+        r"|toml|yaml|yml|md|txt|html|db|ini|cfg|png|jpg|dat"
+    )
+    # 文件结尾是否为真实文件扩展名（含 .cmd/.dat；用于区分 MIME 类型如 image/png 与真实路径如 image/shot.png）。
+    file_ext_end = re.compile(rf"(?:\.(?:{exts}))+$", re.I)
+
+    # 通用协议/版本号（任意「英文词/纯数字或数字点号」，如 HTTP/1.1、HTTP/2、gRPC/1.0、TLS/1.3、RTSP/1.0、SIP/2.0）：
+    # 它们一律不是相对文件路径，plain() 必须按英文拦截，故障解析中也必须先剥离再提取文件。
+    protocol_ver = re.compile(
+        r"(?<![A-Za-z0-9_/:.-])[A-Za-z][A-Za-z0-9_-]*/\d+(?:\.\d+)*(?![A-Za-z0-9_/-]|\.[A-Za-z0-9_])"
+    )
+
+    # 常见 MIME 类型（如 application/json、text/html、image/png）：非真实文件路径。
+    mime_type = re.compile(
+        r"(?<![A-Za-z0-9_/:.-])(?:application|text|image|audio|video|font|multipart|message|model)"
+        r"/[A-Za-z0-9](?:[A-Za-z0-9.+-]*[A-Za-z0-9])?(?![A-Za-z0-9_/-]|\.[A-Za-z0-9_])",
+        re.I,
+    )
+
+    # Windows 盘符路径统一文法：
+    # - 严格限定 ASCII 路径字符，彻底排除中文字符、中文标点（：；，。！？、（）【】《》）、引号与盘符后的冒号；
+    # - 中间目录段（以 \ 或 / 结尾）允许含空格与括号标记（如 Program Files\、Program Files (x86)\），
+    #   但若某词本身已带真实扩展名（如 config.json），绝不跨越其后空格吞掉后续正文或异常类名；
+    # - 末段文件名不含空格且不以孤立点号结尾，防止把「D:\ark\config.json PermissionError」拼成一条路径。
+    win_tok = r"[A-Za-z0-9_.+~@#%-]+"
+    non_ext_tok = rf"(?![A-Za-z0-9_.+~@#%-]*\.(?:{exts})(?![A-Za-z0-9_]))[A-Za-z0-9_.+~@#%-]+"
+    win_dir_seg = (
+        rf"(?:{non_ext_tok}(?: ?\([A-Za-z0-9_.-]+\)| {non_ext_tok}){{0,4}}"
+        rf"|{win_tok})(?:\\+|/(?!/))"
+    )
+    win_final_seg = r"[A-Za-z0-9_.+~@#%-]*[A-Za-z0-9_+~@#%-]"
+    win_drive_path = (
+        rf"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\+|/(?!/))"
+        rf"(?:(?:{win_dir_seg})+{win_final_seg}?|{win_final_seg})"
+    )
+
+    # plain() 放行路径文法：盘符路径 + 相对路径（兼容双反斜杠） + 带真实扩展名的独立文件名。
+    plain_path = re.compile(
+        rf"{win_drive_path}"
+        r"|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:(?:\\+|/)[A-Za-z0-9_.-]*[A-Za-z0-9_-])+"
+        rf"|(?<![A-Za-z0-9_/:.-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
+        rf"(?:\.(?:{exts}))+(?![A-Za-z0-9_]|\.[A-Za-z0-9_])",
+        re.I,
+    )
+
+    # 故障上下文专用文件路径提取器：
+    # 仅认真实 Windows 盘符路径或带真实文件扩展名的路径/文件名，杜绝把 HTTP/1.1、gRPC/1.0、application/json、foo/bar 误抓成文件。
+    fault_file = re.compile(
+        rf"{win_drive_path}"
+        r"|(?<![A-Za-z0-9_/:.-])(?:[A-Za-z0-9_.-]+(?:\\+|/))*"
+        rf"[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
+        rf"(?:\.(?:{exts}))+(?![A-Za-z0-9_]|\.[A-Za-z0-9_])",
+        re.I,
+    )
+    return file_ext_end, protocol_ver, mime_type, plain_path, fault_file
+
+
+_FILE_EXT_END_RE, _PROTOCOL_VER_RE, _MIME_TYPE_RE, _PATH, _FAULT_FILE_RE = _build_path_patterns()
 
 
 def _is_protocol_or_mime(token: str) -> bool:
-    """判断单个词元是不是协议头（如 HTTP/1.1）或 MIME 类型（如 application/json），防止被当成文件路径放行。"""
+    """判断单个词元是不是协议/版本号（如 HTTP/1.1、gRPC/1.0）或 MIME 类型（如 application/json），防止被当成文件路径放行。"""
     tok = token.strip().rstrip(".,;:)'\"」）")
     if not tok:
         return False
@@ -81,7 +124,7 @@ def _is_protocol_or_mime(token: str) -> bool:
 
 
 def _blank_paths(text: str) -> str:
-    """在 plain() 检查英文词前遮蔽合法路径，但保留 HTTP/1.1、application/json 等协议/MIME 串以便照常拦截。"""
+    """在 plain() 检查英文词前遮蔽合法路径，但保留 HTTP/1.1、gRPC/1.0、application/json 等协议/MIME 串以便照常拦截。"""
     return _PATH.sub(lambda m: m.group(0) if _is_protocol_or_mime(m.group(0)) else " ", text)
 
 
@@ -1189,7 +1232,7 @@ class FaultInfo:
 
     head_zh: str = ""
     fault_kind: str = ""
-    exit_code: int | None = None
+    exit_code: int | str | None = None
     http_code: int | None = None
     win_error: int | None = None
     files: tuple[str, ...] = ()
@@ -1249,7 +1292,7 @@ _FAULT_RULES_PRE = (
     )),
 )
 
-# 常规异常分类规则（排在外部命令退出码与 HTTP 状态码之后，避免 URLError/RuntimeError 盖过具体状态码）。
+# 常规异常分类规则（排在外部命令退出码与 HTTP 错误码 >= 400 之后，避免 URLError/RuntimeError 盖过具体状态码）。
 _FAULT_RULES_POST = (
     ("not_found", re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I)),
     ("json_bad", re.compile(
@@ -1279,13 +1322,22 @@ _FAULT_RULES_FALLBACK = (
     ("runtime_error", re.compile(r"\bRuntimeError\b")),
 )
 
-# 明确属于外部命令/子程序退出码的词法规则（允许任意数量空格、Tab、连字符、下划线）。
+# 明确属于外部命令/子程序退出码的词法规则（严格拆分中英文分支）：
+# 1) 中文「退出码/返回码」允许可选空白或冒号等号；
+# 2) 英文键值（exit status / exit_code / returncode / rc 等）强制左侧无连字符或字母数字且右侧有显式分隔符，
+#    彻底杜绝把版本号 v2.34.0-rc-1 误判为退出码 -1，也杜绝把连字符吃成负号；
+# 3) 英文连字符形态（exit-status-500 / exit-code-127 / return-code-255，不含裸 rc-）提取正整数；
+# 4) 英文短语形态（helper.exe exited with code 128 / process exited 127）；
+# 5) Python CalledProcessError(127, 'adb') 构造形式。
 _EXPLICIT_EXIT_RE = re.compile(
-    r"(?:(?<![A-Za-z0-9_])(?:returned\s+non-zero\s+exit\s+status"
-    r"|exit(?:[\s_-]+status(?:[\s_-]+code)?|[\s_-]+code)"
-    r"|return[\s_-]?code|rc)(?![A-Za-z0-9_])"
-    r"|退出码)[\s=:：]*(-?\d+)(?![0-9A-Za-z_])"
-    r"|(?<![A-Za-z0-9_])CalledProcessError[\s(=:：]+(-?\d+)(?![0-9A-Za-z_])",
+    r"(?:退出码|返回码)\s*[:=：]?\s*(0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])"
+    r"|(?<![A-Za-z0-9_-])(?:returned\s+non-zero\s+exit[\s_-]+status"
+    r"|exit[\s_-]*status(?:[\s_-]*code)?|exit[\s_-]*code|return[\s_-]*code|returncode|rc)"
+    r"(?:\s*[:=：]\s*|\s+)(0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])"
+    r"|(?<![A-Za-z0-9_-])(?:exit-status|exit-code|return-code)-(\d+)(?![0-9A-Za-z_])"
+    r"|(?<![A-Za-z0-9_-])exited(?:\s+with(?:\s+(?:non-zero\s+)?(?:exit\s+)?(?:status|code))?)?"
+    r"(?:\s*[:=：]\s*|\s+)(0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])"
+    r"|(?<![A-Za-z0-9_])CalledProcessError[\s(=:：]+(0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])",
     re.I,
 )
 
@@ -1302,36 +1354,31 @@ _PROCESS_EXIT_CTX_RE = re.compile(
 
 # 外部命令退出语境下的裸 status 数值提取（兼容 status 128、status=127、status: 128、status-code=255）。
 _PROCESS_STATUS_NUM_RE = re.compile(
-    r"(?<![A-Za-z0-9_])status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+(-?\d+)(?![0-9A-Za-z_])",
+    r"(?<![A-Za-z0-9_-])status(?:[\s_-]*code)?(?![A-Za-z0-9_])(?:\s*[:=：]\s*|\s+)(0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])",
     re.I,
 )
 
-# 显式 HTTP 协议状态码（HTTP/1.1 502、HTTP/2 429、HTTP Error 503、HTTP 429、状态码 502）。
+# 显式 HTTP 协议状态码（HTTP/1.1 502、HTTP/2 429、HTTP Error 503、HTTP 429、状态码 502，
+# 以及显式 http_status 与 JSON 带引号键值形态如 {"status_code": 503}、{"http_status": 502}）。
 _EXPLICIT_HTTP_RE = re.compile(
     r"(?:(?<![A-Za-z0-9_])HTTP(?:\s*Error|/\d+(?:\.\d+)?)?[\s=:：]+"
-    r"|状态码[\s=:：]*)(\d{3})(?![0-9A-Za-z_])",
+    r"|状态码[\s=:：]*"
+    r"|(?<![A-Za-z0-9_])http[\s_-]+status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+"
+    r"|['\"](?:http[\s_-]+status(?:[\s_-]*code)?|status[\s_-]*code)['\"]\s*[:=：]\s*['\"]?"
+    r")(\d{3})(?!\d)(?![A-Za-z_])",
     re.I,
 )
 
 # 通用 HTTP 状态码键值写法（仅在非外部命令退出语境且状态码位于 _VALID_HTTP_CODES 时生效）。
 _HTTP_STATUS_KV_RE = re.compile(
-    r"(?<![A-Za-z0-9_])(?:http[\s_-]+)?status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+(\d{3})(?![0-9A-Za-z_])",
+    r"(?:(?<![A-Za-z0-9_])(?:http[\s_-]+)?status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+"
+    r"|['\"](?:http[\s_-]+)?status(?:[\s_-]*code)?['\"]\s*[:=：]\s*['\"]?"
+    r")(\d{3})(?!\d)(?![A-Za-z_])",
     re.I,
 )
 
 # Windows 系统错误码（如 [WinError 128]）。
 _WIN_ERROR_RE = re.compile(r"(?<![A-Za-z0-9_])WinError[\s=:：]+(\d+)(?![0-9A-Za-z_])", re.I)
-
-# 故障上下文专用文件路径提取器：
-# 仅认真实 Windows 磁盘路径（如 D:\ark\a.json、D:/ark/a.json）或带真实文件扩展名的路径/文件名，
-# 杜绝把 HTTP/1.1、application/json、foo/bar、1/3 误抓成文件路径。
-_FAULT_FILE_RE = re.compile(
-    r"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\|/(?!/))[^\s'\"`,;()\[\]{}（）【】<>，。！？]+"
-    r"|(?<![A-Za-z0-9_/:.-])(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
-    r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|cmd|ps1|sh"
-    r"|toml|yaml|yml|md|txt|html|db|ini|cfg|png|jpg))+(?![A-Za-z0-9_]|\.[A-Za-z0-9_])",
-    re.I,
-)
 
 # 整行开头即为纯技术异常头时，说明前面没有中文业务主干，避免把本地化报错尾误当主干。
 _LEADING_EXC_RE = re.compile(
@@ -1347,22 +1394,27 @@ _TECH_BOUNDARY_RE = re.compile(
     r"|HTTP(?:/\d+(?:\.\d+)?|\s*Error|\s+[1-5]\d{2})(?![0-9A-Za-z_])"
     r"|(?:http[\s_-]+)?status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+-?\d+"
     r"|(?:returned\s+non-zero\s+exit|exit(?:[\s_-]+status|[\s_-]+code)|return[\s_-]?code)(?![A-Za-z0-9_])"
+    r"|exited(?:\s+with(?:\s+(?:non-zero\s+)?(?:exit\s+)?(?:status|code))?)?(?:\s*[:=：]\s*|\s+)(?:0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])"
     r"|(?:waitpid|process\s+(?:ended|exited|terminated|failed)"
     r"|child\s+(?:process\s+)?(?:ended|exited|terminated|failed))(?![A-Za-z0-9_])"
     r"|Command\s+\["
     r"|subprocess(?:\.[A-Za-z_]+|\s+)"
     r"|(?:taskkill|tasklist|pwsh|powershell|schtasks|wevtutil|shutdown|adb|git|ssh|curl)(?:\.exe)?\s+[/-])"
+    r"|(?<![A-Za-z0-9_-])rc(?:\s*[:=：]\s*|\s+)(?:0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])"
+    r"|(?:退出码|返回码)\s*[:=：]?\s*(?:0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_])"
     r"|\[?\s*(?:WinError|Errno)\s+\d+"
     r"|<urlopen\b"
+    r"|\{\s*['\"][A-Za-z_]"
     r"|[:：]\s*(?:taskkill|tasklist|pwsh|powershell|schtasks|wevtutil|shutdown|adb|git|ssh|curl)\b"
     r"|[:：]\s*[A-Za-z_][A-Za-z0-9_.-]*\s+[A-Za-z]",
     re.I,
 )
 
-# 清洗中文主干内部残留的英文键值与带下划线标识符（彻底根除 _=429 这类残留）。
-_KV_ASCII_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*[^\s，。；！？（）()]+")
+# 清洗中文主干内部残留的英文键值与带下划线标识符（彻底根除 _=429 这类残留）；
+# 成对括号块同时覆盖全半角圆括号、中文方括号【】与英文方括号[]。
+_KV_ASCII_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*[^\s，。；！？（）()【】\[\]]+")
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./\-]*")
-_PAREN_BLOCK_RE = re.compile(r"[（(][^（）()]*[）)]")
+_PAREN_BLOCK_RE = re.compile(r"（[^（）]*）|\([^()]*\)|【[^【】]*】|\[[^\[\]]*\]")
 
 # 日志原话里的常见工程词转白话对照表（覆盖 JARGON 全部词条，按长词优先排列）。
 _JARGON_PLAIN_MAP = (
@@ -1395,6 +1447,14 @@ _JARGON_PLAIN_MAP = (
     ("原子", "完整"),
     ("幂等", "防重复"),
     ("接口", "数据入口"),
+)
+
+# 术语替换为白话后可能产生的相邻叠词收口（如「接口数据」替换后出现的「数据入口数据」→「返回数据」）。
+_PLAIN_DEDUP_MAP = (
+    ("数据入口数据", "返回数据"),
+    ("数据数据入口", "数据入口"),
+    ("保存保存", "保存"),
+    ("程序程序", "程序"),
 )
 
 # 日志原话里的模糊词规整对照表（覆盖 VAGUE 全部词条；保留否定含义，确保输出通过 plain()）。
@@ -1447,13 +1507,33 @@ _HEAD_FAIL_VERBS = (
 )
 
 
+def _display_path(path: str) -> str:
+    """将路径整理为干净展示形式：折叠 Python repr 产生的连续反斜杠（D:\\\\ark\\\\a.json → D:\\ark\\a.json）。"""
+    return re.sub(r"\\{2,}", r"\\", path.strip())
+
+
+def _path_norm_key(path: str) -> str:
+    """生成路径去重与比对用的统一归一化键：正反斜杠与连续反斜杠统一折叠为单反斜杠并转小写。"""
+    return re.sub(r"[\\/]+", r"\\", path.strip()).lower()
+
+
+def _parse_code_val(code_s: str) -> int | str:
+    """将提取出的退出码字符串转为十进制整数或规范小写十六进制错误码字符串。"""
+    return code_s.lower() if code_s.lower().startswith("0x") else int(code_s)
+
+
+def _is_bare_cmd_token(tok: str) -> bool:
+    """判断单个词元是不是不含目录的常见外部命令名（如 pwsh.exe），避免过早遮蔽导致命令边界失效。"""
+    return "\\" not in tok and "/" not in tok and any(pat.fullmatch(tok) for pat, _ in _CMD_NAMES)
+
+
 def _has_disallowed_english(text: str) -> bool:
-    """判断文本中是否含有未放行的英文词（含 HTTP/1.1、application/json 等协议与 MIME 串）。"""
+    """判断文本中是否含有未放行的英文词（含 HTTP/1.1、gRPC/1.0、application/json 等协议与 MIME 串）。"""
     return any(p.startswith("英文") for p in plain(text))
 
 
 def _normalize_plain_zh(text: str, strip_vague: bool = False) -> str:
-    """将中文文本里的工程术语与模糊词统一替换为直白人话。
+    """将中文文本里的工程术语与模糊词统一替换为直白人话，并清理删词后残留的孤立/重复标点与空括号。
 
     - 保护 _THEIR_TERMS（如上游原话「结束进程」「MaaEnd 进程超时」），避免改坏官方任务名；
     - strip_vague=False 用于纯中文日志（如「中继更新出错」→「中继更新发生运行异常」）；
@@ -1473,6 +1553,9 @@ def _normalize_plain_zh(text: str, strip_vague: bool = False) -> str:
         for old, new in _JARGON_PLAIN_MAP:
             if old in s:
                 s = s.replace(old, new)
+        for old, new in _PLAIN_DEDUP_MAP:
+            if old in s:
+                s = s.replace(old, new)
         for old, new in _VAGUE_PLAIN_MAP:
             if old in s:
                 s = s.replace(old, "" if strip_vague else new)
@@ -1480,48 +1563,64 @@ def _normalize_plain_zh(text: str, strip_vague: bool = False) -> str:
             break
     for i, term in enumerate(held):
         s = s.replace(f"\x01{i}\x01", term)
+
+    # 清理删除模糊词后留下的空括号、孤立前导/尾随逗号顿号及连续重复逗号（如「，，保存失败」→「保存失败」）。
+    for _ in range(3):
+        before = s
+        s = re.sub(r"\s+([，,、；;：:。！？）)】])", r"\1", s)
+        s = re.sub(r"([（(【])\s+", r"\1", s)
+        s = re.sub(r"（\s*[，,、；;：:\-—]*\s*）|\(\s*[，,、；;：:\-—]*\s*\)|【\s*[，,、；;：:\-—]*\s*】", "", s)
+        s = re.sub(r"([（(【])[，,、；;]+", r"\1", s)
+        s = re.sub(r"[，,、；;]+([）)】])", r"\1", s)
+        s = re.sub(r"([：:])[，,、；;]+", r"\1", s)
+        s = re.sub(r"([，,、；;])[，,、；;]+", r"\1", s)
+        s = re.sub(r"^[，,、；;\s]+", "", s)
+        s = re.sub(r"[，,、\s]+$", "", s)
+        if s == before:
+            break
     s = re.sub(r"\s{2,}", " ", s).strip()
     return s
 
 
 def _strip_proto_mime(text: str) -> str:
-    """剥离协议版本号（HTTP/1.1 等）与非文件扩展名的 MIME 类型（application/json 等）。"""
+    """剥离协议版本号（HTTP/1.1、gRPC/1.0 等）与非文件扩展名的 MIME 类型（application/json 等）。"""
     s = _PROTOCOL_VER_RE.sub(" ", text)
     return _MIME_TYPE_RE.sub(lambda m: m.group(0) if _FILE_EXT_END_RE.search(m.group(0)) else " ", s)
 
 
-def _extract_codes(no_url: str) -> tuple[int | None, int | None, int | None, str]:
+def _extract_codes(no_url: str) -> tuple[int | str | None, int | None, int | None, str]:
     """从去除了 URL 的文本中安全提取退出码、HTTP 状态码、WinError 与十六进制错误码。"""
     in_process_ctx = bool(_PROCESS_EXIT_CTX_RE.search(no_url))
 
     # 1. 先提取明确退出码，再将退出码片段遮蔽，确保 exit status 500 绝不会被 HTTP 规则二次拾取。
-    exit_code: int | None = None
+    exit_code: int | str | None = None
     if m := _EXPLICIT_EXIT_RE.search(no_url):
         code_s = next((g for g in m.groups() if g is not None), "")
         if code_s:
-            exit_code = int(code_s)
+            exit_code = _parse_code_val(code_s)
     no_exit = _EXPLICIT_EXIT_RE.sub(" ", no_url)
 
     # 2. 若仍未拿到退出码且处于进程退出语境（waitpid/process ended/child exited/taskkill 等），
     #    将同句里的裸 status=128/255/127 明确归类为退出码。
     if exit_code is None and in_process_ctx:
         if m := _PROCESS_STATUS_NUM_RE.search(no_exit):
-            exit_code = int(m.group(1))
+            exit_code = _parse_code_val(m.group(1))
 
-    # 3. 提取合法 HTTP 状态码：先认显式 HTTP/1.1、HTTP Error、状态码；
-    #    仅在非进程退出语境下再认 status_code / status-code / status=，且一律校验位于 _VALID_HTTP_CODES。
-    http_code: int | None = None
+    # 3. 提取合法 HTTP 状态码：收集显式 HTTP/JSON 码及（非进程退出语境下的）键值状态码；
+    #    若同时出现正常码（如 200/302）和错误码（>= 400），优先保留 >= 400 错误码。
+    http_candidates: list[int] = []
     for m in _EXPLICIT_HTTP_RE.finditer(no_exit):
         val = int(m.group(1))
         if val in _VALID_HTTP_CODES:
-            http_code = val
-            break
-    if http_code is None and not in_process_ctx:
+            http_candidates.append(val)
+    if not in_process_ctx:
         for m in _HTTP_STATUS_KV_RE.finditer(no_exit):
             val = int(m.group(1))
             if val in _VALID_HTTP_CODES:
-                http_code = val
-                break
+                http_candidates.append(val)
+    http_code: int | None = next((c for c in http_candidates if c >= 400), None)
+    if http_code is None and http_candidates:
+        http_code = http_candidates[0]
 
     # 4. 提取 WinError 系统错误码与 0x... 十六进制错误码。
     win_error: int | None = None
@@ -1533,14 +1632,19 @@ def _extract_codes(no_url: str) -> tuple[int | None, int | None, int | None, str
     return exit_code, http_code, win_error, hex_code
 
 
-def _classify_fault_kind(no_url: str, exit_code: int | None, http_code: int | None, win_error: int | None) -> str:
-    """按精确优先级归类故障类别，保证 DNS/超时/占用 > 退出码 > HTTP 状态码 > 常规异常 > WinError。"""
+def _classify_fault_kind(
+    no_url: str, exit_code: int | str | None, http_code: int | None, win_error: int | None
+) -> str:
+    """按精确优先级归类故障类别：DNS/超时/占用 > 退出码 > HTTP 错误码(>=400) > 常规异常 > WinError。
+
+    1xx/2xx/3xx（如 HTTP/1.1 200 OK）本身不是 HTTP 错误，绝不抢占 JSONDecodeError/KeyError 等真实故障类别。
+    """
     for kind, pat in _FAULT_RULES_PRE:
         if pat.search(no_url):
             return kind
     if exit_code is not None or re.search(r"\bCalledProcessError\b", no_url):
         return "process_exit"
-    if http_code is not None:
+    if http_code is not None and http_code >= 400:
         return "http_error"
     for kind, pat in _FAULT_RULES_POST:
         if pat.search(no_url):
@@ -1554,7 +1658,7 @@ def _classify_fault_kind(no_url: str, exit_code: int | None, http_code: int | No
 
 
 def _extract_files_and_cmds(no_url: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """先剥离协议头与 MIME 类型，再提取真实文件路径与命令名，并按 (类型, 归一化值) 严格去重。"""
+    """先剥离协议头与 MIME 类型，再提取真实文件路径与命令名，统一折叠双反斜杠并按归一化键严格去重。"""
     cleaned = _strip_proto_mime(no_url)
     seen: set[tuple[str, str]] = set()
     cmds: list[str] = []
@@ -1570,10 +1674,10 @@ def _extract_files_and_cmds(no_url: str) -> tuple[tuple[str, ...], tuple[str, ..
 
     cmd_norms = {c.lower() for c in cmds}
     for m in _FAULT_FILE_RE.finditer(cleaned):
-        raw_p = m.group(0).rstrip(".,;:)'\"」）]")
+        raw_p = _display_path(m.group(0).rstrip(".,;:)'\"」）]"))
         if not raw_p or _is_protocol_or_mime(raw_p):
             continue
-        norm = raw_p.replace("/", "\\").lower()
+        norm = _path_norm_key(raw_p)
         # 若裸文件名与已提取命令同名（如 pwsh.exe），只保留「命令 pwsh.exe」，避免重复输出。
         if "\\" not in norm and norm in cmd_norms:
             continue
@@ -1586,17 +1690,37 @@ def _extract_files_and_cmds(no_url: str) -> tuple[tuple[str, ...], tuple[str, ..
     return tuple(files), tuple(cmds)
 
 
-def _extract_head_zh(raw: str, extracted_codes: set[int]) -> str:
+def _extract_head_zh(raw: str, extracted_codes: set[int | str]) -> str:
     """从原始日志中切出干净的中文业务主干，彻底避免把技术诊断尾揉成乱码残片。"""
     # 1. 有显式分隔符「｜」或「|」时，直接取分隔符之前的业务描述。
     cand = re.split(r"\s*[｜|]\s*", raw, maxsplit=1)[0].strip()
     if not re.search(r"[\u4e00-\u9fff]", cand) or _LEADING_EXC_RE.search(cand):
         return ""
 
-    # 2. 去掉括号内含英文/协议/报错的补充块（如「（HTTP/1.1 502 Bad Gateway）」「（官网：<urlopen ...>）」）。
+    # 2. 先用收紧后的 URL 与路径文法做占位保护，再执行括号块剥离与技术边界切分，
+    #    防止 URL 查询串（如 ?status=503&rc=128）或路径里的 (x86) 被误切或误删。
+    kept: list[str] = []
+
+    def _hold_url(m: re.Match) -> str:
+        kept.append(m.group(0))
+        return f"\x00{len(kept) - 1}\x00"
+
+    def _hold_file(m: re.Match, skip_bare_cmd: bool = False) -> str:
+        tok = m.group(0)
+        if _is_protocol_or_mime(tok):
+            return " "
+        if skip_bare_cmd and _is_bare_cmd_token(tok):
+            return tok
+        kept.append(_display_path(tok))
+        return f"\x00{len(kept) - 1}\x00"
+
+    cand = _URL.sub(_hold_url, cand)
+    cand = _FAULT_FILE_RE.sub(lambda m: _hold_file(m, skip_bare_cmd=True), cand)
+
+    # 3. 去掉成对括号块（含（）、()、【】、[]）内含未放行英文/协议/报错的补充说明。
     def _drop_tech_paren(m: re.Match) -> str:
         inner = m.group(0)[1:-1]
-        return "" if _has_disallowed_english(inner) else m.group(0)
+        return " " if _has_disallowed_english(inner) else m.group(0)
 
     for _ in range(3):
         nxt = _PAREN_BLOCK_RE.sub(_drop_tech_paren, cand)
@@ -1604,29 +1728,17 @@ def _extract_head_zh(raw: str, extracted_codes: set[int]) -> str:
             break
         cand = nxt
 
-    # 3. 按中文之后出现的首个技术诊断边界截断（不把前导词如「subprocess调用失败」误切空）。
+    # 4. 按中文之后出现的首个技术诊断边界截断（不把前导词如「subprocess调用失败」误切空）。
     for m in _TECH_BOUNDARY_RE.finditer(cand):
         if re.search(r"[\u4e00-\u9fff]", cand[:m.start()]):
             cand = cand[:m.start()]
             break
 
-    # 4. 保护主干里合法的 URL 与真实文件路径（仅认磁盘路径/真实扩展名，绝不放行 foo/bar 或 GET/POST），
-    #    再整块清除残留英文键值、协议/MIME 与未允许标识符。
-    kept: list[str] = []
-
-    def _hold(m: re.Match) -> str:
-        tok = m.group(0)
-        if _is_protocol_or_mime(tok):
-            return " "
-        kept.append(tok)
-        return f"\x00{len(kept) - 1}\x00"
-
-    s = _URL.sub(_hold, cand)
-    s = _FAULT_FILE_RE.sub(_hold, s)
+    # 5. 补保护剩余合法文件名（如主干中单独提到的 pwsh.exe），再整块清除残留英文键值、协议/MIME 与未允许标识符。
+    s = _FAULT_FILE_RE.sub(lambda m: _hold_file(m, skip_bare_cmd=False), cand)
     s = _strip_proto_mime(s)
     s = _KV_ASCII_RE.sub(" ", s)
     s = re.sub(r"<[^>]*>", " ", s)
-    s = re.sub(r"\[[^\]]*\]", " ", s)
 
     def _clean_ident(m: re.Match) -> str:
         w = m.group(0)
@@ -1635,26 +1747,29 @@ def _extract_head_zh(raw: str, extracted_codes: set[int]) -> str:
         return ""
 
     s = _IDENT_RE.sub(_clean_ident, s)
-    for i, val in enumerate(kept):
-        s = s.replace(f"\x00{i}\x00", val)
 
-    # 5. 工程术语与模糊词规范化，并清理空括号、孤立符号、重复冒号和尾随孤立错误码数字。
+    # 6. 工程术语与模糊词规范化，并清理空括号、未闭合悬空开括号、孤立符号、重复冒号和尾随孤立错误码数字。
+    #    在此之后再还原 URL/路径占位符，确保网址末端的 ?status=503 或路径里的 -1 绝不被尾随数字清理误伤。
     s = _normalize_plain_zh(s, strip_vague=True)
-    s = re.sub(r"([（(])\s+", r"\1", s)
-    s = re.sub(r"\s+([）)])", r"\1", s)
-    s = re.sub(r"[（(]\s*[:：，,、\-—]*\s*[）)]", "", s)
+    s = re.sub(r"\[\s*[:：，,、\-—]*\s*\]", "", s)
     s = re.sub(r"['\"`]", "", s)
     s = re.sub(r"[:：]\s*[:：]+", "：", s)
     s = re.sub(r"\s+", " ", s)
     s = re.sub(r"[:：=_\-]+\s*-?\d+\.?\s*$", "", s)
     for code in extracted_codes:
         s = re.sub(rf"\s+{re.escape(str(code))}\.?\s*$", "", s)
-    s = re.sub(r"[：:,，；;｜|\-—_\s]+$", "", s)
-    s = re.sub(r"^[：:,，；;｜|\-—_\s]+", "", s)
+    s = re.sub(r"[：:,，；;、.｜|\-—_（(【\[\s]+$", "", s)
+    s = re.sub(r"^[：:,，；;、.｜|\-—_）)】\]\s]+", "", s)
+    for op, cl in (("（", "）"), ("(", ")"), ("【", "】")):
+        if s.count(op) == s.count(cl) + 1 and s.rfind(op) > s.rfind(cl):
+            s += cl
+
+    for i, val in enumerate(kept):
+        s = s.replace(f"\x00{i}\x00", val)
     if len(re.findall(r"[\u4e00-\u9fff]", s)) < 2:
         return ""
     if len(s) > 72 and not _URL.search(s):
-        return s[:72].rstrip("：:,，；;｜|-— ")
+        return s[:72].rstrip("：:,，；;、｜|-—_（(【[ ")
     return s
 
 
@@ -1674,7 +1789,7 @@ def _parse_fault(raw: str) -> FaultInfo:
     fault_kind = _classify_fault_kind(no_url, exit_code, http_code, win_error)
     files, cmds = _extract_files_and_cmds(no_url)
 
-    extracted_codes = {c for c in (exit_code, http_code, win_error) if c is not None}
+    extracted_codes: set[int | str] = {c for c in (exit_code, http_code, win_error) if c is not None}
     head_zh = _extract_head_zh(text, extracted_codes)
     return FaultInfo(
         head_zh=head_zh,
@@ -1696,7 +1811,7 @@ def _render_fault(info: FaultInfo) -> str:
     else:
         base_cause = _FAULT_TEMPLATES.get(info.fault_kind, "")
 
-    # 按 (类型, 归一化值) 统一去重拼装上下文细节，避免重复文件名或双层括号。
+    # 按 (类型, 归一化值) 统一去重拼装上下文细节，避免重复文件名（含双反斜杠/大小写差异）或双层括号。
     details: list[str] = []
     seen: set[tuple[str, str]] = set()
 
@@ -1706,18 +1821,31 @@ def _render_fault(info: FaultInfo) -> str:
             seen.add(key)
             details.append(label)
 
+    head_file_keys = {
+        _path_norm_key(m.group(0).rstrip(".,;:)'\"」）]"))
+        for m in _FAULT_FILE_RE.finditer(info.head_zh)
+    }
+
     for cmd in info.cmds:
         if cmd.lower() not in info.head_zh.lower():
             _add("cmd", f"命令 {cmd}", cmd)
     for fpath in info.files:
-        if fpath not in info.head_zh:
-            _add("file", f"文件 {fpath}", fpath.replace("/", "\\"))
-    if info.hex_code and info.hex_code not in info.head_zh:
+        disp = _display_path(fpath)
+        norm = _path_norm_key(disp)
+        if any(k == norm or k.endswith("\\" + norm) for k in head_file_keys):
+            continue
+        _add("file", f"文件 {disp}", norm)
+    if info.hex_code and info.hex_code.lower() not in info.head_zh.lower():
         _add("hex", f"错误码 {info.hex_code}", info.hex_code)
-    if info.http_code is not None and info.fault_kind != "http_error":
+    # 仅 >= 400 的 HTTP 错误码才作为故障细节补充展示，200/302 等正常响应码不当故障渲染。
+    if info.http_code is not None and info.http_code >= 400 and info.fault_kind != "http_error":
         _add("http", f"状态码 {info.http_code}", str(info.http_code))
     if info.exit_code is not None:
-        _add("exit", f"退出码 {info.exit_code}", str(info.exit_code))
+        if isinstance(info.exit_code, str) and info.exit_code.lower().startswith("0x"):
+            if info.exit_code.lower() != info.hex_code.lower():
+                _add("hex", f"错误码 {info.exit_code}", info.exit_code)
+        else:
+            _add("exit", f"退出码 {info.exit_code}", str(info.exit_code))
     if info.win_error is not None and info.fault_kind == "win_error":
         _add("win", f"系统错误码 {info.win_error}", str(info.win_error))
 
@@ -1747,6 +1875,8 @@ def fault_cause(what: str) -> str:
         return f"对方服务器返回了状态码 {info.http_code}"
     if info.fault_kind == "process_exit":
         if info.exit_code is not None:
+            if isinstance(info.exit_code, str) and info.exit_code.lower().startswith("0x"):
+                return f"外部命令执行失败（错误码 {info.exit_code}）"
             return f"外部命令执行失败（退出码 {info.exit_code}）"
         return "外部命令执行失败"
     if info.fault_kind == "win_error" and info.win_error is not None:

@@ -404,6 +404,136 @@ def _part_texts_wording():
                any(w in b1 for w in forbid_words)),
               ([], [], [], [], False))
 
+    print("\n[词法边界、退出码文法、双反斜杠去重、破损标点与 HTTP 正常码分级回归]")
+    # 1. URL / Windows 路径后紧跟中文标点或冒号：绝不吞异常类名，plain() 门禁绝不漏检
+    for raw, want_file, forbid_tok in (
+        (r"打开 D:\ark\config.json：PermissionError: Access is denied", r"D:\ark\config.json", "PermissionError"),
+        (r"写入 D:\ark\cfg.json；RuntimeError: disk full", r"D:\ark\cfg.json", "RuntimeError"),
+        (r"打开 D:\ark\config.json:PermissionError: Access is denied", r"D:\ark\config.json", "PermissionError"),
+    ):
+        out = texts.format_fault_reason(raw)
+        check(f"路径后紧跟标点不泄异常类名：{raw[:32]}",
+              (bool(texts.plain(raw)), texts._parse_fault(raw).files,
+               forbid_tok in out, out.count(want_file), texts.plain(out)),
+              (True, (want_file,), False, 1, []))
+    for leak_sample in (
+        r"打开 D:\ark\config.json：PermissionError",
+        r"写入 D:\ark\cfg.json；RuntimeError",
+        r"打开 D:\ark\config.json:PermissionError",
+        r"打开 D:\ark\config.json PermissionError",
+        "链接 https://example.com/a.json：KeyError",
+        "链接 (https://example.com/a.json)KeyError",
+        "协议 gRPC/1.0 失败",
+        "协议 TLS/1.3 失败",
+        "协议 RTSP/1.0 失败",
+        "协议 SIP/2.0 失败",
+    ):
+        check(f"plain() 严防路径/URL/通用协议版本漏检：{leak_sample}", bool(texts.plain(leak_sample)), True)
+
+    # 2. 中文标点紧贴 URL + 含查询串的 URL 占位优先于技术边界切分
+    for raw, want_url, want_kind, want_http in (
+        ("拉取官网（https://cos.example.com/manifest.json）失败：HTTP/1.1 503 Service Unavailable",
+         "https://cos.example.com/manifest.json", "http_error", 503),
+        ("拉取https://cos.example.com/manifest.json：HTTP/1.1 503 Service Unavailable",
+         "https://cos.example.com/manifest.json", "http_error", 503),
+        ("拉取https://cos.example.com/a.json，HTTP/1.1 502 Bad Gateway",
+         "https://cos.example.com/a.json", "http_error", 502),
+        ("拉取 https://api.example.com/check?status=503&rc=128 失败：ConnectionRefusedError",
+         "https://api.example.com/check?status=503&rc=128", "conn_reset", None),
+    ):
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"URL 严格 ASCII 边界与先占位后切分：{raw[:36]}",
+              (info.url, info.fault_kind, info.http_code, info.exit_code, want_url in out, texts.plain(out)),
+              (want_url, want_kind, want_http, None, True, []))
+
+    # 3. 含空格 Windows 路径不拦腰拆分，且带扩展名后的空格绝不吞后续正文
+    sp1 = r"FileNotFoundError: C:\Program Files\AUTO-MAS\app.exe"
+    sp2 = r"打开 C:\Program Files (x86)\AUTO-MAS\foo.dll 失败：PermissionError: 'C:\\Program Files (x86)\\AUTO-MAS\\foo.dll'"
+    sp3 = r"FileNotFoundError: missing D:\ark\a.json and logs/b.json"
+    check("含空格 Windows 路径整条保留且过 plain()",
+          (texts._parse_fault(sp1).files, texts.plain(texts.format_fault_reason(sp1)),
+           texts._parse_fault(sp2).files, texts.format_fault_reason(sp2).count(r"C:\Program Files (x86)\AUTO-MAS\foo.dll"),
+           texts.plain(texts.format_fault_reason(sp2)),
+           texts._parse_fault(sp3).files, texts.plain(texts.format_fault_reason(sp3))),
+          ((r"C:\Program Files\AUTO-MAS\app.exe",), [],
+           (r"C:\Program Files (x86)\AUTO-MAS\foo.dll",), 1, [],
+           (r"D:\ark\a.json", "logs/b.json"), []))
+
+    # 4. 退出码中英文拆分：版本号 -rc-1 不误判退出码，exit-status-500 提正数 500，覆盖 exited 句式
+    rc1 = "终末地更新失败 ｜ MaaEnd v2.34.0-rc-1 download failed: HTTP/1.1 503 Service Unavailable"
+    rc2 = "终末地版本校验失败 ｜ MaaEnd v2.34.0-rc-2 ValueError: bad manifest"
+    check("版本号 -rc-1 / -rc-2 绝不误判为负退出码",
+          (texts._parse_fault(rc1).fault_kind, texts._parse_fault(rc1).exit_code, texts._parse_fault(rc1).http_code,
+           texts._parse_fault(rc2).fault_kind, texts._parse_fault(rc2).exit_code,
+           texts.plain(texts.format_fault_reason(rc1)), texts.plain(texts.format_fault_reason(rc2))),
+          ("http_error", None, 503, "value_error", None, [], []))
+    for raw, want_code, want_file in (
+        ("同步脚本失败 exit-status-500", 500, ()),
+        ("同步脚本失败 exit-code-127", 127, ()),
+        ("同步脚本失败 return-code-255", 255, ()),
+        ("helper.exe exited with code 128", 128, ("helper.exe",)),
+        ("process exited 127", 127, ()),
+        ("exit status 0xc0000005", "0xc0000005", ()),
+    ):
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"连字符/短语/十六进制退出码准确提取：{raw}",
+              (info.fault_kind, info.exit_code, info.files, texts.plain(out)),
+              ("process_exit", want_code, want_file, []))
+
+    # 5. 双反斜杠 repr 路径归一化展示与跨主干去重
+    repr1 = r"保存 D:\ark\config.json 失败：PermissionError: [WinError 5] Access is denied: 'D:\\ark\\config.json'"
+    repr2 = r"写入配置失败 ｜ D:\ark\config.json PermissionError: [WinError 5] Access is denied: 'D:\\ark\\config.json'"
+    repr3 = r"保存 d:/ark/config.json 失败：PermissionError: 'D:\\Ark\\Config.json'"
+    out_r1, out_r2, out_r3 = (texts.format_fault_reason(x) for x in (repr1, repr2, repr3))
+    check("双反斜杠 Windows repr 路径折叠展示且与主干严格去重",
+          (r"\\" in out_r1, out_r1.count(r"D:\ark\config.json"),
+           r"\\" in out_r2, out_r2.count(r"D:\ark\config.json"),
+           r"\\" in out_r3, out_r3.lower().count("config.json"),
+           texts.plain(out_r1), texts.plain(out_r2), texts.plain(out_r3)),
+          (False, 1, False, 1, False, 1, [], [], []))
+
+    # 6. 【】块、未闭合开括号、连续模糊词逗号与「接口数据」叠词清理
+    for raw, forbid_frag in (
+        (r"写入失败【WinError 32】文件正被占用 D:\ark\state.json", ("【", "】")),
+        ("读取失败【PermissionError: Access is denied】", ("【", "】")),
+        ("下载失败（TimeoutError: read timed out", ("（——", "（，")),
+        ("写入失败【TimeoutError: read timed out", ("【——", "【")),
+        ("可能，大概，落盘失败", ("，，", "，保存")),
+    ):
+        out = texts.format_fault_reason(raw)
+        body = texts.relay_error_body("ark.service", raw, "09:21:00")
+        check(f"破损括号与模糊词孤立标点清零：{raw[:28]}",
+              (any(f in out for f in forbid_frag), any(f in body for f in forbid_frag),
+               texts.plain(out), texts.plain(body)),
+              (False, False, [], []))
+    check("纯中文连续模糊词清理后不留前导逗号", texts.format_fault_reason("可能，大概，落盘失败"), "保存失败")
+
+    # 7. HTTP 正常码(200/302)不抢占真实异常，JSON 键值状态码正确识别，消除「数据入口数据」叠词
+    h200_json = "解析接口数据失败 ｜ HTTP/1.1 200 OK, Content-Type: text/html, JSONDecodeError: Expecting value"
+    h200_key = "解析失败 ｜ HTTP/1.1 200 OK KeyError: 'data'"
+    h200_503 = "上游转发失败 ｜ HTTP/1.1 200 OK -> HTTP/1.1 503 Service Unavailable"
+    json_503 = '拉取数据失败 ｜ {"status_code": 503}'
+    json_502 = '推送失败 {"http_status": 502}'
+    out_j = texts.format_fault_reason(h200_json)
+    out_k = texts.format_fault_reason(h200_key)
+    out_m = texts.format_fault_reason(h200_503)
+    out_j503 = texts.format_fault_reason(json_503)
+    out_j502 = texts.format_fault_reason(json_502)
+    check("HTTP 200 不盖真实解析异常且不渲染状态码 200，消除数据入口数据叠词",
+          (texts._parse_fault(h200_json).fault_kind, "收到的数据格式是坏的" in out_j,
+           "状态码 200" in out_j, "数据入口数据" in out_j, "解析返回数据失败" in out_j, texts.plain(out_j),
+           texts._parse_fault(h200_key).fault_kind, "读取数据时缺少必要内容" in out_k,
+           "状态码 200" in out_k, texts.plain(out_k)),
+          ("json_bad", True, False, False, True, [],
+           "key_error", True, False, []))
+    check("HTTP 200 与 503 并存优先保留 503，JSON 带引号状态码准确识别",
+          (texts._parse_fault(h200_503).http_code, "状态码 503" in out_m, texts.plain(out_m),
+           texts._parse_fault(json_503).http_code, "状态码 503" in out_j503, texts.plain(out_j503),
+           texts._parse_fault(json_502).http_code, "状态码 502" in out_j502, texts.plain(out_j502)),
+          (503, True, [], 503, True, [], 502, True, []))
+
 
 def _part_user_switches():  # noqa: C901
 
