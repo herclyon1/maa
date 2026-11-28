@@ -195,9 +195,9 @@ def _script_of(automas_dir, uid: str) -> tuple[str, str]:
     cfg_dir = Path(automas_dir) / "config"
     kind = (plan._scripts(cfg_dir).get(uid) or {}).get("kind") or ""
     node = plan._load(cfg_dir / "ScriptConfig.json").get(uid) or {}
-    # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users
+    # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users；经 info_view 兼容小写 info.name
     users = mastercfg.user_data(node).values()
-    names = [str((u.get("Info") or {}).get("Name") or "") for u in users if isinstance(u, dict)]
+    names = [str(mastercfg.info_view(u).get("Name") or "") for u in users if isinstance(u, dict)]
     return kind, next((n for n in names if n), "")
 
 

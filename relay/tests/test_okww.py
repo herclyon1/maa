@@ -8168,6 +8168,93 @@ def _part_okww_walking_timeout_and_unknown_plain():
                "这种报错中继还不认识" not in alarm_pair[1] if alarm_pair else False,
                texts.plain(alarm_pair[1]) if alarm_pair else ["missing"]),
               (True, True, True, True, True, True, []))
+
+        print("[4. 未登记任务 EchoBossTask + Daily Task exception stopped：先拆壳保留已知中文原因与真报错原文]")
+        records.clear()
+        outcome._OKWW_UNTRANSLATED.clear()
+        echo_boss_log = (
+            REAL_FORGERY_LOG
+            .replace("ForgeryTask", "EchoBossTask")
+            .replace("farm_forgery", "farm_echo_boss")
+        )
+        eb_err = outcome._okww_error(echo_boss_log)
+        check("未登记任务拆壳后保留已知中文原因「进场走位时等不到进入战斗（超时）」且过 plain()",
+              (eb_err.startswith("某个任务："),
+               "进场走位时等不到进入战斗（超时）" in eb_err,
+               "wait condition failed while walking" not in eb_err,
+               texts.plain(eb_err)),
+              (True, True, True, []))
+        eb_alarm = getattr(records[0], errwatch.ALARM, None) if records else None
+        check("未登记任务拆壳后 relay.log 记真报错原文（非包装壳）且群告警带中文原因",
+              (len(records),
+               "EchoBossTask" in records[0].getMessage() if records else False,
+               "wait condition failed while walking" in records[0].getMessage() if records else False,
+               "Daily Task exception stopped" not in records[0].getMessage() if records else False,
+               eb_alarm is not None and "进场走位时等不到进入战斗（超时）" in eb_alarm[1],
+               texts.plain(eb_alarm[1]) if eb_alarm else ["missing"]),
+              (1, True, True, True, True, []))
+
+        print("[5. 缺少 info_set 错误行时从 Traceback 末行异常正文拆壳，杜绝 RuntimeError 被静默吞错]")
+        records.clear()
+        outcome._OKWW_UNTRANSLATED.clear()
+        no_info_runtime_log = (
+            "\n".join(ln for ln in REAL_FORGERY_LOG.splitlines() if "info_set 错误" not in ln) + "\n"
+        ).replace(
+            "Exception: wait condition failed while walking",
+            "RuntimeError: brand new upstream crash 42",
+        )
+        rt_err = outcome._okww_error(no_info_runtime_log)
+        rt_alarm = getattr(records[0], errwatch.ALARM, None) if records else None
+        check("无 info_set 错误时直落 RuntimeError 不被吞成「日常清单整个停了」",
+              (rt_err.startswith("凝素领域："),
+               "中继还不认识这条错" in rt_err,
+               "日常清单整个停了" not in rt_err,
+               "brand new upstream crash 42" not in rt_err,
+               texts.plain(rt_err)),
+              (True, True, True, True, []))
+        check("无 info_set 错误时 RuntimeError 正常记 1 条 WARNING 含完整原文并推纯白话群告警",
+              (len(records),
+               "ForgeryTask" in records[0].getMessage() if records else False,
+               "RuntimeError" in records[0].getMessage() if records else False,
+               "brand new upstream crash 42" in records[0].getMessage() if records else False,
+               rt_alarm is not None and texts.plain(rt_alarm[1]) == []),
+              (1, True, True, True, True))
+
+        print("[6. 缺少 info_set 错误行但 Traceback 末行是已知英文报错：精确译出且 0 WARNING]")
+        records.clear()
+        outcome._OKWW_UNTRANSLATED.clear()
+        no_info_walk_log = "\n".join(
+            ln for ln in REAL_FORGERY_LOG.splitlines() if "info_set 错误" not in ln
+        ) + "\n"
+        check("无 info_set 错误行时从 Exception 末行译出进场走位超时且 0 WARNING",
+              (outcome._okww_error(no_info_walk_log), records),
+              ("凝素领域：进场走位时等不到进入战斗（超时）", []))
+
+        print("[7. 拆壳递归保留 text/at：紧邻的 wait_until timeout 秒数不丢失]")
+        records.clear()
+        outcome._OKWW_UNTRANSLATED.clear()
+        timed_walk_log = REAL_FORGERY_LOG.replace(
+            "2026-11-28 21:53:59,147 INFO TaskExecutor DailyTask:info_set 错误",
+            "2026-11-28 21:53:59,100 INFO TaskExecutor TaskExecutor:wait_until timeout "
+            "<bound method BaseCombatTask.in_combat of <ForgeryTask>> 20.0 seconds\n"
+            "2026-11-28 21:53:59,147 INFO TaskExecutor DailyTask:info_set 错误",
+        )
+        timed_err = outcome._okww_error(timed_walk_log)
+        check("拆壳后保留「（等了 20 秒）」且 0 WARNING",
+              (timed_err, texts.plain(timed_err), records),
+              ("凝素领域：进场走位时等不到进入战斗（超时）（等了 20 秒）", [], []))
+
+        print("[8. 未登记任务 + 包装壳且无内层原文：不输出 None：日常清单整个停了，正常告警并走白话模板]")
+        records.clear()
+        outcome._OKWW_UNTRANSLATED.clear()
+        bare_echo_log = (
+            "\n".join(ln for ln in echo_boss_log.splitlines() if "info_set 错误" not in ln) + "\n"
+        ).replace("Exception: wait condition failed while walking", "Exception")
+        bare_err = outcome._okww_error(bare_echo_log)
+        check("未登记任务拆不出内层原文时不出现 None 且走白话兜底",
+              (bare_err.startswith("某个任务："), "None" not in bare_err,
+               texts.plain(bare_err), len(records)),
+              (True, True, [], 1))
     finally:
         outcome._log_collector_okww.removeHandler(h)
         outcome._OKWW_UNTRANSLATED.clear()

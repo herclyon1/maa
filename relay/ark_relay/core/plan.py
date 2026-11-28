@@ -544,7 +544,8 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
         for user in users.values():
             if not isinstance(user, dict):
                 continue
-            if not (user.get("Info") or {}).get("IfQuickConfig"):
+            # 经 info_view 读取，兼容 v5.10 插件适配器仅含小写 info.if_quick_config 的账号条目
+            if not masuser.info_view(user).get("IfQuickConfig"):
                 continue
             task = user.get("Task") or {}
             return {dst: task[src] for src, dst in mapping.items()

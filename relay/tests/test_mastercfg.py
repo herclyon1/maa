@@ -4662,6 +4662,153 @@ data:
               ("\n    users:\n" in patched_maa, "\n    UserData:\n" in patched_maa,
                fmp.inspect_yaml_text(patched_yaml)["ok"]),
               (True, False, True))
+
+        print("[4. CRLF 实文件落盘保真（_set_stage/_set_medicine/_set_wait_time/apply_yaml_file）]")
+        crlf_root = tmpdir()
+        crlf_cfg = crlf_root / "config"
+        crlf_cfg.mkdir(parents=True)
+        # 构造带尾空格 Stage: 分组头 + StaminaPipelineBackup 嵌套 JSON + MaaEnd 未接管更新的纯 CRLF 文件
+        crlf_src = (
+            SCRIPTS_V510
+            .replace("          Stage:\n", "          Stage:   \n", 1)
+            .replace("      TakeoverEnabled: true\n      Channel: beta\n    UserData:",
+                     "      TakeoverEnabled: false\n      Channel: stable\n    UserData:", 1)
+            .replace("\n", "\r\n")
+        )
+        crlf_yaml = crlf_cfg / "scripts.yaml"
+        crlf_yaml.write_bytes(crlf_src.encode("utf-8"))
+        orig_crlf = crlf_src.count("\r\n")
+        check("CRLF 样本初始全为 CRLF 且无裸 LF",
+              (orig_crlf > 50, crlf_yaml.read_bytes().count(b"\n") - crlf_yaml.read_bytes().count(b"\r\n")),
+              (True, 0))
+
+        os.environ["ARK_AUTOMAS_DIR"] = str(crlf_root)
+        ok_cs, msg_cs = commands._set_stage("CE-6")
+        b1 = crlf_yaml.read_bytes()
+        check("CRLF 离线 _set_stage 成功且全盘保留 CRLF（bare_lf=0）",
+              (ok_cs, "CE-6" in msg_cs, b1.count(b"\r\n"), b1.count(b"\n") - b1.count(b"\r\n")),
+              (True, True, orig_crlf, 0))
+
+        ok_cm, msg_cm = commands._set_medicine(12)
+        b2 = crlf_yaml.read_bytes()
+        check("CRLF 离线 _set_medicine 成功且全盘保留 CRLF（bare_lf=0）",
+              (ok_cm, "12" in msg_cm, b2.count(b"\r\n"), b2.count(b"\n") - b2.count(b"\r\n")),
+              (True, True, orig_crlf, 0))
+
+        ok_cw, msg_cw = commands._set_wait_time(120)
+        b3 = crlf_yaml.read_bytes()
+        check("CRLF 离线 _set_wait_time 成功且全盘保留 CRLF（bare_lf=0）",
+              (ok_cw, "120" in msg_cw, b3.count(b"\r\n"), b3.count(b"\n") - b3.count(b"\r\n")),
+              (True, True, orig_crlf, 0))
+
+        crlf_doc = mastercfg.read(crlf_cfg / "ScriptConfig.json")
+        crlf_maa_u = crlf_doc[maa_uid]["SubConfigsInfo"]["UserData"][u_uid]
+        crlf_maaend = crlf_doc["59da8762-8fa7-4260-8aee-10f9ca00097a"]
+        check("CRLF 回写后数值准确且 StaminaPipelineBackup 纹丝不动、users 键名保留",
+              (crlf_maa_u["Stage"]["Stage"], crlf_maa_u["Stage"]["MedicineNumb"],
+               crlf_maaend["Game"]["WaitTime"],
+               '"Stage": "YW-4"' in crlf_maa_u["Data"]["StaminaPipelineBackup"],
+               b"\r\n    users:\r\n" in b3.split(b"59da8762-8fa7-4260-8aee-10f9ca00097a:")[0]),
+              ("CE-6", 12, 120, True, True))
+
+        # apply_yaml_file 落盘同样 100% 保留 CRLF
+        hl_file = crlf_root / "state" / "HARDLOCK.json"
+        hl_file.parent.mkdir(parents=True)
+        applied = fmp.apply_yaml_file(crlf_yaml, hardlock_file=hl_file)
+        b4 = crlf_yaml.read_bytes()
+        check("fix_maaend_preupdate.apply_yaml_file 落盘保留全部 CRLF 且修通 Update",
+              (applied["changed"], applied["ok"],
+               b4.count(b"\r\n"), b4.count(b"\n") - b4.count(b"\r\n"),
+               b"\r\n    users:\r\n" in b4.split(b"59da8762-8fa7-4260-8aee-10f9ca00097a:")[0]),
+              (True, True, orig_crlf, 0, True))
+
+        print("[5. mastercfg.user_data(raw_node) 空 UserData 不遮蔽非空 users]")
+        raw_node_dual = {
+            "Info": {"Name": "MAA"},
+            "UserData": {"order": [], "data": {}},
+            "users": {
+                "order": [{"uid": "u-active", "type": "MaaUserConfig"}],
+                "data": {"u-active": {"Info": {"Name": "ark-real", "Status": True}}},
+            },
+        }
+        got_raw = mastercfg.user_data(raw_node_dual)
+        check("raw_node 空 UserData + 非空 users 命中真实 users",
+              ("u-active" in got_raw, (got_raw.get("u-active") or {}).get("Info", {}).get("Name")),
+              (True, "ark-real"))
+        raw_node_plain_empty = {
+            "Info": {"Name": "MAA"},
+            "UserData": {},
+            "users": {"u-plain": {"Info": {"Name": "ark-plain"}}},
+        }
+        check("raw_node 空字典 UserData + 非空字典 users 命中真实 users",
+              "u-plain" in mastercfg.user_data(raw_node_plain_empty), True)
+        raw_node_both_empty = {
+            "Info": {"Name": "MAA"},
+            "UserData": {"order": [], "data": {}},
+            "users": {"order": [], "data": {}},
+        }
+        check("raw_node 双空返回空集合结构", mastercfg.user_data(raw_node_both_empty), {"instances": []})
+
+        print("[6. info_view 接线闭环：仅含小写 info 的账号在 plan / runwatch / snapshot 全链生效]")
+        low_root = tmpdir()
+        low_cfg = low_root / "config"
+        low_cfg.mkdir(parents=True)
+        LOW_SCRIPTS = """\
+order:
+- uid: okww-low-1
+  type: OkwwConfig
+data:
+  okww-low-1:
+    Info:
+      Name: OK-WW
+      RootPath: D:\\ark\\okww
+    users:
+      order:
+      - uid: u-low-1
+        type: OkwwUserConfig
+      data:
+        u-low-1:
+          info:
+            name: wuwa-lower
+            enabled: true
+            if_quick_config: true
+          Task:
+            WhichToFarm: Forgery Challenge
+            WhichForgeryChallengeToFarm: 2
+"""
+        (low_cfg / "scripts.yaml").write_text(LOW_SCRIPTS, encoding="utf-8")
+        ov = plan._okww_quick_overrides(low_root)
+        check("plan._okww_quick_overrides 经 info_view 读出小写 info.if_quick_config",
+              ov, {"Which to Farm": "Forgery Challenge", "Which Forgery Challenge to Farm": 2})
+        check("runwatch._script_of 经 info_view 读出小写 info.name",
+              runwatch._script_of(low_root, "okww-low-1"), ("OK-WW", "wuwa-lower"))
+
+        orig_snap_post = snapshot._post
+        try:
+            def _fake_snap_post(path, body=None, timeout=5):
+                if path == "/api/scripts/get":
+                    return {"data": {
+                        "s-end": {"Info": {"Name": "MaaEnd"}},
+                        "s-okww": {"Info": {"Name": "OK-WW"}},
+                    }}
+                if path == "/api/scripts/user/get":
+                    sid = (body or {}).get("scriptId")
+                    if sid == "s-end":
+                        return {"data": {"u1": {"info": {"name": "ef-low", "enabled": True, "if_quick_config": True},
+                                                "Task": {"SanityTaskType": "AutoEssence", "IfAutoEssence": True}}}}
+                    if sid == "s-okww":
+                        return {"data": {"u2": {"info": {"name": "ww-low", "enabled": True, "if_quick_config": True},
+                                                "Task": {"WhichToFarm": "Simulation Challenge"}}}}
+                return {"data": {}}
+            snapshot._post = _fake_snap_post
+            snap_out: dict = {}
+            snapshot._mas(snap_out)
+            check("snapshot._mas 经 info_view 识别 MaaEnd 与 OK-WW 小写 info.if_quick_config=True",
+                  (snap_out.get("MaaEnd", {}).get("这些设置生效吗"),
+                   snap_out.get("OK-WW(MAS侧)", {}).get("这些设置生效吗")),
+                  ("生效", "生效"))
+        finally:
+            snapshot._post = orig_snap_post
     finally:
         plan.log.removeHandler(wh)
         plan._annihilation_done_tomorrow = orig_done

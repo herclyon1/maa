@@ -329,11 +329,17 @@ def user_data(node: dict | None) -> dict:
             val = sub.get(key)
             if isinstance(val, dict):
                 return val
-    # 兼容直接传入未经过 legacy() 转换的原始脚本字典
+    # 兼容直接传入未经过 legacy() 转换的原始脚本字典（同样两轮非空优先，防止空 UserData 遮蔽真实 users）
+    raw_views: list[dict] = []
     for key in ("UserData", "users"):
         val = node.get(key)
         if isinstance(val, dict):
-            return legacy(val) if _collection(val) else val
+            view = legacy(val) if _collection(val) else val
+            if _has_collection_entries(view):
+                return view
+            raw_views.append(view)
+    if raw_views:
+        return raw_views[0]
     return {}
 
 

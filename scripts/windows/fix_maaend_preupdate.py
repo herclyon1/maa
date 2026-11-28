@@ -237,7 +237,9 @@ def apply_yaml_file(path: Path, *, hardlock_file: Path = DEFAULT_HARDLOCK) -> di
     """Backup and atomically patch `scripts.yaml` (refuses while hardlocked)."""
     if why := check_hardlock(hardlock_file):
         raise PermissionError(f"{why}，禁止写入 {path}")
-    raw = path.read_text(encoding="utf-8")
+    # 以 newline="" 保留原文件 CRLF 换行符，避免落盘后丢失 Windows 换行格式
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        raw = fh.read()
     before = inspect_yaml_text(raw, name=path.name)
     if before["ok"]:
         return {**before, "changed": False, "backup": ""}
@@ -256,7 +258,8 @@ def apply_yaml_file(path: Path, *, hardlock_file: Path = DEFAULT_HARDLOCK) -> di
         except OSError:
             pass
         raise
-    after = inspect_yaml_text(path.read_text(encoding="utf-8"), name=path.name)
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        after = inspect_yaml_text(fh.read(), name=path.name)
     if not after["ok"]:
         raise RuntimeError(f"写入后回读校验未通过：{after['gaps']}")
     return {**after, "changed": True, "backup": str(backup)}

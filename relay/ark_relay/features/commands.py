@@ -127,7 +127,9 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
     path = masconfig.source(path)
     if not path.exists():
         return False, f"配置文件不存在: {path}"
-    original = path.read_text(encoding="utf-8")
+    # 以 newline="" 读取，完整保留 Windows 配置文件原有的 CRLF 换行符，避免落盘时清零 CRLF
+    with path.open("r", encoding="utf-8", newline="") as fh:
+        original = fh.read()
     try:
         before = masconfig.parse_text(path, original)
     except ValueError as exc:
@@ -231,7 +233,7 @@ def _set_stage(value: str) -> tuple[bool, str]:
         # "Stage": "..." 的 JSON 字符串，且 Stage: 分组头后面紧跟换行；
         # 只按行内水平空白匹配真实 YAML 标量行，既避免误改备份串，也原样保留 users/UserData 键名。
         if masuser.source(_script_config()).suffix != ".json":
-            yhits = re.findall(r"(?m)^[ \t]*Stage:[ \t]+[^\s\r\n][^\r\n]*$", raw)
+            yhits = re.findall(r"(?m)^[ \t]*Stage:[ \t]+[^\s\r\n][^\r\n]*\r?$", raw)
             if len(yhits) == 1:
                 return re.sub(r"(?m)^([ \t]*Stage:[ \t]+)[^\s\r\n][^\r\n]*?(\r?)$", rf"\g<1>{stage}\2", raw, count=1)
             raise ValueError(f'找到 {len(yhits)} 处 "Stage"，预期恰好 1 处')

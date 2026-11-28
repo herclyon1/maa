@@ -1735,10 +1735,13 @@ def _okww_error(text: str) -> str:
     tb_block = text[head.end():nxt]
     excs = _OKWW_EXC_LINE.findall(tb_block)
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
+    # 提取本段 Traceback 末行异常正文（如 Exception: <err> / RuntimeError: <err>），
+    # 供 farm 4c error 直接采用，以及 Daily Task exception stopped 缺少 info_set 错误时兜底拆壳。
+    tb_msg = excs[-1][1].lstrip(": ").strip() if excs else ""
     if "farm 4c error" in msg:
         # The catch-all sentence (see _OKWW_MSG_ZH): the reason is the exception
         # printed under it, e.g. 「RuntimeError: Teleport to boss failed」.
-        msg = excs[-1][1].lstrip(": ").strip() if excs else ""
+        msg = tb_msg
     if task in ("DailyTask", "TaskExecutor"):
         # Raised by the wrapper layer itself (such as
         # 「NightmareNestTask Failed」or 「run_task_by_class <class …>」): the real
@@ -1763,7 +1766,7 @@ def _okww_error(text: str) -> str:
         before_tasks = okww_info(text, until=head.start())["tasks"]
         if before_tasks:
             task = _OKWW_TASK_BY_STEP.get(before_tasks[-1].split()[0], task)
-    return _okww_say(task, msg, exc, text, head.start())
+    return _okww_say(task, msg, exc, text, head.start(), tb_msg=tb_msg)
 
 
 _EVENT_GAP_SECONDS = 2.0
@@ -1816,7 +1819,8 @@ def _kicked_before(text: str, at: "int | None") -> bool:
     return True
 
 
-def _okww_say(task: str, msg: str, exc: str, text: str = "", at: "int | None" = None) -> str:
+def _okww_say(task: str, msg: str, exc: str, text: str = "", at: "int | None" = None,
+              *, _unwrapped: bool = False, tb_msg: str = "") -> str:
     """Turn (task, raw message, exception name) into one plain-language
     sentence. When it cannot be translated, say so outright -- never be vague.
     """
@@ -1832,13 +1836,17 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: "int | None" = 
         return why if why.startswith(who) else f"{who}：{why}"
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
-    if task_zh is not None and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:
-        # 只抓到最外层「Daily Task exception stopped」时，改用上游自己写的 `info_set 错误`；
-        # 递归解包时保留原异常名 exc（避免丢失异常类导致日志打成「没抓到异常名」），同时传 text="" 防二次递归。
-        err = (okww_info(text).get("error") or "").strip() if text else ""
+    if not _unwrapped and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:
+        # 只抓到最外层「Daily Task exception stopped」时，无论 task 是否登记中文名，一律先拆壳找真错：
+        # 优先取上游自己写的 `info_set 错误`，缺失时再回退本段 Traceback 末行异常正文 tb_msg；
+        # 递归时保留原异常名 exc 与日志定位 text/at（由 _unwrapped 防止二次递归），不丢「（等了 N 秒）」。
+        err = normalize_okww_log((okww_info(text).get("error") or "").strip()) if text else ""
+        if not err or _OKWW_WRAPPER in err:
+            err = normalize_okww_log((tb_msg or "").strip())
         if err and _OKWW_WRAPPER not in err:
-            return _okww_say(task, err, exc)
-        return f"{task_zh}：日常清单整个停了（真正的原因在它上面那条）"
+            return _okww_say(task, err, exc, text=text, at=at, _unwrapped=True)
+        if task_zh is not None:
+            return f"{task_zh}：日常清单整个停了（真正的原因在它上面那条）"
     if task_zh is None or not (msg_zh or exc_zh):
         who = task_zh or "某个任务"
         raw = " ".join((msg or "").split())[:110]

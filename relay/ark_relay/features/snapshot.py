@@ -97,7 +97,8 @@ def _mas(out: dict) -> None:
                 # Info.IfQuickConfig off means AUTO-MAS never pushes these fields
                 # down: MaaEnd runs from its own mxu-MaaEnd.json and this section
                 # is a dead copy, so it is not printed under the 「真实生效」 heading.
-                quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
+                # 经 info_view 读取，兼容 v5.10 仅含小写 info.if_quick_config 的账号条目
+                quick = bool(masuser.info_view(u).get("IfQuickConfig"))
                 # AUTO-MAS v5.8 split Task.IfSanity into Task.IfProtocolSpace + Task.IfAutoEssence.
                 has_split = "IfProtocolSpace" in t or "IfAutoEssence" in t
                 if has_split:
@@ -122,7 +123,8 @@ def _mas(out: dict) -> None:
                 maaend_snap["基质地点"] = t.get("AutoEssenceSpecifiedLocation")
                 out["MaaEnd"] = maaend_snap
             elif "OK-WW" in str(name) or "ok-ww" in str(name):
-                quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
+                # 经 info_view 读取，兼容 v5.10 仅含小写 info.if_quick_config 的账号条目
+                quick = bool(masuser.info_view(u).get("IfQuickConfig"))
                 task = dict(u.get("Task", {}) or {})
                 out["OK-WW(MAS侧)"] = {
                     "这些设置生效吗": "生效" if quick else
