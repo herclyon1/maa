@@ -102,10 +102,8 @@ _UA = "Mozilla/5.0"
 Window = tuple[datetime, datetime, str]
 
 
-# A request that got no answer (timeout, reset, DNS) is tried once more after
-# GET_PAUSE seconds; an HTTP error answer is not retried. A retry that succeeds
-# logs one WARNING marked errwatch.recovered() (daily report only). Both tries
-# failing raises, and today() logs the WARNING.
+# 无应答（超时/重置/DNS）间隔 GET_PAUSE 秒重试一次；HTTP 状态码错误不重试。
+# 瞬态重试成功仅记 INFO（既不刷群也绝不进日报）；重试耗尽后抛出，由 today() 记 WARNING 直推企微群。
 GET_ATTEMPTS = 2
 GET_PAUSE = 3.0
 GET_TIMEOUT = 20
@@ -230,11 +228,9 @@ def _get(url: str, timeout: "float | None" = None) -> str:
             i += 1
             continue
         if i:
-            from ark_relay.features import errwatch  # noqa: PLC0415
-            # Machine check #50 reads this first line (phone_banners._maintenance): a gateway
-            # 5xx keeps the same words, its code is on the second line.
-            log.warning("停服维护公告的官网第一次没响应，%.0f 秒后再取一次，取到了\n%s 第一次：%s",
-                        GET_PAUSE * i, url, first, extra=errwatch.recovered())
+            # 维护公告官网瞬态重试成功：记 info（绝不进日报）；全部重试失败时向上抛异常并由 today() 直推企微群。
+            log.info("停服维护公告的官网第一次没响应，%.0f 秒后再取一次，取到了\n%s 第一次：%s",
+                     GET_PAUSE * i, url, first)
         tape.answer("web", url, body=page, resp=req)
         return page
 

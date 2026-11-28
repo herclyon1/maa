@@ -285,7 +285,9 @@ def _part_stagegate_main():
     check("still excused after the put-back (the report / missed checks keep knowing)",
           sg.excused(cfg.state_dir, "早班", at(10, 9, 0)), True)
     line = sg.report_line(cfg.state_dir, "2026-10-10")
-    check("the daily report says it, with the reason", ("早班" in line, "YW-4" in line), (True, True))
+    check("the daily report omits stagegate pull failures (group already alarmed)", line, "")
+    tline = sg.tech_report_line(cfg.state_dir, "2026-10-10")
+    check("the tech log still records the pull with reason", ("早班" in tline, "YW-4" in tline), (True, True))
     step(cfg, n, at(10, 21, 22))
     check("21:22 晚班: checked on its own, pulled on its own", skipped[-1], ("晚班", "MAA"))
     check("one alarm for that due", [t for t, _b, _a in n.sent][-1], texts.stage_gate("晚班"))
@@ -759,8 +761,9 @@ for the missed-run checks and the shutdown decision.
           ("def _stage_stagegate(engine, log)" in _boot, "engine._stage_gate(lead_min=stagegate.BOOT_LEAD_MIN)" in _boot),
           (True, True))
     _rep = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "report.py").read_text(encoding="utf-8")
-    check("the daily report template appends the gate's lines", "stagegate.report_line(eng.cfg.state_dir, day)" in _rep,
-          True)
+    check("daily report keeps stagegate out of user daily report and writes it to tech log only",
+          ("stagegate.report_line(" not in _rep, "stagegate.tech_report_line(" in _rep),
+          (True, True))
 
 
 def _part_plan_after_accomplish():

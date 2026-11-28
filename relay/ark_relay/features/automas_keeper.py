@@ -318,11 +318,14 @@ The loop's timeout stays, because some of what tick() does is genuinely
         if since is None:
             self.log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
             return
-        # Already pushed meanwhile (told): one fault, one push - this end is daily only.
-        from ark_relay.features import errwatch  # noqa: PLC0415
-        self.log.warning("目录变更通知断过 %s，已经自己重建，跑完的结果又能马上处理了%s\n原因：%s",
-                         wmi_diag._span(time.monotonic() - since), "（期间报过群）" if told else "",
-                         self.lost_why, extra=errwatch.recovered() if told else None)
+        # 已报过群的重建恢复属事后闭环，改记 info（不重复刷群、不进日报）；
+        # 断开期间未报过群的异常断连必须保持 warning 直推企微群，避免真错被自愈隐藏。
+        if told:
+            self.log.info("目录变更通知断过 %s，已经自己重建，跑完的结果又能马上处理了（期间报过群）\n原因：%s",
+                          wmi_diag._span(time.monotonic() - since), self.lost_why)
+        else:
+            self.log.warning("目录变更通知断过 %s，已经自己重建，跑完的结果又能马上处理了\n原因：%s",
+                             wmi_diag._span(time.monotonic() - since), self.lost_why)
 
     def _still_lost(self) -> None:
         """A rebuild failed: INFO until the loss reaches OUTAGE_ALARM_SECONDS, then the
@@ -618,19 +621,26 @@ Two of the four things that can wake the loop live here: the backend dying,
     def _adopted(self) -> None:
         gone, self.gone = self.gone, None
         if gone is not None:
-            # meanwhile (decided) - one fault, one push.
-            from ark_relay.features import errwatch  # noqa: PLC0415
+            # 区分事后闭环（已报过群或更新安装程序引起的正常重启）与未报过群的意外退出：
+            # 事后闭环改记 info（不重复刷群、不进日报），未报过群的意外退出直推企微群。
             down = wmi_diag._span(time.monotonic() - gone["at"])
             if self.revive_failures:
-                self.log.warning("AUTO-MAS 后台意外退出过（%s 退出，退出码 %s），中继已重新打开（断了 %s，"
-                                 "第 %d 次打开后起来的）\n%s", gone["clock"], gone["said"], down,
-                                 self.revive_failures, gone["how"],
-                                 extra=errwatch.recovered() if gone["decided"] else None)
+                if gone["decided"]:
+                    self.log.info("AUTO-MAS 后台意外退出过（%s 退出，退出码 %s），中继已重新打开（断了 %s，"
+                                  "第 %d 次打开后起来的，期间已报群）\n%s", gone["clock"], gone["said"], down,
+                                  self.revive_failures, gone["how"])
+                else:
+                    self.log.warning("AUTO-MAS 后台意外退出过（%s 退出，退出码 %s），中继已重新打开（断了 %s，"
+                                     "第 %d 次打开后起来的）\n%s", gone["clock"], gone["said"], down,
+                                     self.revive_failures, gone["how"])
             else:
-                self.log.warning("AUTO-MAS 后台%s退出过（%s 退出，退出码 %s），现在又在运行了（断了 %s，"
-                                 "不是中继打开的）\n%s", "" if gone["installer"] else "意外", gone["clock"],
-                                 gone["said"], down, gone["how"],
-                                 extra=errwatch.recovered() if gone["installer"] or gone["decided"] else None)
+                if gone["installer"] or gone["decided"]:
+                    self.log.info("AUTO-MAS 后台%s退出过（%s 退出，退出码 %s），现在又在运行了（断了 %s，"
+                                  "不是中继打开的）\n%s", "" if gone["installer"] else "意外", gone["clock"],
+                                  gone["said"], down, gone["how"])
+                else:
+                    self.log.warning("AUTO-MAS 后台意外退出过（%s 退出，退出码 %s），现在又在运行了（断了 %s，"
+                                     "不是中继打开的）\n%s", gone["clock"], gone["said"], down, gone["how"])
         self.shell_only_since = None
         self.shell_grace_noted = False
         self.revive_deadline = None

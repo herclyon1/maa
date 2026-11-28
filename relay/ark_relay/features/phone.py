@@ -30,7 +30,7 @@ except ImportError:
 from datetime import datetime, date, timedelta
 from ark_relay.core import notify as netretry, texts, config
 from pathlib import Path
-from ark_relay.features import errwatch, queues, sanity_plan
+from ark_relay.features import queues, sanity_plan
 from ark_relay.core.config import SERVER_TZ, atomic_write_bytes, atomic_write_text, both_clocks
 from ark_relay.features.commands import apply_command
 
@@ -1041,10 +1041,10 @@ class Heartbeat:
             self._cos_ok = False
             return False
         if self._cos_down is not None:
-            # Written again: the relay got over it by itself, the daily report only.
-            log.warning("心跳又写得进腾讯云了（断了 %.0f 秒%s）\n没写上的原因：%s",
-                        self._cos_last - self._cos_down, "，期间报过群" if self._cos_told else "",
-                        self._cos_why, extra=errwatch.recovered())
+            # 心跳重连恢复属事后闭环/瞬态重连成功：记 info（持续超 600 秒的故障已由上方 warning 直推企微群）。
+            log.info("心跳又写得进腾讯云了（断了 %.0f 秒%s）\n没写上的原因：%s",
+                     self._cos_last - self._cos_down, "，期间报过群" if self._cos_told else "",
+                     self._cos_why)
         self._cos_ok, self._cos_down, self._cos_why, self._cos_told = True, None, "", False
         self.cos_ok_n += 1
         self.cos_last_ok = self._cos_last
@@ -1736,9 +1736,9 @@ def _got_on_retry(round_: int, errors: "list[str]") -> None:
     gave it in the rounds before (`errors`: what they met) - a fault the relay
     got over by retrying, the daily report only."""
     if round_:
-        from ark_relay.features import errwatch  # noqa: PLC0415
-        _log_inbox.warning("待办文件前 %d 轮一扇门都没取到，第 %d 轮取到了\n前几轮：%s", round_, round_ + 1,
-                    "；".join(errors) or "无详情", extra=errwatch.recovered())
+        # 待办文件瞬态重试成功：记 info（绝不进日报）；全部 3 轮均失败时在 _fetch 打 warning 直推企微群。
+        _log_inbox.info("待办文件前 %d 轮一扇门都没取到，第 %d 轮取到了\n前几轮：%s", round_, round_ + 1,
+                        "；".join(errors) or "无详情")
 
 
 def _cos_client():
@@ -2197,25 +2197,18 @@ class Mailbox:
 
     @staticmethod
     def _carried_by_ntfy(cos_why: str) -> None:
-        """COS refused this state (cos_why) and ntfy carried it: a fault another
-        route got over, so the daily report only (why: USER-SWITCHES.txt at
-        mailbox.py:Mailbox._carried_by_ntfy). Nothing when COS took it."""
+        """腾讯云 COS 拒绝存状态、靠手机信箱补发：属于真实通道故障，保持 warning 直推企微群。"""
         if cos_why:
-            log.warning("状态没存上腾讯云，这一份改走手机信箱发到了\n腾讯云：%s", cos_why,
-                        extra=errwatch.recovered())
+            log.warning("状态没存上腾讯云，这一份改走手机信箱发到了\n腾讯云：%s", cos_why)
 
     def _carried_by_cos(self, what: str) -> None:
-        """ntfy did not take `what` ("state": the state itself, "notice": the
-        one-line notice of it; why in last_error) and the state is on COS, where
-        the App reads it on open and on refresh: a fault COS got over, the daily
-        report only. ntfy's day quota used up is not a new fault (Quota.mark_full
-        says it once a day, as its own WARNING): INFO."""
+        """手机信箱发送失败但腾讯云 COS 已存上：配额用完时仅记 info（配额满已单独报群），其余真实失败直推企微群。"""
         if self.quota.full():
             log.info("状态已存到腾讯云 COS；ntfy 上%s没发出去（%s），App 打开或刷新时照样读得到",
                      "那一条" if what == "state" else "的通知", self.last_error)
             return
         log.warning("状态%s没发到手机信箱，状态已存到腾讯云，手机打开或刷新时照样读得到\n手机信箱：%s",
-                    "" if what == "state" else "的通知", self.last_error, extra=errwatch.recovered())
+                    "" if what == "state" else "的通知", self.last_error)
 
     @staticmethod
     def _both(cos_why: str, ntfy_why: str) -> str:
@@ -2282,10 +2275,9 @@ class Mailbox:
                 if 200 <= status < 300:
                     self.quota.add(kind)
                     if i:
-                        # The retry got it through: a fault the relay got over by
-                        # itself, the daily report only (USER-SWITCHES.txt, Mailbox._post).
-                        log.warning("发到手机信箱第一次没成，%.0f 秒后再发一次，发出去了\n第一次：%s",
-                                    waited, why, extra=errwatch.recovered())
+                        # 瞬态重试成功：记 info（绝不进日报）；全部尝试失败由调用方直推企微群。
+                        log.info("发到手机信箱第一次没成，%.0f 秒后再发一次，发出去了\n第一次：%s",
+                                 waited, why)
                     return True
                 self.last_error = f"ntfy 回 {status}"
                 return False
@@ -2434,14 +2426,12 @@ class Mailbox:
     OUTAGE_SEC = 600
 
     def _late_backlog(self, on_cmd, on_backlog) -> None:
-        """Read the boot backlog fetch() missed (raises while ntfy still does not
-        answer) and hand it on. Read now: a fault the relay got over by itself,
-        the daily report only (USER-SWITCHES.txt, Mailbox._late_backlog)."""
+        """开机读手机信箱失败、连上长连接后补读：开机读失败属于真实通道异常，保持 warning 直推企微群。"""
         cmds = self._read_backlog()
         self.backlog_missed = False
         self.backlog_late = {"at": time.time(), "n": len(cmds), "why": self.backlog_why}
         log.warning("开机时没读到手机信箱，手机通道连上后补读到了 %d 条指令\n开机那次：%s",
-                    len(cmds), self.backlog_why or "原因没记下", extra=errwatch.recovered())
+                    len(cmds), self.backlog_why or "原因没记下")
         try:
             if on_backlog is not None:
                 on_backlog(cmds)
@@ -2463,15 +2453,19 @@ class Mailbox:
 
     @staticmethod
     def _connected(down_since: "float | None", fault: str, warned: bool) -> None:
-        """Say the stream is (back) up. An outage with a fault in it, or one pushed
-        at OUTAGE_SEC, ends in one WARNING marked errwatch.recovered() - the daily
-        report only; one that was only an idle read timeout is INFO."""
+        """报告手机通道连接恢复：
+        - 期间已报过群（warned=True）属事后闭环，改记 info（不重复刷群、不进日报）；
+        - 期间未报过群但因真实故障（fault）断连，保持 warning 直推企微群；
+        - 仅空闲超时重连保持 info。
+        """
         if down_since is None:
             log.info("📱 手机通道已连上（长连接，不轮询）")
-        elif fault or warned:
-            log.warning("手机通道断过 %.0f 秒，已经自己连上，断开期间的指令照样补收%s\n断开原因：%s",
-                        time.time() - down_since, "（期间报过群）" if warned else "",
-                        fault or "读的时候超时", extra=errwatch.recovered())
+        elif warned:
+            log.info("手机通道断过 %.0f 秒，已经自己连上，断开期间的指令照样补收（期间报过群）\n断开原因：%s",
+                     time.time() - down_since, fault or "读的时候超时")
+        elif fault:
+            log.warning("手机通道断过 %.0f 秒，已经自己连上，断开期间的指令照样补收\n断开原因：%s",
+                        time.time() - down_since, fault)
         else:
             log.info("📱 手机通道又连上了（断了 %.0f 秒，断开期间的指令照样补收）",
                      time.time() - down_since)

@@ -610,19 +610,16 @@ nothing is dropped when the group refuses; nothing loops back from the push path
     section(section_12)
 
     def section_recovered():
-        print("\n[自己好了的：只进日报，不进群（用户 2026-10-06 05:07）]")
+        print("\n[所有 WARNING 均直推企微群，彻底废除 recovered() 与「自己好了，只进日报」]")
         R = TMP / "recovered"
         n = _Notifier()
         h = make(n, R)
-        lg.warning("手机通道断了 20 秒，自己重新连上了", extra=errwatch.recovered())
-        lg.warning("维护公告：终末地 取不到")              # still broken: pushed
-        _wait(n, 1)
-        check("没好的照报，自己好了的不报", [b for _, b, _ in n.sent if "重新连上" in b], [])
-        check("没好的那条进群", len(n.sent), 1)
-        rows = faults(R)
-        got = [r for r in rows if "重新连上" in str(r.get("line"))]
-        check("自己好了的记进当天的报错表", bool(got) and got[0].get("recovered"), True)
-        check("日报那一段写「自己好了，只进日报」", "自己好了，只进日报" in errwatch.daily_section(R, TODAY))
+        lg.warning("手机通道断了 20 秒，已重新连上")
+        lg.warning("维护公告：终末地 取不到")
+        _wait(n, 2)
+        check("两条 WARNING 都直推群", len(n.sent), 2)
+        check("不存在 recovered() 接口", hasattr(errwatch, "recovered"), False)
+        check("技术日志摘要绝不写「自己好了，只进日报」", "自己好了，只进日报" not in errwatch.daily_section(R, TODAY))
         drop(h)
 
 
@@ -630,27 +627,20 @@ nothing is dropped when the group refuses; nothing loops back from the push path
 
 
     def section_recovered_push_thread():
-        print("\n[推送途中自己好了的（推送重试送到了）：照样记一条「自愈待查」红项]")
-        from ark_relay.core import statestore as techlog
+        print("\n[推送线程上的报错不回环到推送里，且仍记入当天报错表]")
         R = TMP / "recovered-push" / "state"
         n = _Notifier()
         h = make(n, R)
         pushlog = notify_mod.log
 
         def on_push_thread():
-            pushlog.warning("推送传输失败 1 次，第 2 次送到了: 推送线程自愈样例", extra=errwatch.recovered())
-            pushlog.warning("企业微信机器人推送失败: 推送线程样例")       # not recovered: still not looped back
+            pushlog.warning("企业微信机器人推送失败: 推送线程样例")
         t = threading.Thread(target=on_push_thread, name=errwatch.PUSH_THREAD + "-z")
         t.start()
         t.join()
         _wait(n, 0)
         check("推送线程上的报错不回到推送里", n.sent, [])
-        got = [r for r in faults(R) if "推送线程自愈样例" in str(r.get("line"))]
-        check("推送线程上自己好了的记进当天的报错表", bool(got) and got[0].get("recovered"), True)
-        red = [x for f in sorted(techlog.tech_dir(R).glob("*.md"))
-               for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if "推送线程自愈样例" in x]
-        check("推送线程上自己好了的写一条「自愈待查」红项", [techlog.SELF_HEAL in x for x in red], [True])
-        check("没好的那条记进报错表，但不记成自己好了",
+        check("记进当天报错表且无 recovered 标记",
               [bool(r.get("recovered")) for r in faults(R) if "推送线程样例" in str(r.get("line"))], [False])
         drop(h)
 
@@ -1199,7 +1189,7 @@ def _part_unresolved():
           [h.split("；", 1)[-1].split("：", 1)[-1] for h in heads[-1:]],
           [f"卡在 赠送干员礼物、装备制造、拜访好友…（{AGREEMENT}）（证据包 {PAGE}）"])
 
-    print("\n[补跑走通：自己好了，不进群，只进日报（用户 2026-10-06 05:07）]")
+    print("\n[补跑走通：中途失败属于真实故障，直推企微群排查，绝不进日报（2026-11-28 规则）]")
     e = build()
     handle._handle(e, rec("MAA", at(9, 5)))
     e._flush_pending()
@@ -1207,12 +1197,16 @@ def _part_unresolved():
     handle._handle(e, rec("MAA", at(10, 6), ok=True))
     e._flush_pending()
     check("补跑记成走通", makeup.read_marker(e.cfg.state_dir, D)["MAA"]["result"], makeup.OK)
-    check("什么都没推（群、Server酱都没有）", e.notifier.sent, [])
-    check("日报的补跑那一行说失败过、补跑后走通了",
-          report.makeup_line(e.cfg.state_dir, D), "明日方舟失败后自动补跑，走通了（原来失败于：开始唤醒）")
-    check("不再压着", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("补跑走通立即直推群（带 alert=True）", [(t, a) for t, _, a in e.notifier.sent],
+          [(texts.makeup_passed("明日方舟", "早班"), True)])
+    check("日报 makeup_line 严格返回空串（细节仅进技术日志）",
+          (report.makeup_line(e.cfg.state_dir, D),
+           report._makeup_tech_line(e.cfg.state_dir, D)),
+          ("", "明日方舟失败后自动补跑，走通了（原来失败于：开始唤醒）"))
+    check("不再压着（且引擎已移除 _recovered）", (dict(e._pending), hasattr(e, "_recovered")), ({}, False))
+    before_again = len(e.notifier.sent)
     e._flush_pending()
-    check("下一轮也不推", e.notifier.sent, [])
+    check("下一轮不重复推", len(e.notifier.sent), before_again)
 
     print("\n[不符合补跑条件的明日方舟失败（打过仗）：进群一次，写为什么没补跑]")
     e = build()
@@ -1470,7 +1464,8 @@ def _part_unresolved():
     handle._handle(e, rec("MaaEnd", at(9, 40), ok=True,
                           raw={"tasks_done": ["赠送干员礼物"], "tasks_evidence": {"赠送干员礼物": "获得 物品"}}))
     e._flush_pending()
-    check("前一趟没证据、重试那趟补上了：不推", alarms(e), [])
+    check("前一趟有失败、重试那趟补上了：仅推中途失败重试通过，不误报没证据",
+          alarms(e), [texts.self_healed("MaaEnd")])
     e = build()
     handle._handle(e, rec("MAA", at(9, 5), ok=True, raw={"annihilation": "Annihilation"}))
     check("明日方舟剿灭没有进度行：进群", alarms(e), [texts.unverified_alarm("明日方舟", "早班", 1)])
@@ -2605,24 +2600,24 @@ def _part_recovered_daily_only():  # noqa: C901
         logging.getLogger(_name).addHandler(LINES)
         logging.getLogger(_name).setLevel(logging.DEBUG)
 
-    print("[AUTO-MAS 自己重试过去了：什么都不发，日报那一行说重试做成了]")
+    print("[AUTO-MAS 自己重试过去了：中途失败立即直推企微群，绝不进日报]")
     e = build()
     handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
     handle._handle(e, rec("OK-WW", at(9, 40), ok=True, raw={"tasks_done": ["日常"]}))
     e._flush_pending()
-    check("什么都没发（群、Server酱都没有）", e.notifier.sent, [])
-    check("放下了", (dict(e._pending), dict(e._recovered)), ({}, {}))
-    check("日志：自愈那句，只进日报", LINES.said(texts.self_healed("OK-WW"), "只进日报"))
+    check("中途失败重试后通过立即直推群", alarms(e), [texts.self_healed("OK-WW")])
+    check("放下了", (dict(e._pending), hasattr(e, "_recovered")), ({}, False))
+    check("日志不再写只进日报", LINES.said(texts.self_healed("OK-WW"), "只进日报"), False)
     title, body = daily(e)
-    check("日报那一行：后来在 09:40（东京 10:40）开始的那趟重试里做成了", "日常　后来在 09:40（东京 10:40）开始的那趟重试里做成了" in body)
-    check("日报标题不算鸣潮失败", "鸣潮失败" in title, False)
+    check("日报不含失败/重试做成文案", ("重试里做成了" in body, "❌" in body), (False, False))
+    check("日报标题中性不误标全绿，也不塞失败词", title, f"📋 {D[5:]} · 今日日报")
     print("  …没有后来那次成功：照样进群")
     e = build()
     handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
     e._flush_pending()
     check("最终失败进群", alarms(e), [texts.failed("OK-WW")])
 
-    print("\n[中继补跑走通了：什么都不发，日报的补跑那一行说失败过、补跑后走通了]")
+    print("\n[中继补跑走通了：中途失败直推企微群，日报严格省略（细节仅记技术日志）]")
     e = build()
     handle._handle(e, rec("MAA", at(9, 5), failed=["开始唤醒"]))
     e._flush_pending()
@@ -2630,12 +2625,13 @@ def _part_recovered_daily_only():  # noqa: C901
     handle._handle(e, rec("MAA", at(10, 6), ok=True))
     e._flush_pending()
     check("补跑记成走通", makeup.read_marker(e.cfg.state_dir, D)["MAA"]["result"], makeup.OK)
-    check("什么都没发", e.notifier.sent, [])
-    check("放下了", (dict(e._pending), dict(e._recovered)), ({}, {}))
-    check("日志：补跑走通，只进日报", LINES.said(texts.makeup_passed("明日方舟", "早班"), "只进日报"))
-    check("日报的补跑那一行", report.makeup_line(e.cfg.state_dir, D),
-          "明日方舟失败后自动补跑，走通了（原来失败于：开始唤醒）")
-    check("日报那一行：后来在补跑里做成了", "后来在 10:26 那趟补跑里做成了" in daily(e)[1])
+    check("补跑走通立即直推群", alarms(e), [texts.makeup_passed("明日方舟", "早班")])
+    check("放下了", dict(e._pending), {})
+    check("日志不再写只进日报", LINES.said(texts.makeup_passed("明日方舟", "早班"), "只进日报"), False)
+    check("日报 makeup_line 为空，细节仅在技术日志",
+          (report.makeup_line(e.cfg.state_dir, D), report._makeup_tech_line(e.cfg.state_dir, D)),
+          ("", "明日方舟失败后自动补跑，走通了（原来失败于：开始唤醒）"))
+    check("日报正文不含补跑失败字样", "补跑里做成了" in daily(e)[1], False)
     print("  …补跑也没成：进群")
     e = build()
     handle._handle(e, rec("MAA", at(9, 5), failed=["开始唤醒"]))
@@ -2645,17 +2641,17 @@ def _part_recovered_daily_only():  # noqa: C901
     e._flush_pending()
     check("没跑成进群", alarms(e), [texts.unresolved("明日方舟", "早班")])
 
-    print("\n[更新那一串后面有一次成功：什么都不发，日报是 ↪️]")
+    print("\n[更新那一串后面有一次成功：属正常更新重启闭环，仅记 INFO，不推群也不进日报]")
     e = build()
     handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
     handle._handle(e, restart("OK-WW", at(9, 18)))
     check("前面压着的失败还是它（重启不顶替它）", e._pending[("OK-WW", "wuwa")].started, at(9, 10))
     handle._handle(e, rec("OK-WW", at(9, 28), ok=True))
     e._flush_pending()
-    check("什么都没发", e.notifier.sent, [])
-    check("日志：更新时失败过，只进日报", LINES.said(texts.healed_after_update("OK-WW"), "只进日报"))
+    check("正常更新重启闭环什么都不推", e.notifier.sent, [])
+    check("日志记为更新/中途重启后重跑成功（INFO）", LINES.said("更新/中途重启后重跑成功"))
     title, body = daily(e)
-    check("日报里这一串是更新，不算失败", ("鸣潮失败" in title, body.count("↪️ 鸣潮"), body.count("更新后重跑")), (False, 2, 2))
+    check("日报全绿且不塞更新重启 ↪️ 过渡行", ("全绿 ✅" in title, body.count("↪️ 鸣潮"), "不算失败" in body), (True, 0, False))
     print("  …那一串后面没有成功：照样进群，报的是前面那次失败")
     e = build()
     handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
@@ -2673,8 +2669,8 @@ def _part_recovered_daily_only():  # noqa: C901
     handle._handle(e, rec("OK-WW", at(9, 28), ok=True))
     e._flush_pending()
     check("后面成功了：什么都没发", e.notifier.sent, [])
-    check("放下了", (dict(e._pending), dict(e._recovered)), ({}, {}))
-    check("日报里是 ↪️ 更新后重跑", ("↪️ 鸣潮" in daily(e)[1], "更新后重跑" in daily(e)[1]), (True, True))
+    check("放下了", dict(e._pending), {})
+    check("日报不含 ↪️ 更新过渡行", ("↪️ 鸣潮" in daily(e)[1], "更新后重跑" in daily(e)[1]), (False, False))
     print("  …后面没有再跑：最终失败进群，写着 AUTO-MAS 记的什么")
     e = build()
     handle._handle(e, restart("OK-WW", at(9, 18)))
@@ -2698,9 +2694,9 @@ def _part_recovered_daily_only():  # noqa: C901
     handle._handle(e, restart("OK-WW", at(9, 18)))
     e._flush_pending()
     check("什么都没发", e.notifier.sent, [])
-    check("不压着", (dict(e._pending), dict(e._recovered)), ({}, {}))
-    check("日志：后面那次已经成功，只进日报", LINES.said("是中途重启", "已经成功", "只进日报"))
-    check("日报里是 ↪️ 更新后重跑", "↪️ 鸣潮" in daily(e)[1])
+    check("不压着", dict(e._pending), {})
+    check("日志：后面那次已经成功，不报也不进日报", LINES.said("是中途重启", "已经成功"))
+    check("日报不含 ↪️", "↪️ 鸣潮" in daily(e)[1], False)
     print("  …终末地的空壳记录（未捕获到日志）也一样：落地不发，压着")
     e = build()
     handle._handle(e, restart("MaaEnd", at(10, 1)))
@@ -2767,12 +2763,12 @@ def _part_recovered_daily_only():  # noqa: C901
         check("第二次送到了", notify._post(REQ), {"errcode": 0})
         check("失败的那一次是 INFO", [r.levelname for r in LINES.records if "推送传输失败（第 1/3 次）" in r.getMessage()],
               ["INFO"])
-        check("送到时一条 WARNING，标着自己好了", [(r.getMessage().split(":")[0], getattr(r, errwatch.RECOVERED, False))
-                                                for r in warnings()], [("推送传输失败 1 次，第 2 次送到了", True)])
-        check("没排进推群的队", h.pending(), [])
+        check("瞬态重试送到记 INFO，不发 WARNING、不排进群队",
+              (warnings(), h.pending(),
+               any(r.levelname == "INFO" and "推送传输前 1 次没成，第 2 次送到了" in r.getMessage() for r in LINES.records)),
+              ([], [], True))
         rows = errwatch.day_faults(sd, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-        check("日报「中继自己记下的报错」里有它，标自己好了", [(r.get("recovered"), r.get("level")) for r in rows],
-              [(True, "WARNING")])
+        check("不写进报错表", rows, [])
         unwatch(h)
 
         print("  …三次都没送到：_post 抛出去，调用方报 ERROR，errwatch 排进推群的队")
@@ -2784,7 +2780,7 @@ def _part_recovered_daily_only():  # noqa: C901
         except urllib.error.URLError:
             raised = True
         check("抛出去了", raised)
-        check("_post 自己没写「送到了」", any(getattr(r, errwatch.RECOVERED, False) for r in LINES.records), False)
+        check("_post 自己没写「送到了」", any("送到了" in r.getMessage() for r in LINES.records), False)
         cfg = Config()
         cfg.state_dir = tmpdir()
         cfg.wecom_bot_url = "https://bot.example/send"
@@ -2793,20 +2789,19 @@ def _part_recovered_daily_only():  # noqa: C901
         n = notify.Notifier(cfg)
         urllib.request.urlopen = fake_urlopen([urllib.error.URLError("down")] * 3)
         check("一条渠道都没送到：返回错误", bool(n.send("❌ OK-WW 失败", "正文", alert=True)), True)
-        check("…调用方的 ERROR 没标自己好了", [(r.levelname, getattr(r, errwatch.RECOVERED, False)) for r in warnings()],
-              [("ERROR", False)])
+        check("…调用方记录 ERROR", [r.levelname for r in warnings()], ["ERROR"])
         check("…排进了推群的队", len(h.pending()), 1)
         unwatch(h)
 
-        print("  …Server酱 第一个地址没送到、第二个送到了：一条标自己好了的 WARNING")
+        print("  …Server酱 第一个地址没送到、第二个送到了：真实入口异常直推群（不再标自己好了）")
         h, sd = watch()
         sc = notify.ServerChan(type("C", (), {"serverchan_key": "sctp123tabc"})())
         urllib.request.urlopen = fake_urlopen([urllib.error.URLError("down")] * 3 + [{"code": 0}])
         sc.send_text("📋 日报", "正文")
         check("两个地址都试了", len(urllib.request.urlopen.calls), 4)
-        check("一条 WARNING，标着自己好了", [(r.getMessage().startswith("Server酱 前面的地址没送到"),
-                                             getattr(r, errwatch.RECOVERED, False)) for r in warnings()], [(True, True)])
-        check("没排进推群的队", h.pending(), [])
+        check("一条直推群的 WARNING",
+              [r.getMessage().startswith("Server酱 前面的地址没送到") for r in warnings()], [True])
+        check("排进推群队列", len(h.pending()), 1)
         unwatch(h)
     finally:
         urllib.request.urlopen, notify.time.sleep = real_urlopen, real_sleep
@@ -2904,11 +2899,11 @@ def _part_manual_stop_backfill():
 
     EVENING = at(30, 21, 25)
 
-    print("[改前的日报：两趟被停掉的显示成 ✅ / ❌]")
+    print("[改前的日报：OK-WW 记为 ✅，未标手动停止的失败 MaaEnd 由白名单省略]")
     e = build(windows=[])
     _, body0 = e._compose_daily("2026-09-30", e.state.read_ledger("2026-09-30"))
     check("OK-WW 原来是 ✅", kind_line(body0, "鸣潮")[:1], "✅")
-    check("MaaEnd 原来是 ❌", kind_line(body0, "终末地")[:1], "❌")
+    check("MaaEnd 失败行不进日报", kind_line(body0, "终末地"), "")
 
     print("\n[窗口文件里有这次按下：两趟补记，窗口外的不动，第二次是空操作]")
     e = build(windows=[{"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"}])
@@ -2929,7 +2924,7 @@ def _part_manual_stop_backfill():
     title, body = e._compose_daily("2026-09-30", e.state.read_ledger("2026-09-30"))
     check("OK-WW 那行是 ⏹", kind_line(body, "鸣潮")[:1], "⏹")
     check("MaaEnd 那行是 ⏹", kind_line(body, "终末地")[:1], "⏹")
-    check("有被停一切停掉的备注", "被停一切中途停掉，不算成功也不算失败" in body, True)
+    check("有被停一切停掉的备注", "被停一切中途停掉，本轮已中止" in body, True)
     check("标题不算失败", "失败" in title, False)
     check("两趟都写「已停，未补」", body.count("已停，未补"), 2)
 
@@ -2969,10 +2964,6 @@ def _part_manual_stop_backfill():
                          failed_tasks=x["failed_tasks"], raw=dict(x["raw"]))
 
     e = build(windows=W0930)
-    # 09:30 OK-WW failure moved to _recovered when the stopped OK-WW run read as a success.
-    fail930 = rec_of(OKWW, run_id="OK-WW-05-21-00", started=at(30, 9, 21).isoformat(),
-                     finished=at(30, 9, 30).isoformat(), ok=False, failed_tasks=["日常"], raw={})
-    e._recovered[("OK-WW", "wuwa")] = fail930
     # The stopped MaaEnd run itself, held for the final alarm.
     e._pending[("MaaEnd", "endfield")] = rec_of(MAAEND)
     # Something unrelated that must stay.
@@ -2980,14 +2971,12 @@ def _part_manual_stop_backfill():
     e._pending[("MAA", "ark")] = other
     e._persist_pending()
     handle.backfill_manual_stops(e, EVENING)
-    check("OK-WW 不算重试后成功", list(e._recovered), [])
     check("MaaEnd 不再等着重试", ("MaaEnd", "endfield") in e._pending, False)
     check("MAA 的照旧压着", list(e._pending), [("MAA", "ark")])
-    check("两条失败都进群", sorted(t for t, _ in e.notifier.sent), ["❌ MaaEnd 失败", "❌ OK-WW 失败"])
-    check("都说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
+    check("被停掉的 MaaEnd 失败进群", sorted(t for t, _ in e.notifier.sent), ["❌ MaaEnd 失败"])
+    check("说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
     disk = State(e.cfg.state_dir).load_pending()
-    check("磁盘上也清掉了（重启读回一致）",
-          (len(disk.get("pending") or []), len(disk.get("recovered") or [])), (1, 0))
+    check("磁盘上也清掉了（重启读回一致）", len(disk.get("pending") or []), 1)
 
     print("\n[被停掉那趟之后的新失败：不清]")
     e = build(windows=W0930)
@@ -2996,15 +2985,6 @@ def _part_manual_stop_backfill():
     e._pending[("MaaEnd", "endfield")] = late
     handle.backfill_manual_stops(e, EVENING)
     check("10:30 的失败还压着", ("MaaEnd", "endfield") in e._pending, True)
-
-    print("\n[自愈之后又有真成功：那次自愈是真的，不清]")
-    e = build(windows=W0930)
-    real_ok = line("OK-WW-09-35-00", "OK-WW", "wuwa", at(30, 9, 32), at(30, 9, 36), True)
-    p = e.state.ledger_path("2026-09-30")
-    p.write_text(p.read_text(encoding="utf-8") + json.dumps(real_ok, ensure_ascii=False) + "\n", encoding="utf-8")
-    e._recovered[("OK-WW", "wuwa")] = fail930
-    handle.backfill_manual_stops(e, EVENING)
-    check("09:36 真成功治好的自愈通知还在", list(e._recovered), [("OK-WW", "wuwa")])
 
     print("\n[开机阶段：出错不抛、写一行日志]")
     sys.modules.setdefault("win32event", types.ModuleType("win32event"))
@@ -3117,7 +3097,7 @@ def _part_manual_stop_not_selfheal():
     press(e, at(9, 46, 40), at(9, 47, 30))
     stopped = rec("2026-09-30/wuwa/09-47-05", at(9, 38), at(9, 47, 5), ok=True)
     e._handle(stopped)
-    check("不进自愈", dict(e._recovered), {})
+    check("引擎无 _recovered 旁路", hasattr(e, "_recovered"), False)
     check("前面的失败不再等着重试", dict(e._pending), {})
     check("重启读回来也是空的", dict(State(e.cfg.state_dir).load_pending() or {}).get("pending") or [], [])
     check("没走成功那条路（周常门没碰）", gates, [])
@@ -3149,14 +3129,15 @@ def _part_manual_stop_not_selfheal():
     check("restore_master 跑了", restored, [1])
     collect_retry.restore_master = real_restore
 
-    print("\n[回归：窗口外的成功照旧算重试后成功（自愈）]")
+    print("\n[回归：窗口外的成功照旧算重试后通过，立即直推群排查]")
     gates.clear()
     e = build()
     morning(e)
     press(e, at(8, 0), at(8, 1))
     ok_later = rec("2026-09-30/wuwa/09-47-05", at(9, 38), at(9, 47, 5), ok=True)
     e._handle(ok_later)
-    check("进了自愈", list(e._recovered), [("OK-WW", "wuwa")])
+    check("清空待推并直推群说明中途失败重试通过",
+          (dict(e._pending), [t for t, _ in e.notifier.sent]), ({}, ["⚠️ OK-WW 中途失败过，重试后成功"]))
     check("走了成功那条路", gates, [ok_later.run_id])
     row = [x for x in e.state.read_ledger("2026-09-30") if x["run_id"] == ok_later.run_id]
     check("账本那行没有手动停止记号", (row[0]["raw"] or {}).get("manual_stop"), None)
@@ -3165,9 +3146,10 @@ def _part_manual_stop_not_selfheal():
     e = build()
     morning(e)
     e._handle(rec("2026-09-30/wuwa/09-47-05", at(9, 38), at(9, 47, 5), ok=True))
-    check("进了自愈", list(e._recovered), [("OK-WW", "wuwa")])
+    check("清空待推并直推群", (dict(e._pending), [t for t, _ in e.notifier.sent]),
+          ({}, ["⚠️ OK-WW 中途失败过，重试后成功"]))
 
-    print("\n[日报：停掉的那趟是 ⏹ 不是 ✅，标题不说重试后成功]")
+    print("\n[日报：停掉的那趟是 ⏹ 不是 ✅，失败行不进日报]")
 
     def entry(rid, s, f, ok, raw=None, failed=None):
         return {"run_id": rid, "script": "OK-WW", "user": "wuwa",
@@ -3186,9 +3168,10 @@ def _part_manual_stop_not_selfheal():
     row3 = [ln for ln in body.splitlines() if "09:38" in ln]
     check("那一行的图标是 ⏹", bool(row3) and row3[0].startswith("⏹"), True)
     check("那一行不是 ✅", bool(row3) and row3[0].startswith("✅"), False)
-    check("有备注说明被停一切停掉", "被停一切中途停掉，不算成功也不算失败" in body, True)
+    check("有备注说明被停一切停掉", "被停一切中途停掉，本轮已中止" in body, True)
     check("标题不含「重试后成功」", "重试后成功" in title, False)
-    check("前两次仍按失败算（合成一行：连试 2 次没跑成）", ("鸣潮没跑成" in title, "连试 2 次没跑成" in body), (True, True))
+    check("前两次失败不进日报，且标题中性不误标全绿", (title, "❌" in body, "没跑成" in body),
+          ("📋 09-30 · 今日日报", False, False))
 
     title, body = core.format_daily("2026-09-30", [manual])
     check("只有停掉的那趟：标题说有一趟被手动停止", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
@@ -3196,7 +3179,7 @@ def _part_manual_stop_not_selfheal():
     ok_run = entry("r4", at(10, 0), at(10, 20), True, raw={"tasks_done": ["日常"]})
     retried = [fail1, ok_run, dict(manual, run_id="r5", started=at(11, 0).isoformat())]
     title, _ = core.format_daily("2026-09-30", retried)
-    check("手动停止排在重试后成功之前", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
+    check("存在真失败的一天不误标全绿", title, "📋 09-30 · 今日日报")
 
     print("\n[记分牌不算停掉的那趟]")
     from ark_relay.features import report as scoreboard

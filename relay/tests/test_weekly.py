@@ -151,7 +151,7 @@ def _part_annihilation_no_progress():
          "sanity": None, "sanity_full_at": ""}
     _, body = core.format_daily("2026-09-14", [e])
     check("不说已完成", "此前已完成" in body, False)
-    check("说没读到进度", "没读到剿灭进度" in body, True)
+    check("白名单日报不写没读到进度", "没读到剿灭进度" in body, False)
 
     # Counter-examples kept from the other audit team's test (relay2-patchC-1005):
     # a progress line below the cap is "not done", and the ledger rows this fix is
@@ -166,7 +166,7 @@ def _part_annihilation_no_progress():
     check("进度 1480/1800", part.get("annihilation_progress"), [1480, 1800])
     check("没满 = 没完成", part.get("annihilation_done"), False)
     _, body = core.format_daily("2026-09-14", [dict(e, raw=part)])
-    check("日报写只打到", "剿灭只打到 1480/1800" in body, True)
+    check("日报写中性进度（无 ⚠️ 报警词）", ("本周剿灭进度 1480/1800" in body, "⚠️" in body), (True, False))
     _, body = core.format_daily("2026-09-14", [dict(e, raw=full)])
     check("打满的日报写已打满", "本周剿灭已打满（1800/1800）" in body, True)
 
@@ -291,8 +291,8 @@ def _part_annihilation_not_healed_by_routine():
     handle._maa_app_log = lambda maa_dir, started, until=None: ""
     routine = rec(at(9, 6, 56), 17, True, False)
     handle._handle(e, routine)
-    check("the Routine success left it held (not moved to recovered)",
-          (("MAA", "arknights") in e._pending, ("MAA", "arknights") in e._recovered), (True, False))
+    check("the Routine success left it held (no _recovered bypass)",
+          (("MAA", "arknights") in e._pending, hasattr(e, "_recovered")), (True, False))
     check("…and the ledger's later success skips the Routine run", records._later_success(e, fails_in[-1]), "")
     e._flush_pending()
     makeup.maybe_run(e, at(9, 30))
@@ -303,22 +303,23 @@ def _part_annihilation_not_healed_by_routine():
     check("…it says 代理指挥 is locked", any(texts.ANNIHILATION_NO_PROXY in b for _, b in got))
     check("…nothing held afterwards", ("MAA", "arknights") in e._pending, False)
 
-    print("\n[the daily report: no 「补跑成功」 for the Routine run, the reason is the locked proxy]")
+    print("\n[the daily report: whitelist-only, no bare failure rows or 补跑成功 leaked into report]")
     entries = e.state.read_ledger(f"{DAY:%Y-%m-%d}")
-    groups = ledger_report._bare_failure_groups(entries, [x for x in entries if not x["ok"]], [("早班", "09:00")])
-    line = ledger_report._bare_line(next(iter(groups.values())))
-    check("the row names the locked proxy", texts.ANNIHILATION_NO_PROXY in line)
-    check("…and no make-up success", "补跑成功" in line, False)
+    d_title, d_body = ledger_report.format_daily(f"{DAY:%Y-%m-%d}", entries, shifts=[("早班", "09:00")])
+    check("daily report omits failed annihilation row and 没跑成/补跑成功",
+          ("没跑成" in d_title or "没跑成" in d_body, "补跑成功" in d_body), (False, False))
 
-    print("\n[an Annihilation success still heals a held Annihilation failure]")
+    print("\n[an Annihilation success settles a held Annihilation failure via group alert, not _recovered]")
     e = build()
     handle._maa_app_log = lambda maa_dir, started, until=None: ""
     first = rec(at(9, 0, 57), 2, False, True)
     handle._handle(e, first)
     handle._handle(e, rec(at(9, 3, 0), 15, True, True))
-    check("moved to recovered", (("MAA", "arknights") in e._pending, ("MAA", "arknights") in e._recovered), (False, True))
+    check("settled from _pending immediately (no _recovered bucket)",
+          (("MAA", "arknights") in e._pending, hasattr(e, "_recovered")), (False, False))
     e._flush_pending()
-    check("no failure alarm", [t for t, _ in alarms(e) if "没跑成" in t], [])
+    check("original failure pushed to group as retried-then-ok (not buried in daily report)",
+          any("中途失败过，重试后成功" in t for t, _ in alarms(e)), True)
 
     print("\n[audit 11-08 B-04: the daily report's retry notes keep the two jobs apart too]")
     from ark_relay.core import ledger as _lr

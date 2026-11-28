@@ -98,11 +98,8 @@ def python_processes(*, warn: bool = True,
         rows, why = _query_once(query)
         if rows is not None:
             if whys:
-                # Read on a retry: fixed itself, so not pushed, but one 「自愈待查」 red
-                # item says a session looks at why the query failed (errwatch).
-                from ark_relay.features import errwatch  # noqa: PLC0415
-                _log_procs.warning("程序列表第 %d 次读到了（之前：%s）", i + 1, "、".join(whys),
-                            extra=errwatch.recovered())
+                # 瞬态查进程表重试成功：记 info（不进日报、不刷群）；全部尝试失败时在下方打 warning 直推企微群。
+                _log_procs.info("程序列表第 %d 次读到了（之前：%s）", i + 1, "、".join(whys))
             _state["warned"] = False
             _state["why"] = ""
             return rows

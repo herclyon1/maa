@@ -1280,17 +1280,17 @@ def _part_procs_wmi():
     check("反初始化时没有活着的 COM 对象", _leaked, [])
     check("没报警", [r for r in logs.records if r.levelno >= logging.WARNING], [])
 
-    print("\n[一次失败后读到：等一下再试，不进群，但记一条自己好了（「自愈待查」红项）]")
-    from ark_relay.features import errwatch
+    print("\n[一次失败后读到：瞬态重试记 INFO（带错误码），既不刷群也不进日报]")
     plan[:] = ["cancel", "ok"]
     logs.records.clear()
     rows = procs.python_processes()
     check("第二次读到", rows is not None and len(rows), 2)
     check("中间等了一次", slept, [procs.PAUSE_SECONDS])
     check("失败那次带错误码", any("0x80041032" in r.getMessage() for r in logs.records))
-    warned = [r for r in logs.records if r.levelno >= logging.WARNING]
-    check("一条警告，标了自己好了（不进群，写红项）",
-          [(getattr(r, errwatch.RECOVERED, False), "0x80041032" in r.getMessage()) for r in warned], [(True, True)])
+    check("瞬态重试恢复无 WARNING/ERROR，记在 INFO",
+          ([r for r in logs.records if r.levelno >= logging.WARNING],
+           any(r.levelno == logging.INFO and "0x80041032" in r.getMessage() for r in logs.records)),
+          ([], True))
     check("失败那次也没有对象活过反初始化", _leaked, [])
 
     print("\n[每次都失败：只报一条警告，带错误码；同一段没恢复不再报]")
@@ -2051,9 +2051,8 @@ def _part_procwatch_cancel():  # noqa: C901
         check("the drop is the same INFO line, with Windows' words and code",
               bool(drop) and "远程过程调用失败，0x800706BE" in drop[0].splitlines()[0])
         check("its diag line carries the scode", bool(drop) and "scode 0x800706BE" in drop[0])
-        check("back by itself: one WARNING, said as before (pushed, not marked recovered)",
-              wait_for(lambda: len(rec.at(logging.WARNING)) == 1)
-              and not getattr([r for r in rec.records if r.levelno == logging.WARNING][0], errwatch.RECOVERED, False))
+        check("back by itself: one plain WARNING pushed to group",
+              wait_for(lambda: len(rec.at(logging.WARNING)) == 1), True)
         check("alive again", alive["ok"], True)
         alive["watch"].stopping()
         check("the stop cancels the second one", sinks[1].cancelled, 1)
@@ -2392,11 +2391,8 @@ def _part_procwatch_drop():  # noqa: C901
             return [r for r in self.records if r.levelno >= logging.WARNING]
 
         def loud(self):
-            """What errwatch pushes to the group: WARNING / ERROR not marked recovered."""
-            return [r for r in self.faults() if not getattr(r, errwatch.RECOVERED, False)]
-
-        def recovered(self):
-            return [r for r in self.faults() if getattr(r, errwatch.RECOVERED, False)]
+            """What errwatch pushes to the group: every WARNING / ERROR."""
+            return self.faults()
 
     def stop(alive):
         """The service's stop reaching the listener (_AutomasKeeper.stopping); absent before 2026-10-06."""
@@ -2553,14 +2549,13 @@ def _part_procwatch_drop():  # noqa: C901
         rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED)), lambda: Source(0, _Stop)],
                                  before=cancel_soon)
         check("cancelled, then back by itself: one plain WARNING (pushed), as for any drop",
-              ([first(r) for r in rec.recovered()], len(rec.loud())), ([], 1))
+              len(rec.loud()), 1)
 
         print("\n[a drop while the machine stays up (10-05 22:45:46), back by itself: pushed - why it drops is not known (2026-10-10)]")
         rec, alive, seen = scenario([
             lambda: Source(2, lambda: com_error(*RPC_FAILED)),
             RPC_FAILED, RPC_FAILED,
             lambda: Source(0, _Stop)])
-        check("nothing marked recovered (daily report only)", [first(r) for r in rec.recovered()], [])
         drop = [r for r in rec.at(logging.INFO) if "程序启动通知断了" in r.getMessage()]
         check("the drop is INFO, naming the fallback", bool(drop) and "120 秒" in first(drop[0])
               and "AUTO-MAS" in first(drop[0]), True)
@@ -2584,20 +2579,18 @@ def _part_procwatch_drop():  # noqa: C901
         check("the dead subscription was released before the next one was made", seen[1:], [0, 0, 0])
         check("listener marked alive again after the recovery", alive["ok"], True)
 
-        print("\n[WMI stays broken: one ERROR after 10 minutes, not one a minute; back later: daily only]")
+        print("\n[WMI stays broken: one ERROR after 10 minutes, not one a minute; back later: INFO closure]")
         rec, alive, _ = scenario([lambda: Source(0, lambda: com_error(*RPC_FAILED))] + [RPC_FAILED] * 15
                                  + [lambda: Source(0, _Stop)])
         check("one ERROR: the long outage (the drop itself was INFO)", len(rec.at(logging.ERROR)), 1)
         check("it says how long", any("分钟没重新订上" in first(r) for r in rec.at(logging.ERROR)))
         check("it reads as plain Chinese", [texts.plain(first(r)) for r in rec.at(logging.ERROR)], [[]])
-        check("back at last: one recovered WARNING, saying it was pushed meanwhile",
-              [("期间报过群" in first(r)) for r in rec.recovered()], [True])
-        check("no plain WARNING", [first(r) for r in rec.at(logging.WARNING) if r not in rec.recovered()], [])
+        check("back at last: closed at INFO (no duplicate push, no daily report)",
+              (any("期间报过群" in first(r) for r in rec.at(logging.INFO)), rec.at(logging.WARNING)), (True, []))
 
         print("\n[cannot subscribe at all, then a Python error: both INFO, both back by themselves, both pushed, both plain]")
         rec, alive, _ = scenario([RPC_FAILED, lambda: Source(0, lambda: AttributeError("NextEvent")),
                                   lambda: Source(0, _Stop)])
-        check("nothing marked recovered", [first(r) for r in rec.recovered()], [])
         check("the first drop says it could not subscribe (INFO)",
               any("订不上" in first(r) for r in rec.at(logging.INFO)))
         errors = rec.loud()
@@ -2742,19 +2735,18 @@ def _part_wmi_listener():
         warns = rec.at(logging.WARNING)
         check("resubscribed: exactly one WARNING", len(warns), 1)
         msg = warns[0].getMessage() if warns else ""
-        check("it is not marked recovered (daily report only)", bool(warns) and getattr(warns[0], errwatch.RECOVERED, False), False)
         check("it says how long it was down and why", "断过" in msg and "秒" in msg and "远程过程调用失败" in msg)
         check("it carries the diag line", "\ndiag: hresult" in msg)
         check("the diag line carries the System log's winmgmt events", SCM in msg)
         settle(h, pushes, 1)
         check("it reached the group, once", [("系统的程序启动通知断过" in b) for _, b in pushes.sent], [True])
         section = daily(state)
-        check("the daily report lists it, in its own words", "系统的程序启动通知断过" in section)
+        check("the techlog summary lists it, in its own words", "系统的程序启动通知断过" in section)
         check("not tagged 「自己好了，只进日报」", "自己好了，只进日报" in section, False)
         check("the listener is healthy again", (w.down_since, w.fault, w.alive["ok"]), (None, None, True))
         h.close()
 
-        print("\n[still down at OUTAGE_ALARM_SECONDS: ERROR, pushed; the resubscribe after it is daily only]")
+        print("\n[still down at OUTAGE_ALARM_SECONDS: ERROR, pushed; the resubscribe after it closes at INFO]")
         lg, rec, pushes, h, state = setup("long")
         w = watch(lg)
         w.sub = dict(LIVE, at=vt.now - 60)
@@ -2770,9 +2762,9 @@ def _part_wmi_listener():
         w._failed(FAILURE)
         check("a later failed retry of the same outage is INFO", len(rec.at(logging.ERROR)), 1)
         w._subscribed()
-        warns = rec.at(logging.WARNING)
-        check("back at last: one recovered WARNING that says it was pushed meanwhile",
-              [(getattr(r, errwatch.RECOVERED, False), "期间报过群" in r.getMessage()) for r in warns], [(True, True)])
+        check("back at last: closed at INFO with 期间报过群, no duplicate WARNING",
+              (rec.at(logging.WARNING), any("期间报过群" in r.getMessage() for r in rec.at(logging.INFO))),
+              ([], True))
         settle(h, pushes, 1)
         check("still only the one push", len(pushes.sent), 1)
         h.close()
@@ -2812,8 +2804,7 @@ def _part_wmi_listener():
         w._failed(FAILURE)
         check("INFO 订不上", [r.levelno for r in rec.records if "订不上" in r.getMessage()], [logging.INFO])
         w._subscribed()
-        check("subscribed later: one WARNING for the group",
-              [getattr(r, errwatch.RECOVERED, False) for r in rec.at(logging.WARNING)], [False])
+        check("subscribed later: one WARNING for the group", len(rec.at(logging.WARNING)), 1)
         h.close()
 
         print("\n[the relay's own power-off: INFO, nothing pushed, nothing in the report]")
@@ -3236,16 +3227,14 @@ def _part_watchdog_guard():  # noqa: C901
           "查不了" in logs.lines[-1][1] and "看门服务停了" not in logs.lines[-1][1], True)
 
     print("[a watchdog found stopped that nobody stopped: WARNING to the group (audit 10-12 #6)]")
-    from ark_relay.features import errwatch
 
     class WarnLogs(Logs):
-        """Logs, plus WARNINGs with their recovered mark ("WARNING" / "RECOVERED")."""
+        """Logs, plus WARNINGs."""
 
         def __enter__(self):
             super().__enter__()
             self.real_warning = G.log.warning
-            G.log.warning = lambda msg, *a, **k: self.lines.append(
-                ("RECOVERED" if (k.get("extra") or {}).get(errwatch.RECOVERED) else "WARNING", msg % a))
+            G.log.warning = lambda msg, *a, **k: self.lines.append(("WARNING", msg % a))
             return self
 
         def __exit__(self, *exc):
@@ -3273,13 +3262,14 @@ def _part_watchdog_guard():  # noqa: C901
     check("three failed starts: the WARNING at the first look, the ERROR at the third",
           [lvl for lvl, _ in logs.lines if lvl != "INFO"], ["WARNING", "ERROR"])
 
-    print("[a look that raised, then a look that worked: recovered, one red item, not pushed]")
+    print("[a look that raised once, then worked: transient retry recorded at INFO, not pushed, not daily]")
     g, started = guard([("RUNNING", "AUTO")])
     with WarnLogs() as logs:
         g.failed("OSError()", looked=False)
         g.tick()
-    check("one WARNING marked recovered, saying the relay could look again",
-          [(lvl, "查不了" in m) for lvl, m in logs.lines if lvl != "INFO"], [("RECOVERED", True)])
+    check("no WARNING/ERROR, INFO notes it could look again",
+          ([lvl for lvl, _ in logs.lines if lvl != "INFO"],
+           any(lvl == "INFO" and "查不了" in m for lvl, m in logs.lines)), ([], True))
     g, started = guard([("RUNNING", "AUTO")])
     with WarnLogs() as logs:
         for _ in range(3):

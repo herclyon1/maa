@@ -404,8 +404,7 @@ last session and put back at boot is a fault the relay got over by itself.
 
     class Records(_Records):
         def warnings(self):
-            return [(r.getMessage(), bool(getattr(r, errwatch.RECOVERED, False)))
-                    for r in self.records if r.levelno == logging.WARNING]
+            return [r.getMessage() for r in self.records if r.levelno == logging.WARNING]
 
 
     def run(restore_master, try_restore):
@@ -440,20 +439,20 @@ last session and put back at boot is a fault the relay got over by itself.
     ROUTES = "母本里的采集路线已改回原来的 12 条（2026-10-05/endfield/MaaEnd-21-40-00 那趟之后临时改过）"
     MAKEUP = "终末地母本已改回补跑前的样子"
     try:
-        print("[both narrowings left over and put back at boot: daily report only]")
+        print("[both narrowings left over and put back at boot: real fault, pushed to group]")
         rec, pushes, state = run(lambda cfg: ROUTES, lambda cfg, notifier=None: (MAKEUP, ""))
         warns = rec.warnings()
-        check("two WARNINGs, both marked recovered", [r for _, r in warns], [True, True])
+        check("two WARNINGs for leftover narrowings", len(warns), 2)
         check("they say what was put back and that it was left over",
-              all("上次关机前没改回" in m and "这次开机改回了" in m for m, _ in warns) and len(warns) == 2)
-        check("nothing reached the group", pushes.sent, [])
+              all("上次关机前没改回" in m and "这次开机改回了" in m for m in warns) and len(warns) == 2)
+        check("both reached the group (zero recovered suppression)", len(pushes.sent), 2)
         section = errwatch.daily_section(state, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-        check("the daily report lists them, tagged 「自己好了，只进日报」",
-              "采集路线已改回" in section and section.count("自己好了，只进日报") == 2)
+        check("techlog errkinds lists them as pushed, never 「只进日报」",
+              ("采集路线已改回" in section, "只进日报" in section), (True, False))
 
         print("\n[the make-up's narrowing could not be put back: pushed]")
         rec, pushes, state = run(lambda cfg: "", lambda cfg, notifier=None: ("", "找不到终末地的母本"))
-        check("one WARNING, not marked recovered", [r for _, r in rec.warnings()], [False])
+        check("one WARNING", len(rec.warnings()), 1)
         check("it reached the group", len(pushes.sent), 1)
 
         print("\n[nothing left over: nothing said]")
@@ -962,12 +961,10 @@ def _part_keeper_exit():  # noqa: C901
         check("「AUTO-MAS 后台意外退出过（…退出码…），中继已重新打开」",
               line.startswith("AUTO-MAS 后台意外退出过（") and "退出码 0xC0000005" in line and "中继已重新打开" in line)
         check("it is plain Chinese (the daily report quotes it)", texts.plain(line), [])
-        check("not marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rec.records
-                                       if r.levelno == logging.WARNING], [False])
         check("pushed, once", [("中继已重新打开" in x) for x in pushed(rec)], [True])
         section = daily(rec)
-        check("the daily report lists it, not tagged 「自己好了，只进日报」",
-              "中继已重新打开" in section and "自己好了，只进日报" not in section)
+        check("techlog lists it as pushed, never 「只进日报」",
+              "中继已重新打开" in section and "只进日报" not in section)
         check("the keeper holds the new backend", (k.handle, k.gone), ("handle:31000", None))
 
         print("\n[the exit code cannot be read: said so, at INFO]")
@@ -985,16 +982,14 @@ def _part_keeper_exit():  # noqa: C901
         check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO)), False)
         check("no revival while it installs", rv, [])
 
-        print("\n[... the update done, AUTO-MAS starts its backend itself: one WARNING, daily report only]")
+        print("\n[... the update done, AUTO-MAS starts its backend itself: normal installer closure -> INFO]")
         automas_procs._automas_handle = lambda: "handle:32000"
         k.on_process_started()
-        warns = rec.at(logging.WARNING)
-        line = first(warns[0]) if warns else ""
-        check("one WARNING: back, and not by the relay",
-              len(warns) == 1 and "现在又在运行了" in line and "不是中继打开的" in line)
-        check("marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rec.records
-                                   if r.levelno == logging.WARNING], [True])
-        check("not pushed", pushed(rec), [])
+        check("installer closure emits INFO (no WARNING, not pushed, not daily report)",
+              (rec.at(logging.WARNING),
+               any("现在又在运行了" in m and "不是中继打开的" in m for m in rec.at(logging.INFO)),
+               pushed(rec)),
+              ([], True, []))
 
         print("\n[an installer run that never comes back: pushed at the REVIVE_ALERT_AFTER-th check]")
         rec, rv, k = run_exit(0, task_list="setup")
@@ -1010,8 +1005,7 @@ def _part_keeper_exit():  # noqa: C901
         finally:
             set_time(orig[1])
         warns = rec.at(logging.WARNING)
-        check("one WARNING (not marked recovered)",
-              [getattr(r, errwatch.RECOVERED, False) for r in rec.records if r.levelno == logging.WARNING], [False])
+        check("one WARNING", len(warns), 1)
         line = first(warns[0]) if warns else ""
         check("it says it has not come back, with the exit and the installer",
               "还没回来" in line and "退出码 0x0" in line and "安装或卸载程序还开着" in line)

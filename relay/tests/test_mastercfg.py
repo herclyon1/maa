@@ -2420,7 +2420,8 @@ per-claim rule (40 per 「补充理智」 booster, collector_maaend._claims_fit)
         o = parse_maaend_log(bad)
     require("misfit: no spent figure", o.get("maaend_sanity_spent") is None, f"got {o.get('maaend_sanity_spent')!r}")
     require("misfit: not filled in later", o.get("maaend_sanity_runs_only") is None, f"got {o.get('maaend_sanity_runs_only')!r}")
-    require("misfit: cost row says 没读到", cost_row(o) == ["理智消耗没读到，加强剂 13"], f"got {cost_row(o)!r}")
+    require("misfit: cost row omits unread sanity, keeps confirmed medicine", cost_row(o) == ["加强剂 13"],
+            f"got {cost_row(o)!r}")
 
 
 def _part_maaend_sanity_one_formula():
@@ -2451,7 +2452,7 @@ def _part_maaend_sanity_one_formula():
     raw = {"maaend_farm": "协议空间", "maaend_farm_runs": 1, "sanity_exhausted": True,
            "maaend_farm_drops": {"折金票": 68000}}
     _did, cost, *_ = ledger_rows._block_maaend({"ok": True, "raw": raw}, raw, fin)
-    check("ran, no figure: not 一次没开成", cost, ["理智消耗没读到"])
+    check("ran, no figure: neither 一次没开成 nor 没读到 (omitted from daily report)", cost, [])
     raw = {"maaend_farm": "协议空间", "sanity_exhausted": True}
     _did, cost, *_ = ledger_rows._block_maaend({"ok": True, "raw": raw}, raw, fin)
     check("no run, exhausted: 一次没开成", cost, ["理智不足，一次没开成"])
@@ -2597,9 +2598,10 @@ def _part_maaend_update_after_done():
     check("nothing to the group", got, [])
     check("no notice of any kind (not Server酱 either)", e.notifier.sent, [])
     check("not held", dict(e._pending), {})
-    check("no self-heal either", dict(e._recovered), {})
-    check("the log says the earlier round was done, this was the update, daily report only",
-          said(f"{R4.run_id} 前面那趟已经做完（{S4.run_id}），这趟是装新版 v2.32.0-beta.1 重启，只进日报"))
+    check("no _recovered bypass", hasattr(e, "_recovered"), False)
+    check("the log says the earlier round was done, this was the update (no 只进日报)",
+          said(f"{R4.run_id} 前面那趟已经做完（{S4.run_id}），这趟是装新版 v2.32.0-beta.1 重启")
+          and not said("只进日报"))
     check("no 「先压着」", said("先压着看后面的重试"), False)
     check("no 「最终失败」", said("最终失败"), False)
     ledger = {x["run_id"]: x for x in e.state.read_ledger("2026-10-04")}
@@ -2613,7 +2615,8 @@ def _part_maaend_update_after_done():
     print("    " + title)
     print("    " + body.replace("\n", "\n    ")[:500])
     check("the daily title counts no MaaEnd failure", "终末地失败" in title, False)
-    check("the daily row says it was the update", "终末地装了新版后自己重启，用掉一次重试，不算失败" in body)
+    check("update restart transition is omitted from daily report (no 不算失败)",
+          "不算失败" not in body and "终末地装了新版" not in body)
     check("the version is in the technical log line, not the report",
           ("v2.32.0-beta.1" in body, any("MaaEnd 装新版 v2.32.0-beta.1" in t for t in tech)), (False, True))
     e._flush_pending()
@@ -2626,7 +2629,7 @@ def _part_maaend_update_after_done():
     got = run(e, [R4, S4])
     check("nothing to the group", got, [])
     check("not held", dict(e._pending), {})
-    check("not turned into a self-heal", dict(e._recovered), {})
+    check("no _recovered bypass", hasattr(e, "_recovered"), False)
     check("the log says why", said(f"{R4.run_id} 前面那趟已经做完（{S4.run_id}）"))
     check("no 「重试后成功」 (nothing was retried)", said("重试后成功"), False)
     check("no notice of any kind", e.notifier.sent, [])
@@ -2638,7 +2641,7 @@ def _part_maaend_update_after_done():
     got = run(e, [S5, R5])
     check("nothing to the group", got, [])
     check("not held", dict(e._pending), {})
-    check("the log says why", said(f"{R5.run_id} 前面那趟已经做完（{S5.run_id}），这趟是装新版 v2.32.0-beta.2 重启，只进日报"))
+    check("the log says why", said(f"{R5.run_id} 前面那趟已经做完（{S5.run_id}），这趟是装新版 v2.32.0-beta.2 重启"))
 
     print("\n[the success was in another shift: the restart is held and rings as before]")
     late = restart(4, "17-50-53", t(4, 21, 50, 53))
@@ -2665,8 +2668,8 @@ def _part_maaend_update_after_done():
     handle._handle(e, R4)
     handle._handle(e, S4)
     check("reverse order: not dropped either", said(DROPPED), False)
-    check("reverse order: the held restart takes the usual path (retry healed)",
-          (list(e._pending), list(e._recovered)), ([], [("MaaEnd", "endfield")]))
+    check("reverse order: the held restart settled via update transition (no _pending left)",
+          list(e._pending), [])
     check("reverse order: not marked as the update on the ledger",
           ({x["run_id"]: x for x in e.state.read_ledger("2026-10-04")}[R4.run_id].get("raw") or {})
           .get("maaend_update_after_done"), None)
@@ -2704,18 +2707,18 @@ def _part_maaend_update_after_done():
     got = run(e, [S12, R12])
     check("not let go as 「前面那趟已经做完」", said(DROPPED), False)
     check("nothing to the group", got, [])
-    check("not held (its retry already got through)", (dict(e._pending), dict(e._recovered)), ({}, {}))
-    check("one 「自愈待查」 red item naming the restart", len(reds(e, R12.run_id)), 1)
+    check("not held (its retry already got through)", dict(e._pending), {})
+    check("normal update restart settled at INFO (no false red item)", reds(e, R12.run_id), [])
     check("the daily report books it as the update",
           core.episode_kinds(e.state.read_ledger("2026-10-12")).get(R12.run_id), "update")
 
-    print("\n[10-12, the other way round: the restart lands first -> healed by retry, one red item]")
+    print("\n[10-12, the other way round: the restart lands first -> normal update transition at INFO]")
     e = build(MACHINE)
     got = run(e, [R12, S12])
     check("not let go as 「前面那趟已经做完」", said(DROPPED), False)
     check("nothing to the group", got, [])
-    check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
-    check("one 「自愈待查」 red item naming the restart", len(reds(e, R12.run_id)), 1)
+    check("nothing left held", dict(e._pending), {})
+    check("normal update restart settled at INFO", reds(e, R12.run_id), [])
 
     F12 = RunRecord(run_id="2026-10-12/endfield/MaaEnd-06-04-00", script="MaaEnd", user="endfield",
                     started=t(12, 10, 4, 0), finished=t(12, 10, 40, 0), ok=False, failed_tasks=["协议空间"],
@@ -2729,7 +2732,8 @@ def _part_maaend_update_after_done():
     check("the held record is still the failure", [r.run_id for r in e._pending.values()], [F12.run_id])
     handle._handle(e, S12)
     e._flush_pending()
-    check("nothing to the group", [x for x in e.notifier.sent if x[2]], [])
+    check("real failure healed by retry pushes ⚠️ straight to group",
+          [x[0] for x in e.notifier.sent if x[2]], ["⚠️ MaaEnd 中途失败过，重试后成功"])
     check("the red item names the failure and its task",
           [("协议空间" in x) for x in reds(e, F12.run_id)], [True])
 
@@ -2871,7 +2875,7 @@ def _part_maaend_update_record():
           any("重试被用掉" in t for x in ledger for t in x.get("failed_tasks") or []), False)
     check("no update-restart mark", [(x.get("raw") or {}).get("maaend_update_restart") for x in ledger], [None, None])
     check("attempts", records._attempts(e, got[-1], "2026-10-12"), 2)
-    healed = [m for n, lv, m in grab.lines if "自己好了" in m]
+    healed = [m for n, lv, m in grab.lines if "重试后通过" in m]
     check("one recovery line", len(healed), 1)
     check("it says a retry healed it, ran 2 times",
           bool(healed) and healed[0].startswith("⚠️ MaaEnd 中途失败过，重试后成功") and "跑了 2 次" in healed[0], True)
@@ -3048,10 +3052,11 @@ def _part_maaend_update_restart():
     check("transitional in the ledger", mid.get("transitional"), True)
     check("its failure names the update, not 15 tasks", mid.get("failed_tasks"),
           ["MaaEnd 装新版 v2.31.0-beta.6 后自己重启，这一次重试被用掉"])
-    check("nothing pushed (the rerun went through: daily report only)", e.notifier.sent, [])
-    check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("real failure healed by rerun pushes ⚠️ straight to group",
+          [(t, a) for t, _, a in e.notifier.sent], [("⚠️ MaaEnd 中途失败过，重试后成功", True)])
+    check("nothing left held", (dict(e._pending), hasattr(e, "_recovered")), ({}, False))
 
-    print("\n[daily report: only the update attempt is an episode; the 15:24 crash stays listed]")
+    print("\n[daily report: whitelist omits both failed crash row and update restart row (details in tech)]")
     from ark_relay.core import ledger as core
     entries = e.state.read_ledger("2026-10-01")
     kinds = core.episode_kinds(entries)
@@ -3063,20 +3068,21 @@ def _part_maaend_update_restart():
     title, body = core.format_daily("2026-10-01", entries, tech=tech)
     print("    " + title)
     print("    " + body.replace("\n", "\n    ")[:600])
-    check("the crash line is there with ↻", any(l.startswith("↻ 终末地") for l in body.splitlines()), True)
-    check("the update line is there with ↪️", any(l.startswith("↪️ 终末地") for l in body.splitlines()), True)
-    check("its note names the update", "终末地装了新版后自己重启，用掉一次重试，不算失败" in body, True)
+    check("crash row and update row are strictly omitted from daily report",
+          (any(l.startswith("↻ 终末地") for l in body.splitlines()),
+           any(l.startswith("↪️ 终末地") for l in body.splitlines()),
+           "不算失败" in body), (False, False, False))
     check("the version goes to the technical log, not the report",
           ("v2.31.0-beta.6" in body, any("MaaEnd 装新版 v2.31.0-beta.6 后自己重启" in t for t in tech)), (False, True))
 
-    print("\n[the title names the game: 10-01's full ledger shape]")
+    print("\n[the title stays neutral when failures exist: never false 全绿 and never leaks error words]")
     okww = [{"run_id": f"o{i}", "script": "OK-WW", "user": "wuwa", "started": at(h, 0).isoformat(),
              "finished": at(h + 2, 0).isoformat(), "ok": False, "failed_tasks": ["OK-WW 运行超时"], "raw": {}}
             for i, h in enumerate((9, 11, 13))]
     done = dict(entries[-1], incomplete="MaaEnd 这一轮有 2 项没干成")
     t_full, _ = core.format_daily("2026-10-01", okww + entries[:-1] + [done])
     print("    " + t_full)
-    check("title", t_full, "📋 10-01 · 鸣潮没跑成、终末地 1 项没干完 ⚠️")
+    check("title", t_full, "📋 10-01 · 今日日报")
 
     print("\n[a timeout clears only itself: a named task still undone keeps the record failed]")
     mixed = [dict(entries[0], failed_tasks=["MaaEnd 进程超时", "据点交易"]),
@@ -3112,7 +3118,7 @@ def _part_maaend_update_restart():
     t_hung, b_hung = core.format_daily("2026-10-01", okww + entries[:-1] + [hung], tech=hung_tech)
     print("    " + t_hung)
     # Not exiting by itself is the relay's own wrap-up (it closed it): technical log, not title or row.
-    check("title", t_hung, "📋 10-01 · 鸣潮没跑成 ⚠️")
+    check("title", t_hung, "📋 10-01 · 今日日报")
     check("no 「没干完」 anywhere", "没干完" in t_hung + b_hung, False)
     check("the technical log says it, the report does not",
           (any("终末地任务全完成，但跑完没自己退出（空等 29 分钟）" in t for t in hung_tech), "没自己退出" in b_hung), (True, False))
@@ -3351,7 +3357,7 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
     check("no alarm went to the group", alarms(e), [])
     check("no 「最终失败」", said("最终失败"), False)
     check("no WARNING / ERROR line", loud(e), [])
-    check("nothing held", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("nothing held", (dict(e._pending), hasattr(e, "_recovered")), ({}, False))
 
     print("\n[every task of the restart failed at once (the 「never got into the game」 shape)]")
     S = success(4, "05-26-41", t(4, 9, 26, 41), 23)
@@ -4080,8 +4086,10 @@ essence is owned, switch to filler mode (刷垫子) by itself.
                     and CATCH.alarms() == [], repr(CATCH.alarms()))
             e3._essence_filler()
             require("next tick: switched", ov(master())["AutoEssenceMenu"]["caseName"] == "Random")
-            healed = [r for r in CATCH.records if r.levelno == logging.WARNING and getattr(r, errwatch.RECOVERED, False)]
-            require("one WARNING marked recovered (daily report, not the group)", len(healed) == 1 and CATCH.alarms() == [],
+            healed = [r for r in CATCH.records if r.levelno == logging.INFO and "读写母本没成，这次成了" in r.getMessage()]
+            ess_warns = [r for r in CATCH.records if r.name == "ark.essence" and r.levelno >= logging.WARNING]
+            require("transient retry recorded at INFO (no essence WARNING, no group alarm)",
+                    len(healed) == 1 and CATCH.alarms() == [] and ess_warns == [],
                     repr([r.getMessage() for r in CATCH.records]))
             require("……its first line is plain words", texts.plain(healed[0].getMessage().splitlines()[0]) == [])
             put_master(picked)

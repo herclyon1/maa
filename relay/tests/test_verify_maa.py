@@ -583,41 +583,45 @@ def _part_episodes():
     title, body = core.format_daily("2026-09-02", today)
     check("标题不再是 5 项失败", "维护日跳过，其余全绿 ✅" in title, True)
     check("没有 ❌", "❌" in body, False)
-    check("鸣潮画 ↪️", body.count("↪️ 鸣潮"), 2)
+    check("更新重启过渡行不进用户日报（仅记技术日志）", body.count("↪️ 鸣潮"), 0)
     check("终末地画 ⏸", body.count("⏸ 终末地"), 3)
-    check("插曲说明", "游戏更新后重跑，不算失败" in body, True)
-    for change, files, want in (("anticheat", ["AntiCheatExpert\\pld.dat"], "游戏更新成功（只更新了反作弊组件），重启后重跑，不算失败"),
-                                ("none", [], "游戏弹了「即将重启」但客户端文件没有变，重启后重跑，不算失败"),
-                                ("patch", ["Content\\Paks\\pakchunk0.pak"], "游戏更新成功（更新了客户端文件），重启后重跑，不算失败"),
-                                ("unknown", [], "游戏弹了「即将重启」，重启后重跑；客户端有没有换文件没查到，不算失败")):
+    check("日报不含「不算失败」插曲废话", "不算失败" in body, False)
+    for change, files in (("anticheat", ["AntiCheatExpert\\pld.dat"]),
+                          ("none", []),
+                          ("patch", ["Content\\Paks\\pakchunk0.pak"]),
+                          ("unknown", [])):
         ace = [ent("w1", "OK-WW", 9, 20, 1, False, transitional=True, raw={"okww_restart_dialog": True, "okww_client_change": change, "okww_client_files": files}),
                ent("w2", "OK-WW", 9, 22, 15, True)]
         tech: list = []
         _, bace = core.format_daily("2026-09-12", ace, tech=tech)
-        # File names go to the technical log, not the report (D-1010).
+        # 重启弹窗与变更文件仅进技术日志，绝不进用户日报（2026-11-28 白名单）
         check(f"重启弹窗：{change} 换了的文件进技术日志、不进日报",
               (all(f in " ".join(tech) for f in files), any(f in bace for f in files)), (True, False))
-        check(f"重启弹窗：{change} 的说法是定论不是猜测", want in bace and "多半" not in bace, True)
-    check("维护说明", "进不了游戏" in body, True)
+        check(f"重启弹窗：{change} 不往日报塞不算失败/没查到",
+              ("不算失败" not in bace and "没查到" not in bace and "多半" not in bace), True)
+    check("维护说明", "维护" in body, True)
 
-    print("[终末地只差自动采集 / 应急理智加强剂：照样算失败（2026-10-06 起，之前是 🟡 不计失败）]")
+    print("[终末地只差自动采集 / 应急理智加强剂：照样算失败（失败行直推群、日报严格省略，仅记技术日志）]")
     soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, failed=["应急理智加强剂", "自动采集"],
                 raw={"maaend_collect_done": 13, "maaend_collect_total": 15, "maaend_collect_failed": ["路线15：红矛叶", "路线16：协议纹石"]})]
     check("不再分成 soft", core.episode_kinds(soft).get("s"), None)
-    ts, bs = core.format_daily("2026-09-03", soft)
-    check("标题算失败", "终末地失败 1 次 ⚠️" in ts, True)
-    check("画 ❌ 并点名没走通的路线", "❌ 终末地" in bs
-          and "失败于：应急理智加强剂、自动采集；自动采集 13/15 条走通，没走通：路线15：红矛叶、路线16：协议纹石" in bs, True)
+    tech_soft: list = []
+    ts, bs = core.format_daily("2026-09-03", soft, tech=tech_soft)
+    check("标题不误标全绿，也不塞失败报错词", ts, "📋 09-03 · 今日日报")
+    check("日报不含 ❌ 与失败项（细节已记技术日志、真错由群告警汇报）",
+          ("❌" not in bs and "失败于" not in bs and "没走通" not in bs,
+           any("路线15：红矛叶" in x for x in tech_soft)), (True, True))
     check("不再写「不算失败」「上游问题」", ("不算失败" in bs, "上游问题" in bs, "个别上游项" in ts), (False, False, False))
     md = [ent("u", "MAA", 9, 0, 17, False, failed=["开始唤醒"], raw={"maintenance_day": True})]
-    check("更新日的明日方舟失败也算失败", (core.episode_kinds(md), "明日方舟没跑成" in core.format_daily("2026-09-03", md)[0]),
-          ({}, True))
+    check("更新日的明日方舟失败仍归为真失败（不标 maintenance），日报中性标题不误标全绿",
+          (core.episode_kinds(md), core.format_daily("2026-09-03", md)[0]),
+          ({}, "📋 09-03 · 今日日报"))
 
     print("[真故障不能被顺手洗白]")
     real = [ent("a", "OK-WW", 9, 18, 7, False), ent("b", "OK-WW", 9, 28, 13, True)]
     check("没有更新重启的失败→不是插曲", core.episode_kinds(real), {})
     t2, b2 = core.format_daily("2026-09-02", real)
-    check("标题说鸣潮没跑成（一趟什么都没做成的失败）", "鸣潮没跑成 ⚠️" in t2, True)
+    check("有真失败的一天日报不误标全绿，也不把失败词塞进日报", (t2, "❌" not in b2), ("📋 09-02 · 今日日报", True))
     streak_no_success = [ent("a", "OK-WW", 9, 18, 1, False, transitional=True), ent("b", "OK-WW", 9, 20, 7, False)]
     check("更新重启后最终没成功→仍是失败", core.episode_kinds(streak_no_success), {})
 
@@ -3774,10 +3778,9 @@ TypeError: 'NoneType' object is not subscriptable
         eng = types.SimpleNamespace(cfg=types.SimpleNamespace(state_dir=str(sd)))
         found = ge.check_round(eng, rec)
         check("returns the unlisted shape", len(found), 1)
-        pushed = [r for r in h.records if not getattr(r, errwatch.RECOVERED, False)]
-        check("one pushed WARNING (the listed recovered lines are the round's other, recovered one)",
-              (len(pushed), len(h.records)), (1, 2))
-        alarm = getattr(pushed[0], errwatch.ALARM, None) if pushed else None
+        check("one pushed WARNING (known recovered lines are logged at INFO, not WARNING)",
+              len(h.records), 1)
+        alarm = getattr(h.records[0], errwatch.ALARM, None) if h.records else None
         check("with its own title and body", alarm, (texts.gamelog_unknown_errors("鸣潮"),
                                                     texts.gamelog_unknown_errors_body("鸣潮", "09:12", 1)))
         check("title and body read as plain words", (texts.plain(alarm[0]), texts.plain(alarm[1])) if alarm else None,
@@ -3786,16 +3789,25 @@ TypeError: 'NoneType' object is not subscriptable
         check("one red item quoting the raw line", [("can not battle pass" in t, rec.run_id in t) for _, t in red],
               [(True, True)])
         h.records.clear()
-        logp.write_text("\n".join(SAMPLES["OK-WW"]), encoding="utf-8")
-        check("a log with listed recovered lines only: nothing unlisted", ge.check_round(eng, rec), [])
-        check("... but one WARNING marked recovered for the round, not pushed",
-              [(getattr(r, errwatch.RECOVERED, False), getattr(r, errwatch.ALARM, None)) for r in h.records],
-              [(True, None)])
-        check("... naming the run and each recovered kind once",
-              bool(h.records) and rec.run_id in h.records[0].getMessage()
-              and h.records[0].getMessage().count("combat check not in combat") == 1, True)
-        check("... its first line (what the daily report quotes) is plain words, the same every run",
-              [texts.plain(errwatch.first_line(r)) for r in h.records], [[]])
+        info_lines = []
+        ih = logging.Handler(logging.INFO)
+        ih.emit = lambda r: info_lines.append(r) if r.levelno == logging.INFO else None
+        old_lvl = ARK.level
+        ARK.setLevel(logging.INFO)
+        ARK.addHandler(ih)
+        try:
+            logp.write_text("\n".join(SAMPLES["OK-WW"]), encoding="utf-8")
+            check("a log with listed recovered lines only: nothing unlisted", ge.check_round(eng, rec), [])
+            check("... no WARNING pushed, logged as one INFO line naming the run and each kind once",
+                  (h.records, len(info_lines),
+                   bool(info_lines) and rec.run_id in info_lines[0].getMessage()
+                   and info_lines[0].getMessage().count("combat check not in combat") == 1),
+                  ([], 1, True))
+            check("... its first line is plain words",
+                  [texts.plain(errwatch.first_line(r)) for r in info_lines], [[]])
+        finally:
+            ARK.removeHandler(ih)
+            ARK.setLevel(old_lvl)
         h.records.clear()
         maa = types.SimpleNamespace(script="MAA", run_id="2026-10-11/ak/MAA-09-00-00", log_path=TMP / "r" / "gui.log",
                                     started=started)

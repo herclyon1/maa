@@ -340,8 +340,9 @@ def step(eng, now: datetime | None = None, *, friend_post=None, friend_sync: boo
     st.pop(SECTION, PENDING)
     st.set(SECTION, DONE_FOR, run_id)
     if tries:
-        log.warning("基质刷取：切刷垫子前面 %d 次读写母本没成，这次成了\n上一次：%s", tries,
-                    pending.get(OS_LAST) or "?", extra=errwatch.recovered())
+        # 瞬态文件占用重试成功：记 info（不进日报、不刷群）；连败耗尽已由 _give_up 直推企微群。
+        log.info("基质刷取：切刷垫子前面 %d 次读写母本没成，这次成了\n上一次：%s", tries,
+                 pending.get(OS_LAST) or "?")
     if not res.changed:
         log.info("基质刷取：%s 之后没切（%s）", run_id, res.note)
         return

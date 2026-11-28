@@ -215,23 +215,85 @@ def _valid_alarm_hold(raw) -> tuple[datetime, datetime, datetime, datetime] | No
     return end_dt, boot_dt, created_dt, at_dt
 
 
+# 内存级 fail-closed 故障留机标志（按 state_dir 绝对路径隔离，线程安全）：
+# 当 state.json 写盘异常导致故障留机锁没能写进磁盘时，立刻在内存挂起留机保护，
+# 确保关机判定不会因为写盘失败而静默放行自动关机（仍严格服从硬锁 08:40 断电前 GO_CUT）。
+_MEM_ALARM_LOCK = threading.Lock()
+_MEM_ALARM_HOLDS: dict[str, dict] = {}
+
+
+def _mem_hold_key(state_dir: Path) -> str:
+    """将 state_dir 规范为内存留机表的稳定键，避免不同目录或测试沙箱互相串扰。"""
+    try:
+        return str(Path(state_dir).resolve())
+    except OSError:
+        return str(state_dir)
+
+
+def set_memory_alarm_hold(state_dir: Path, reason: str, now: datetime | None = None) -> dict:
+    """故障留机写盘失败时挂起内存级 fail-closed 留机保护，阻止后续自动关机。"""
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    boot_dt = next_boot(cur, DEBUG_LEAD_MIN)
+    end_dt = boot_dt - timedelta(minutes=DEBUG_LEAD_MIN)
+    clean_reason = str(reason or "").strip()[:200] or "故障留机保存失败"
+    rec = {
+        "until": end_dt.strftime("%Y-%m-%d %H:%M"),
+        "boot": boot_dt.strftime("%Y-%m-%d %H:%M"),
+        "reason": clean_reason,
+        "created_at": cur.isoformat(timespec="seconds"),
+        "at": cur.isoformat(timespec="seconds"),
+        "boot_at": "",
+        "memory_only": True,
+    }
+    with _MEM_ALARM_LOCK:
+        _MEM_ALARM_HOLDS[_mem_hold_key(state_dir)] = rec
+    return dict(rec)
+
+
+def clear_memory_alarm_hold(state_dir: Path) -> None:
+    """清除指定状态目录的内存级 fail-closed 故障留机标志（写盘成功或人工解锁后调用）。"""
+    with _MEM_ALARM_LOCK:
+        _MEM_ALARM_HOLDS.pop(_mem_hold_key(state_dir), None)
+
+
+def _memory_alarm_hold_info(state_dir: Path, cur: datetime) -> dict | None:
+    """读取尚未到期的内存级 fail-closed 留机记录；已到期则自动清理并返回 None。"""
+    key = _mem_hold_key(state_dir)
+    with _MEM_ALARM_LOCK:
+        mem = _MEM_ALARM_HOLDS.get(key)
+        if not isinstance(mem, dict):
+            return None
+        parsed = _valid_alarm_hold(mem)
+        if parsed is None:
+            _MEM_ALARM_HOLDS.pop(key, None)
+            return None
+        if cur < parsed[0]:
+            return dict(mem)
+        _MEM_ALARM_HOLDS.pop(key, None)
+        return None
+
+
 def alarm_hold_raw(state_dir: Path):
     return _store(state_dir).get("modes", "alarm_hold")
 
 
 def alarm_hold_info(state_dir: Path, now: datetime | None = None) -> dict | None:
-    """Active alarm_hold dict, `{"corrupt": True, ...}` if malformed, or None if absent/expired."""
-    raw = alarm_hold_raw(state_dir)
+    """读取当前生效的故障留机锁（优先读磁盘，磁盘读不到或未写入时检查内存级 fail-closed 保护）。"""
+    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    try:
+        raw = alarm_hold_raw(state_dir)
+    except Exception:  # 读盘失败时仍必须尊重内存级防误关标志
+        log.error("读取故障留机锁失败，转查内存级防误关标志", exc_info=True)
+        return _memory_alarm_hold_info(state_dir, cur)
     if raw is None:
-        return None
+        return _memory_alarm_hold_info(state_dir, cur)
     parsed = _valid_alarm_hold(raw)
     if parsed is None:
         return {"corrupt": True, "reason": "留机锁状态损坏"}
     end_dt = parsed[0]
-    cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if cur < end_dt:
         return dict(raw)
-    return None
+    return _memory_alarm_hold_info(state_dir, cur)
 
 
 def set_alarm_hold(state_dir: Path, reason: str, now: datetime | None = None,
@@ -290,7 +352,11 @@ def set_alarm_hold(state_dir: Path, reason: str, now: datetime | None = None,
         }
         return True
 
-    return bool(store.atomic("modes", _mutate))
+    ok = bool(store.atomic("modes", _mutate))
+    if ok:
+        # 已成功写进磁盘后，清理内存级临时防误关标志，以磁盘记录为准
+        clear_memory_alarm_hold(state_dir)
+    return ok
 
 
 def clear_alarm_hold(state_dir: Path, expected_at: str = "", expected_created_at: str = "",
@@ -343,6 +409,8 @@ def clear_alarm_hold(state_dir: Path, expected_at: str = "", expected_created_at
         return True, "故障留机锁已关闭"
 
     ok, msg = store.atomic("modes", _mutate)
+    if ok:
+        clear_memory_alarm_hold(state_dir)
     if outcome["log"] == "corrupt":
         log.info("已清理损坏的故障留机锁")
     elif outcome["log"] == "closed":
@@ -355,6 +423,8 @@ def expire_alarm_hold_if_due(state_dir: Path, now: datetime | None = None) -> tu
     cur = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     raw = alarm_hold_raw(state_dir)
     if not isinstance(raw, dict):
+        # 磁盘无锁时，顺手检查并清理已到期的内存级防误关标志
+        _memory_alarm_hold_info(state_dir, cur)
         return None, False
     try:
         end_dt = _parse_bj(raw.get("until"))

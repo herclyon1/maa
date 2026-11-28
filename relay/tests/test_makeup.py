@@ -244,7 +244,9 @@ def _part_collect_main():
     check("补跑走通：开始那条不发", [x for x in got if x[0] == _texts.COLLECT_RETRY_START], [])
     check("补跑走通：只有「补跑后全部走完」一条，不带 alert", got, [(_texts.COLLECT_RETRY_OK, False)])
     check("…它走日志，不推", _route_of(_texts.COLLECT_RETRY_OK), "log")
-    check("日报那一行说走通了", _report.retry_line(sd, "2026-09-12").startswith("自动采集补跑：走通 "), True)
+    check("日报 retry_line 严格为空（补跑细节仅进技术日志）",
+          (_report.retry_line(sd, "2026-09-12"),
+           _report._retry_tech_line(sd, "2026-09-12").startswith("自动采集补跑：走通 ")), ("", True))
 
     print("[失败路线从真实日志里认出来，id 来自 MaaEnd 自己的语言文件]")
     check("语言文件里有 25 条路线的失败文案", len(labels), 25)
@@ -529,7 +531,9 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     fin = datetime(2026, 10, 5, 11, 30, 13)
     block = "\n".join(ledger_rows._block({"script": "MaaEnd", "ok": True, "raw": raw}, fin))
     line = next((x for x in block.split("；") + block.splitlines() if "自动采集" in x and "走通" in x), "")
-    check("日报原文", "自动采集 16/17 条走通，撞上「战斗中无法使用」没采到：路线10：重红柱状菌" in block, True)
+    check("日报原文仅列正常完成路线数，不含撞上/没采到报错文案",
+          ("自动采集 16/17 条走通" in block, "战斗中无法使用" not in block, "没采到" not in block),
+          (True, True, True))
     print("    " + line.strip())
     check("日报这句是人话", texts.plain(line), [])
 
@@ -598,9 +602,11 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("补的是路线10（没有「采集失败」那一行也补）", asked, [["AutoCollectRoute10"]])
     check("补跑走通：不进群，只进日报", [(t, route_of(t, alert=a)) for t, _, a in sent],
           [(texts.COLLECT_RETRY_OK, "log")])
-    check("日报那句写了为什么补", report.retry_line(sd, "2026-10-08", md),
-          "自动采集补跑：第一趟撞上「战斗中无法使用」没采到：路线10：重红柱状菌；走通 路线10：重红柱状菌")
-    check("…是人话", texts.plain(report.retry_line(sd, "2026-10-08", md)), [])
+    check("日报 retry_line 严格为空；技术日志写清为什么补",
+          (report.retry_line(sd, "2026-10-08", md),
+           report._retry_tech_line(sd, "2026-10-08", md)),
+          ("", "自动采集补跑：第一趟撞上「战斗中无法使用」没采到：路线10：重红柱状菌；走通 路线10：重红柱状菌"))
+    check("…技术日志那句是人话", texts.plain(report._retry_tech_line(sd, "2026-10-08", md)), [])
     asked, sent, stamp, _ = maybe_run(False)
     check("补跑还没采到：照旧报群", [(t, a) for t, _, a in sent], [(texts.COLLECT_RETRY_FAILED, True)])
     asked, sent, stamp, _ = maybe_run(False, {"AutoCollectRoute10": ["2026-10-07"]})
@@ -1094,9 +1100,10 @@ def _part_collect_retry_cutoff():
     gs = tmpdir()
     (gs / "collect-retry").mkdir(parents=True)
     (gs / "collect-retry" / "2026-09-12.json").write_text(json.dumps(after, ensure_ascii=False), encoding="utf-8")
-    line = report.retry_line(gs, "2026-09-12")
-    check("日报不说「还没有结果」", "还没有结果" in line, False)
-    check("日报说补跑两次都没跑完、哪条路线没结论", ("补跑两次都没跑完" in line, "没结论" in line), (True, True))
+    line = report._retry_tech_line(gs, "2026-09-12")
+    check("日报 retry_line 为空", report.retry_line(gs, "2026-09-12"), "")
+    check("技术日志不说「还没有结果」", "还没有结果" in line, False)
+    check("技术日志说补跑两次都没跑完、哪条路线没结论", ("补跑两次都没跑完" in line, "没结论" in line), (True, True))
     did, _ = outcome(None)
     check("没有印记 → 照常跑", did, True)
 
@@ -1648,8 +1655,10 @@ def _part_makeup_main():  # noqa: C901
     handle._handle(e, rec("MaaEnd", NOW + timedelta(minutes=1), ok=True,
                           raw={"tasks_done": ["基质刷取"], "tasks_evidence": {"基质刷取": "当前理智 234/360"}}))
     check("记录落地：母本回到原样", master_of(e.cfg.automas_dir), MSTASH)
-    check("日报那一行", report.makeup_line(e.cfg.state_dir, f"{NOW:%Y-%m-%d}"),
-          f"终末地失败后自动补跑「存放背包、{WHOLE}」，走通了（原来失败于：基质刷取）")
+    check("日报 makeup_line 严格为空，细节在技术日志",
+          (report.makeup_line(e.cfg.state_dir, f"{NOW:%Y-%m-%d}"),
+           report._makeup_tech_line(e.cfg.state_dir, f"{NOW:%Y-%m-%d}")),
+          ("", f"终末地失败后自动补跑「存放背包、{WHOLE}」，走通了（原来失败于：基质刷取）"))
     e = build(put_master(MASTER))
     hold(e, rec("MaaEnd", earlier, failed=["基质刷取"], raw={"maaend_fail_causes": {"基质刷取": BAG_FULL}}))
     dispatched.clear()
@@ -1700,17 +1709,20 @@ def _part_makeup_main():  # noqa: C901
     check("母本改回原样", master_of(e.cfg.automas_dir), MASTER)
     row = {x["run_id"]: x for x in e.state.read_ledger(day)}[r.run_id]
     check("原来那趟记上补跑做成的时间", bool((row.get("raw") or {}).get("makeup_ok")))
-    check("压着的那条转成自愈", list(e._recovered), [("MaaEnd", "endfield")])
+    check("压着的那条立即直推群排查并清空待推（无 _recovered 旁路）",
+          (dict(e._pending), hasattr(e, "_recovered"), alarms(e)),
+          ({}, False, [texts.makeup_passed("终末地", "早班")]))
+    before_flush = len(e.notifier.sent)
     e._flush_pending()
-    check("补跑走通的失败不推（群、Server酱都没有）", e.notifier.sent, [])
-    check("放下", dict(e._recovered), {})
-    e._flush_pending()
-    check("下一轮也不推", e.notifier.sent, [])
+    check("下一轮不重复推", len(e.notifier.sent), before_flush)
     check("不在跑了", makeup.in_flight(e.cfg.state_dir, t2 + timedelta(minutes=2)), [])
     title, body = core.format_daily(day, e.state.read_ledger(day))
-    check("日报标题是全绿", "全绿" in title and "失败" not in title)
-    check("补跑那一行说失败过、补跑后走通了", report.makeup_line(e.cfg.state_dir, day),
-          f"终末地失败后自动补跑「{WHOLE}」，走通了（原来失败于：赠送干员礼物、基质刷取、日常奖励领取）")
+    check("有前期真失败的日子标题中性不误标全绿，也不塞失败词",
+          (title, "失败" not in title, "❌" not in body),
+          (f"📋 {day[5:]} · 今日日报", True, True))
+    check("日报 makeup_line 为空，细节仅在技术日志",
+          (report.makeup_line(e.cfg.state_dir, day), report._makeup_tech_line(e.cfg.state_dir, day)),
+          ("", f"终末地失败后自动补跑「{WHOLE}」，走通了（原来失败于：赠送干员礼物、基质刷取、日常奖励领取）"))
 
     print("\n[积压告警：补跑前压着不推，补跑后仍没成进群一次（这一班）]")
     e = build()
@@ -1732,7 +1744,9 @@ def _part_makeup_main():  # noqa: C901
     check("补跑后：头一行说补跑也没成、卡在哪", e.notifier.sent[-1][1].splitlines()[0],
           "明日方舟早班没跑成，补跑也没成：卡在 MAA 未能正确登录 PRTS")
     check("补跑后：不再压着", dict(e._pending), {})
-    check("日报那一行", report.makeup_line(e.cfg.state_dir, day), "明日方舟失败后自动补跑，还是没成（明日方舟 未能正确登录 PRTS）")
+    check("日报 makeup_line 为空，技术日志有明细",
+          (report.makeup_line(e.cfg.state_dir, day), report._makeup_tech_line(e.cfg.state_dir, day)),
+          ("", "明日方舟失败后自动补跑，还是没成（明日方舟 未能正确登录 PRTS）"))
 
     print("\n[过了一天：昨天压着、没补跑的，进群一次说没补跑]")
     e = build()
@@ -1767,7 +1781,9 @@ def _part_makeup_main():  # noqa: C901
     (sd / "collect-retry").mkdir()
     (sd / "collect-retry" / f"{day}.json").write_text(json.dumps(
         {"passed": [], "failed": ["AutoCollectRoute15"], "unknown": [], "recurrent": ["AutoCollectRoute15"]}), encoding="utf-8")
-    check("日报那行说连续两天", "连续两天没走通 AutoCollectRoute15" in report.retry_line(sd, day))
+    check("日报 retry_line 为空，技术日志说连续两天",
+          (report.retry_line(sd, day), "连续两天没走通 AutoCollectRoute15" in report._retry_tech_line(sd, day)),
+          ("", True))
 
     print("\n[MAA failed after 21:30: the decision waits for the make-up; nothing pushed (10-10 23:22: only 「关机被取消」 is)]")
     e = build()
@@ -1805,7 +1821,9 @@ def _part_makeup_main():  # noqa: C901
     makeup.maybe_run(e, stale)
     check("十分钟没跑出记录 → 收尾", makeup.read_marker(e.cfg.state_dir, day)["MAA"]["result"], makeup.NO_RECORD)
     check("收尾后不再等", makeup.waiting(e, stale), [])
-    check("日报那一行", report.makeup_line(e.cfg.state_dir, day), f"明日方舟失败后派了自动补跑，{makeup.STALE_MIN} 分钟没跑出记录")
+    check("日报 makeup_line 为空，技术日志有明细",
+          (report.makeup_line(e.cfg.state_dir, day), report._makeup_tech_line(e.cfg.state_dir, day)),
+          ("", f"明日方舟失败后派了自动补跑，{makeup.STALE_MIN} 分钟没跑出记录"))
     shutdown._not_shift = real_not_shift
 
     print("\n[还有脚本在跑：不补]")
@@ -1831,7 +1849,10 @@ def _part_makeup_main():  # noqa: C901
     e._flush_pending()
     check("放下了，进群一次", (alarms(e), dict(e._pending)), ([texts.unresolved("终末地", "早班")], {}))
     check("说补跑没能开跑和原因", "补跑没能开跑（母本读写出错" in e.notifier.sent[-1][1], True)
-    check("日报那一行", report.makeup_line(e.cfg.state_dir, day).startswith("终末地失败后想自动补跑「赠送干员礼物、基质刷取、日常奖励领取」，没能开跑（母本读写出错"))
+    check("日报 makeup_line 为空，技术日志有明细",
+          (report.makeup_line(e.cfg.state_dir, day),
+           report._makeup_tech_line(e.cfg.state_dir, day).startswith("终末地失败后想自动补跑「赠送干员礼物、基质刷取、日常奖励领取」，没能开跑（母本读写出错")),
+          ("", True))
     makeup._prepare_maaend = real_prepare
 
     import subprocess as _real_sub
@@ -1926,9 +1947,10 @@ def _part_makeup_main():  # noqa: C901
     e._flush_pending()
     check("放下了，进群一次", (alarms(e), dict(e._pending)), ([texts.unresolved("明日方舟", "早班")], {}))
     check("说为什么没补跑", "没补跑：这一轮已经开始干活" in e.notifier.sent[-1][1] and "理智药" in e.notifier.sent[-1][1], True)
-    line = report.makeup_line(e.cfg.state_dir, day)
-    check("日报那一行说不补跑和原因", "失败后没有自动补跑（" in line and "理智药" in line, True)
-    check("日报那一行没有英文字段名", [w for w in ("sanity", "medicine", "drop") if w in line], [])
+    line = report._makeup_tech_line(e.cfg.state_dir, day)
+    check("日报 makeup_line 为空；技术日志说不补跑和原因",
+          (report.makeup_line(e.cfg.state_dir, day), "失败后没有自动补跑（" in line and "理智药" in line), ("", True))
+    check("技术日志没有英文字段名", [w for w in ("sanity", "medicine", "drop") if w in line], [])
     e = build()
     e.state.append_ledger(rec("MAA", earlier - timedelta(hours=3), ok=True, raw={"sanity_spent": 200},
                               run_id=f"{day}/arknights/MAA-morning"))
@@ -2335,7 +2357,7 @@ def _part_hand_started_retry():
           [(False, "游戏启动失败"), (False, "MaaEnd 部分任务执行失败: 🚚转交委托、🗡️选剑演武、🎱基质刷取"),
            (True, "Success!")])
 
-    print("\n[the whole task lands in one tick: one outcome, the work got done -> nothing in the group]")
+    print("\n[the whole task lands in one tick: retry healed pushes ⚠️ once (no double ❌)]")
     e = build()
     for r in records():
         handle._handle(e, r)
@@ -2343,9 +2365,9 @@ def _part_hand_started_retry():
     makeup.maybe_run(e)
     check("all three booked as started by hand, task c6d40887",
           [x.get("raw", {}).get("hand_started") for x in e.state.read_ledger(TODAY)], [TASK] * 3)
-    check("no alarm in the group (relay.log 14:11:55 / 14:12:04 pushed two ❌)", alarms(e), [])
+    check("one retry-healed ⚠️ in the group (never two ❌)", [t for t, _ in alarms(e)], [texts.self_healed("MaaEnd")])
     check("nothing left held", dict(e._pending), {})
-    check("nothing left to heal", dict(e._recovered), {})
+    check("no _recovered bypass on engine", hasattr(e, "_recovered"), False)
     check("no make-up dispatched", dispatched, [])
     check("no make-up marker written", makeup.read_marker(e.cfg.state_dir, TODAY), {})
 
@@ -2361,10 +2383,11 @@ def _part_hand_started_retry():
     check("09-23-36 replaces it (same task), still nothing pushed",
           (held_id(e), alarms(e)), (SECOND, []))
     handle._handle(e, r3)
-    check("09-53-33's success heals the held 09-23-36: off the queue, onto the self-heal path",
-          (KEY in e._pending, held_id(e, "_recovered")), (False, SECOND))
+    check("09-53-33's success settles the held 09-23-36 immediately via group ⚠️",
+          (KEY in e._pending, [t for t, _ in alarms(e)]), (False, [texts.self_healed("MaaEnd")]))
+    before_flush = len(alarms(e))
     e._flush_pending()
-    check("the flush says it in the log only", (alarms(e), dict(e._recovered)), ([], {}))
+    check("the flush does not send a second time", len(alarms(e)), before_flush)
 
     print("\n[no later success in the task -> exactly one ❌, about the last failure, saying whose run]")
     e = build()
@@ -2424,8 +2447,9 @@ def _part_hand_started_retry():
     for r in records():
         handle._handle(e, r)
     e._flush_pending()
-    check("one ⚠️ about the round, no ❌", [t for t, _ in alarms(e)], [texts.ROUND_INCOMPLETE])
-    check("held failure healed, not pushed", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("both earlier retry-healed ⚠️ and undone ⚠️ reach group, no ❌",
+          [t for t, _ in alarms(e)], [texts.self_healed("MaaEnd"), texts.ROUND_INCOMPLETE])
+    check("held failure settled, queue empty", dict(e._pending), {})
 
     def scheduled(hh: int, mm: int, ok: bool) -> RunRecord:
         """A shift's MaaEnd round (no hand_started: its own task, not c6d40887)."""
@@ -2460,7 +2484,7 @@ def _part_hand_started_retry():
             check("the person's ❌ went out at once, about 09-23-36's failed tasks",
                   ([t for t, _ in got], all(w in (got[0][1] if got else "") for w in ("转交委托", "选剑演武", "基质刷取"))),
                   ([texts.failed("MaaEnd")], True))
-            check("not booked as healed by the shift's run", held_id(e, "_recovered"), None)
+            check("no _recovered bypass", hasattr(e, "_recovered"), False)
             check("the shift's record is on its own path", held_id(e), None if ok else s.run_id)
             running.clear()
             for _ in range(3):
@@ -2692,7 +2716,7 @@ its failures are pushed like any other's, saying whose run it was.
     e._handle(rec("m3", at(3, 0, 30), ok=True))
     check("先压着了", had)
     check("压着的那条清掉了", ("MAA", "arknights") in e._pending, False)
-    check("不记成自愈", ("MAA", "arknights") in e._recovered, False)
+    check("无 _recovered 旁路", hasattr(e, "_recovered"), False)
     check("压着的那次失败照报进群，写明是有人手动跑成的",
           (e.notifier.sent[-1:], e.notifier.bodies[-1].splitlines()[:1] if e.notifier.bodies else []),
           ([(texts.failed("MAA"), True)], [texts.hand_fixed_note("00:30") if hasattr(texts, "hand_fixed_note") else "-"]))
@@ -3017,13 +3041,14 @@ def _part_makeup_outcome_undone_reverts_marker():
         check("MaaEnd marker 写明没干完的项目", ent["note"], "跑完了但没干完：基质刷取")
         fail_row = {x["run_id"]: x for x in e.state.read_ledger(TODAY)}[fail.run_id]
         check("原失败行不写 makeup_ok", (fail_row.get("raw") or {}).get("makeup_ok"), None)
-        line = report.makeup_line(e.cfg.state_dir, TODAY)
-        check("日报 makeup_line 说还是没成且不带走通了",
-              ("还是没成（跑完了但没干完：基质刷取）" in line, "走通了" in line), (True, False))
-        check("日报 makeup_line 是人话", texts.plain(line), [])
+        line = report._makeup_tech_line(e.cfg.state_dir, TODAY)
+        check("日报 makeup_line 为空；技术日志说还是没成且不带走通了",
+              (report.makeup_line(e.cfg.state_dir, TODAY),
+               "还是没成（跑完了但没干完：基质刷取）" in line, "走通了" in line), ("", True, False))
+        check("技术日志 makeup 行是人话", texts.plain(line), [])
         check("handle.after_makeup 返回 UNRESOLVED", handle.after_makeup(e, fail, at(10, 20)), (handle.UNRESOLVED, "补跑也没成"))
-        check("原失败不误进 _recovered（仍留在 _pending 等报群）",
-              (list(e._recovered), list(e._pending)), ([], [("MaaEnd", "endfield")]))
+        check("原失败留在 _pending 等报群（引擎无 _recovered 旁路）",
+              (hasattr(e, "_recovered"), list(e._pending)), (False, [("MaaEnd", "endfield")]))
         e._flush_pending()
         titles = [t for t, _, a in e.notifier.sent if a]
         check("先报补跑没干完，再由 _flush_pending 报原失败补跑也没成",
@@ -3040,10 +3065,12 @@ def _part_makeup_outcome_undone_reverts_marker():
         mmk = rec("MAA", at(10, 6), ok=True)
         handle._handle(e2, mmk)
         ment = makeup.read_marker(e2.cfg.state_dir, TODAY)["MAA"]
-        mline = report.makeup_line(e2.cfg.state_dir, TODAY)
+        mline = report._makeup_tech_line(e2.cfg.state_dir, TODAY)
         check("MAA marker 改回 FAILED 且写明基建换班", (ment["result"], ment["note"]), (makeup.FAILED, "跑完了但没干完：基建换班"))
-        check("MAA 日报 makeup_line", mline, "明日方舟失败后自动补跑，还是没成（跑完了但没干完：基建换班）")
-        check("MAA 日报 makeup_line 是人话", texts.plain(mline), [])
+        check("MAA 日报 makeup_line 为空，技术日志有明细",
+              (report.makeup_line(e2.cfg.state_dir, TODAY), mline),
+              ("", "明日方舟失败后自动补跑，还是没成（跑完了但没干完：基建换班）"))
+        check("MAA 技术日志 makeup 行是人话", texts.plain(mline), [])
         check("MAA after_makeup 返回 UNRESOLVED", handle.after_makeup(e2, mfail, at(10, 20)), (handle.UNRESOLVED, "补跑也没成"))
         e2._flush_pending()
         check("MAA 两次报警分别覆盖没干完与原失败补跑没成",
@@ -3068,7 +3095,7 @@ def _part_makeup_outcome_undone_reverts_marker():
               (makeup.FAILED, True, True))
         check("设置重置时的 makeup_line 是人话", texts.plain(line3), [])
 
-        # 4. Control: outcome check passes -> stays OK, marks makeup_ok, moves to _recovered and silent flush
+        # 4. Control: outcome check passes -> stays OK, marks makeup_ok, pushes group ⚠️ immediately (no _recovered)
         e4 = build()
         ok_fail = rec("MAA", at(9, 5), failed=["开始唤醒"], raw={"maa_unreachable": True})
         handle._handle(e4, ok_fail)
@@ -3076,11 +3103,13 @@ def _part_makeup_outcome_undone_reverts_marker():
         makeup.maybe_run(e4, at(10, 5))
         e4._verify_outcome = lambda r: None
         handle._handle(e4, rec("MAA", at(10, 6), ok=True))
-        check("核对通过：marker 保持 OK 且进入 _recovered",
-              (makeup.read_marker(e4.cfg.state_dir, TODAY)["MAA"]["result"], list(e4._recovered)),
-              (makeup.OK, [("MAA", "arknights")]))
+        check("核对通过：marker 保持 OK，立即直推群并清空 _pending",
+              (makeup.read_marker(e4.cfg.state_dir, TODAY)["MAA"]["result"],
+               dict(e4._pending), [t for t, _, a in e4.notifier.sent if a]),
+              (makeup.OK, {}, [texts.makeup_passed("明日方舟", "早班")]))
+        before_e4 = len(e4.notifier.sent)
         e4._flush_pending()
-        check("核对通过：不推送告警且清空 _recovered", (e4.notifier.sent, dict(e4._recovered)), ([], {}))
+        check("核对通过：后续不再重复推送", len(e4.notifier.sent), before_e4)
     finally:
         makeup._dispatch, makeup._kill_game, handle._ship_evidence, handle._weekly_gates = saved[:4]
         _mc.CHECKS.clear()

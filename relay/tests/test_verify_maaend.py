@@ -129,11 +129,12 @@ def _run_mc28_one_alarm():
     book(e, RETRY, ok=True)
     handle._flush_pending(e)
     show(notes)
-    check("one group message for the abort and the retry", len(group(notes)), 1)
-    title, body = group(notes)[0] if group(notes) else ("", "")
-    check("…the retry's 「没证据」 alarm for both items", title, texts.unverified_alarm("终末地", "早班", 2))
+    check("two group messages: retry-healed for abort + unverified alarm for retry (no #28 duplicate)",
+          [t for t, _ in group(notes)],
+          [texts.self_healed("MaaEnd"), texts.unverified_alarm("终末地", "早班", 2)])
+    unv_body = next((b for t, b in group(notes) if t == texts.unverified_alarm("终末地", "早班", 2)), "")
     check("…carrying MaaEnd's own verdict and reason for 装备制造",
-          (REASON in body, "账号编号显示不全" in body), (True, True))
+          (REASON in unv_body, "账号编号显示不全" in unv_body), (True, True))
     check("no 「上机核对没过：#28」 of its own", mc28_pushes(notes), [])
     check("nothing of #28 is left waiting", held_28(state), {})
     check("the per-record note is dropped after the checks", runchecks._UNVERIFIED, {})
@@ -148,10 +149,11 @@ def _run_mc28_one_alarm():
     book(e, RETRY, ok=True, rid="2026-10-08/endfield/MaaEnd-14-34-21", later_h=8)
     handle._flush_pending(e)
     show(notes)
-    check("the morning abort: one message", n_morning, 1)
-    check("the evening abort reaches the group too: two messages in all", len(group(notes)), 2)
-    check("…the second is the evening run's own 「没证据」 alarm naming 装备制造 and MaaEnd's reason",
-          [("装备制造" in b, "账号编号显示不全" in b) for _t, b in group(notes)[1:]], [(True, True)])
+    check("the morning abort+retry: two messages (retry-healed + unverified)", n_morning, 2)
+    check("the evening abort+retry reaches the group too: four messages in all", len(group(notes)), 4)
+    ev_unv = [(t, b) for t, b in group(notes)[n_morning:] if t != texts.self_healed("MaaEnd")]
+    check("…the evening unverified alarm names 装备制造 and MaaEnd's reason",
+          [("装备制造" in b, "账号编号显示不全" in b) for _t, b in ev_unv], [(True, True)])
     check("…so #28 does not push it again", mc28_pushes(notes), [])
     check("nothing of #28 is left waiting", held_28(state), {})
 
@@ -202,9 +204,9 @@ def _run_mc28_one_alarm():
     book(e2, RETRY, ok=True)
     handle._flush_pending(e2)
     show(notes, notes2)
-    check("one group message, the 「没证据」 alarm with the reason",
+    check("retry-healed + unverified alarm with the reason (no #28 duplicate)",
           [(t, REASON in b) for t, b in group(notes, notes2)],
-          [(texts.unverified_alarm("终末地", "早班", 2), True)])
+          [(texts.self_healed("MaaEnd"), False), (texts.unverified_alarm("终末地", "早班", 2), True)])
 
     print("\n[a run of the same day that crafted is booked after the held abort: made up for]")
     e, notes, state = engine()
@@ -677,7 +679,7 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             e._mark_alerted = real_mark
         handle._flush_pending(e)
         base.show(notes)
-        check("one group message for the abort and the retry", len(base.group(notes)), 1)
+        check("two group messages: retry-healed + unverified (no #28 duplicate)", len(base.group(notes)), 2)
         check("…no 「上机核对没过：#28」 of its own", base.mc28_pushes(notes), [])
         check("no ERROR saying the 「没证据」 alarm did not go out", [x for x in ERRORS.lines if "没能推到群里" in x], [])
         check("the mark that could not be written is an ERROR saying so",
@@ -851,7 +853,7 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             e._mark_alerted = real_mark
         handle._flush_pending(e)
         base.show(notes)
-        check("every day mark refused: one group message for the abort and the retry", len(base.group(notes)), 1)
+        check("every day mark refused: two group messages (retry-healed + unverified, no #28 duplicate)", len(base.group(notes)), 2)
         check("…no 「上机核对没过：#28」 of its own", base.mc28_pushes(notes), [])
         check("…not kept to be sent again", e._unsent_unresolved, [])
         check("no ERROR saying the 「没证据」 alarm did not go out", [x for x in ERRORS.lines if "没能推到群里" in x], [])
@@ -880,7 +882,7 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             statestore.atomic_write_text = REAL_SS_WRITE
         handle._flush_pending(e)
         base.show(notes)
-        check("state.json refused the mark: one group message for the abort and the retry", len(base.group(notes)), 1)
+        check("state.json refused the mark: two group messages (retry-healed + unverified, no #28 duplicate)", len(base.group(notes)), 2)
         check("…no 「上机核对没过：#28」 of its own", base.mc28_pushes(notes), [])
         check("no ERROR saying the 「没证据」 alarm did not go out", [x for x in ERRORS.lines if "没能推到群里" in x], [])
         said = [x for x in ERRORS.lines if "没记" in x]
@@ -1091,9 +1093,8 @@ def _part_mc28_task_trail():  # noqa: C901
           next((x for x in mc.daily_section(heal_state).splitlines() if " #28 " in x), "") == line28, True)
     row = day08.rows[-1]
     notes = ledger_rows._rows_for(row, datetime(2026, 10, 8, 10, 35, tzinfo=SERVER_TZ))[4]
-    check("the daily report's row of 06-31-06 keeps the abort and its reason",
-          any(n.startswith(ledger_rows.UNVERIFIED + "：装备制造（终末地自己检查画面没过") and "账号编号显示不全" in n
-              for n in notes), True)
+    check("daily report whitelist omits unverified 装备制造 from notes (error/reason goes to group, not daily)",
+          (any(ledger_rows.UNVERIFIED in n for n in notes), any("装备制造" in n for n in notes)), (False, False))
     check("…and no 「没证据」 item is left for the day: the earlier run backs it",
           dict(core.day_unverified_items(day08.rows)).get("MaaEnd"), None)
     check("a run of the day without the booked verdicts backs nothing",
@@ -1201,9 +1202,9 @@ def _part_mc28_task_trail():  # noqa: C901
           ([m for lv, m in levels.got if lv >= logging.WARNING],
            any(lv == logging.INFO and "连续第 1 趟" in m and "先不判" in m for lv, m in levels.got)), ([], True))
     notes = ledger_rows._rows_for(book.rows[-1], datetime(2026, 10, 13, 10, 0, tzinfo=SERVER_TZ))[4]
-    check("…and the daily report says the record was not read, and that the four are not counted done",
-          (any(n.startswith("终末地自己的记录这一趟没读到（连续第 1 趟），赠送干员礼物、装备制造、转交委托、环境监测 先不判")
-               for n in notes), any("赠送干员礼物" in n for n in notes if n.startswith("做了"))), (True, False))
+    check("…and the daily report omits unread/unjudged notice and does not count the four done",
+          (any("没读到" in n or "先不判" in n for n in notes), any("赠送干员礼物" in n for n in notes if n.startswith("做了"))),
+          (False, False))
     check("…in plain Chinese", texts.plain(" ".join(notes)), [])
     st, ev, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state, ledger=book, later=60)
     second = book.rows[-1]["raw"]
@@ -1273,8 +1274,9 @@ def _part_mc28_task_trail():  # noqa: C901
            any(lv == logging.INFO and "赠送干员礼物、装备制造、转交委托 在终末地自己的记录里读不到" in m
                and "开始前 5 秒里一条记录也没有" in m and "连续第 1 趟" in m for lv, m in levels.got)), ([], True))
     notes = ledger_rows._rows_for(part.rows[-1], datetime(2026, 10, 8, 10, 31, tzinfo=SERVER_TZ))[4]
-    check("…and the daily report row says the three 先不判", any(
-        n.startswith("终末地自己的记录这一趟没读到（连续第 1 趟），赠送干员礼物、装备制造、转交委托 先不判") for n in notes), True)
+    check("…and the daily report row omits the unread/unjudged notice and omits the three unjudged tasks",
+          (any("没读到" in n or "先不判" in n for n in notes),
+           any(t in " ".join(notes) for t in OLD3)), (False, False))
     check("…in plain Chinese", texts.plain(" ".join([ev, *notes])), [])
     st, ev, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", split_1008("cur"), ledger=part, later=60)
     raw = part.rows[-1]["raw"]
@@ -2045,10 +2047,10 @@ def _part_maaend_recovered():
             self.wall = new
             return self.dog.tick(1, "")
 
-    def recovered_of(records, *parts):
+    def levels_of(records, *parts):
         rows = [r for r in records if all(p in r.getMessage() for p in parts)]
         assert rows, f"no log record matching {parts}"
-        return [getattr(r, errwatch.RECOVERED, False) for r in rows]
+        return [r.levelno for r in rows]
 
     print("[finished, did not exit -> left to AUTO-MAS (v5.7.0-beta.2): no kill, no send, no WARNING]")
     h, sd = watch()
@@ -2069,7 +2071,7 @@ def _part_maaend_recovered():
         d = Dog([])
         d.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
         d.at(16, 59, 0)                                   # crash read -> kill
-        check("the 「卡死」 WARNING is not marked recovered", recovered_of(LINES.records, "MaaEnd 卡死"), [False])
+        check("the 「卡死」 line is a WARNING", levels_of(LINES.records, "MaaEnd 卡死"), [logging.WARNING])
         check("it is not queued for the group (errwatch.group_pushed: the ⚠️ went out)",
               [str(x.get("line"))[:9] for x in h.pending()], [])
         check("the ⚠️ notice still rings", [(t, a) for t, _, a in d.notes.sent],
@@ -2122,8 +2124,8 @@ def _part_maaend_recovered():
     try:
         rec = exit_rec(1)
         handle._mark_no_self_exit(_Eng(), rec)
-        check("the bookkeeping line is not marked recovered",
-              recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
+        check("the bookkeeping line is a plain WARNING",
+              levels_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [logging.WARNING])
         check("it is queued for the group", any("任务全部完成" in str(x.get("line")) for x in h.pending()), True)
         check("the no-exit run ships its evidence bundle", SHIPPED, [rec.run_id])
         handle._mark_no_self_exit(_Eng(), rec)
@@ -2132,7 +2134,7 @@ def _part_maaend_recovered():
         handle._ship_evidence = _real_ship
         unwatch(h)
 
-    print("\n[bookkeeping: AUTO-MAS ended the finished MaaEnd -> recovered, a red item, not pushed]")
+    print("\n[bookkeeping: AUTO-MAS ended the finished MaaEnd -> INFO closure, not pushed]")
     MAS_RESULT = "2026-10-06 09:52:55.101 | INFO     | MaaEnd 自动代理 | MaaEnd 任务结果: Success!, 日志锁已释放"
     MAS_ENDED = "2026-10-06 09:52:55.104 | WARNING  | MaaEnd 自动代理 | MaaEnd 队列已结束但进程未退出，正在中止脚本进程"
     handle._ship_evidence = _fake_ship
@@ -2144,7 +2146,6 @@ def _part_maaend_recovered():
         handle._mark_no_self_exit(eng, rec)
         rows = LINES.said("MaaEnd", "任务全部完成", "AUTO-MAS")
         check("one INFO line naming AUTO-MAS's kill", [r.levelno for r in rows], [logging.INFO])
-        check("not marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [False])
         red = [t for f in sorted(techlog.tech_dir(sd).glob("*.md")) for _, t in techlog.unhandled(f.read_text(encoding="utf-8"))
                if "任务全部完成" in t]
         check("no red item for it", red, [])
@@ -2162,7 +2163,7 @@ def _part_maaend_recovered():
         late = "2026-10-06 09:55:00.000 | WARNING  | MaaEnd 自动代理 | MaaEnd 队列已结束但进程未退出，正在中止脚本进程"
         rec = exit_rec(3)
         handle._mark_no_self_exit(_Eng(automas_app_log([MAS_RESULT, late])), rec)
-        check("not marked recovered", recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
+        check("plain WARNING pushed to group", levels_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [logging.WARNING])
         check("it is queued for the group", any("任务全部完成" in str(x.get("line")) for x in h.pending()), True)
     finally:
         handle._ship_evidence = _real_ship
@@ -2551,23 +2552,26 @@ def _part_maaend_stub_record():
         eng = types.SimpleNamespace(state=types.SimpleNamespace(read_ledger=lambda day: ledger))
         check("三条记录，尝试 2 次", handle._attempts(eng, real3, "2026-09-18"), 2)
 
-        print("\n[日报：空记录不成一行；两趟真失败合并为一行]")
+        print("\n[日报白名单：空记录与真实失败行均不进日报，仅记入技术日志]")
         core.episode_kinds(ledger)
-        title, body = core.format_daily("2026-09-18", ledger, "", "")
+        tech1: list = []
+        title, body = core.format_daily("2026-09-18", ledger, "", "", tech=tech1)
         check("空记录不出现在日报里", "05-54-35" not in body and "未捕获" not in body)
-        check("基质刷取的失败出现", "基质刷取" in body)
-        check("标题不是全绿", "全绿" not in title)
-        check("日报里有一行信息：重启 1 次、未计失败", "终末地装新版后自己重启 1 次，未计失败" in body)
-        check("标题只数两趟真失败，不含空记录", "终末地失败 2 次" in title)
+        check("真实失败行严格不进日报（改记技术日志、真错推群）",
+              ("基质刷取" not in body, "❌" not in body, any("基质刷取" in t for t in tech1)), (True, True, True))
+        check("标题不是全绿且不塞失败字样", title, "📋 09-18 · 今日日报")
+        check("重启次数仅进技术日志，不进日报",
+              ("重启 1 次" not in body, any("终末地装新版后自己重启 1 次" in t for t in tech1)), (True, True))
 
-        print("\n[老版本记的账没有 transitional 标记（09-18 早上的三条就是）：照样不算失败]")
+        print("\n[老版本记的账没有 transitional 标记（09-18 早上的三条就是）：照样识别空记录]")
         old_ledger = [dict(e) for e in ledger]
         for e in old_ledger:
             e.pop("transitional", None)
-        title_o, body_o = core.format_daily("2026-09-18", old_ledger, "", "")
+        tech_o: list = []
+        title_o, body_o = core.format_daily("2026-09-18", old_ledger, "", "", tech=tech_o)
         check("没有标记也不成一行", "05-54-35" not in body_o and "未捕获" not in body_o)
-        check("没有标记也只算 2 次失败（09-18 晚报成了 3 项）", "终末地失败 2 次" in title_o)
-        check("信息行照样有", "终末地装新版后自己重启 1 次，未计失败" in body_o)
+        check("标题中性不误标全绿，技术日志记下重启 1 次",
+              (title_o, any("终末地装新版后自己重启 1 次" in t for t in tech_o)), ("📋 09-18 · 今日日报", True))
         check("没有重启的日子不出这一行", "自更新重启" not in core.format_daily("2026-09-18", [e for e in ledger if e is not ledger[1]], "", "")[1])
 
     print("\n[证据包带上 relay.log 与调度程序 app.log 的时间窗切片]")

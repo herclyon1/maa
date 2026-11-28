@@ -555,8 +555,7 @@ def unverified_alarm_head(game: str, shift: str, items: str, why: str, page: str
 
 
 def self_healed(script: str) -> str:
-    """A held failure AUTO-MAS's own retry got past (handle._flush_pending): written
-    to relay.log only, the daily report carries it."""
+    """运行中途失败后经重试成功时的群告警标题（报错一律推群，绝不进日报）。"""
     return f"⚠️ {script} 中途失败过，重试后成功"
 
 
@@ -569,15 +568,12 @@ def is_cant_enter(title: str) -> bool:
 
 
 def healed_after_update(script: str) -> str:
-    """A failure in the same streak as an update restart, and the rerun after it went
-    through (handle._flush_pending, core.episode_kinds 「update」): relay.log only,
-    the daily report carries it."""
+    """更新重启后重跑成功时的日志标题（不推群、不进日报）。"""
     return f"⚠️ {script} 更新时失败过，重跑后成功"
 
 
 def makeup_passed(game: str, shift: str) -> str:
-    """A MAA / MaaEnd failure that its make-up run (makeup.py) got past: relay.log
-    only; the daily report's make-up line says it (report.makeup_line)."""
+    """运行失败后经自动补跑走通时的群告警标题（原故障仍需排查，推群不进日报）。"""
     return f"⚠️ {game}{shift}失败过，补跑后走通了"
 
 
@@ -1129,11 +1125,13 @@ LOST_ALARM_QUEUE = "中继重启前还排着没送出去的群报警，这次开
 EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
 
 
+# 常见系统/网络/HTTP/Win32/业务异常的中文原因对照表（按精确度从高到低排列），
+# 用于替代旧版“认不出就藏进盲盒”的翻译方式，直接输出直白中文原因和关键上下文。
 _FAULTS = (
     (re.compile(r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution"
                 r"|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError", re.I),
-     "域名解析失败，机器当时连不上外网"),
-    (re.compile(r"timed out|TimeoutError|ReadTimeout|ConnectTimeout|WinError 10060\b", re.I),
+     "域名解析失败，机器当时连不上网络"),
+    (re.compile(r"timed out|TimeoutError|TimeoutExpired|ReadTimeout|ConnectTimeout|WinError 10060\b", re.I),
      "连接或读写超时"),
     (re.compile(r"Connection ?Refused|Connection ?Reset|Connection ?Aborted|RemoteDisconnected|IncompleteRead"
                 r"|EOF occurred|BrokenPipe|WinError 1005[34]\b|WinError 10061\b", re.I),
@@ -1146,31 +1144,194 @@ _FAULTS = (
     (re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I), "找不到要用的文件"),
     (re.compile(r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data", re.I),
      "收到的数据格式是坏的"),
+    (re.compile(r"UnicodeDecodeError|UnicodeEncodeError", re.I), "文本编码读取失败"),
     (re.compile(r"SSLError|CERTIFICATE_VERIFY_FAILED|\bSSL:", re.I), "加密连接没建立起来"),
     (re.compile(r"URLError|urlopen error|ConnectionError|WinError 1006[45]\b|Network is unreachable", re.I),
      "网络请求没发出去，或者没收到回答"),
+    (re.compile(r"ModuleNotFoundError|ImportError", re.I), "运行环境缺少必需组件"),
+    (re.compile(r"(?:CalledProcessError|returned non-zero exit status|exit status|returncode|退出码)[ =:：]*(-?\d+)", re.I),
+     "外部命令执行失败（退出码 {code}）"),
+    (re.compile(r"database is locked|OperationalError|DatabaseError", re.I), "本地数据库正被占用或损坏"),
+    (re.compile(r"\bKeyError\b"), "读取数据时缺少必要内容"),
+    (re.compile(r"\bAttributeError\b"), "程序对象缺少预期能力"),
+    (re.compile(r"\bTypeError\b"), "程序处理的数据类型不对"),
+    (re.compile(r"\bIndexError\b"), "读取列表时越界"),
+    (re.compile(r"\bValueError\b"), "数据数值或格式不对"),
+    (re.compile(r"\bZeroDivisionError\b"), "程序计算时出现除以零"),
+    (re.compile(r"WinError (\d+)\b", re.I), "系统调用失败（系统错误码 {code}）"),
+    (re.compile(r"com_error|pywintypes\.error|WMI", re.I), "系统组件调用失败"),
+    (re.compile(r"\b(?:OSError|IOError)\b"), "本地文件或系统操作失败"),
+    (re.compile(r"\bRuntimeError\b"), "程序运行步骤执行失败"),
 )
-# The words for a line no pattern above reads (rule 2 at the top of this module).
-RELAY_ERROR_UNREAD = "这种报错中继还不认识，原文已记日志"
+
+# 日志原话里的常见工程词转白话对照表，避免直接丢弃有价值的中文报错上下文。
+_JARGON_PLAIN_MAP = (
+    ("调度器", "调度程序"),
+    ("标记文件", "状态记录"),
+    ("时间窗", "时段"),
+    ("任务链", "整套任务"),
+    ("落盘", "保存"),
+    ("回读", "重读"),
+    ("兜底", "备用方式"),
+    ("字段", "内容项"),
+    ("判据", "依据"),
+    ("判定点", "核对项"),
+    ("监听", "监测"),
+    ("句柄", "连接号"),
+    ("进程", "程序"),
+    ("线程", "后台任务"),
+    ("缓存", "本地记录"),
+    ("重放", "重跑"),
+    ("拉起", "启动"),
+    ("收窄", "缩小范围"),
+    ("节点", "步骤"),
+    ("实例", "运行项"),
+    ("退避", "延后重试"),
+    ("死键", "无效项"),
+    ("冲掉", "盖掉"),
+    ("结构化", "按格式"),
+    ("白名单", "允许清单"),
+    ("凭空造", "自行编造"),
+    ("原子", "完整"),
+    ("幂等", "防重复"),
+    ("接口", "数据入口"),
+)
+
+# 常见命令行可执行名称转白话对照表（不带 .exe 后缀时也能清晰交代出错命令，不裸露英文词）。
+_CMD_NAMES = (
+    (re.compile(r"\b(?:pwsh|powershell)(?:\.exe)?\b", re.I), "pwsh.exe"),
+    (re.compile(r"\bschtasks(?:\.exe)?\b", re.I), "schtasks.exe"),
+    (re.compile(r"\btaskkill(?:\.exe)?\b", re.I), "taskkill.exe"),
+    (re.compile(r"\btasklist(?:\.exe)?\b", re.I), "tasklist.exe"),
+    (re.compile(r"\bwevtutil(?:\.exe)?\b", re.I), "wevtutil.exe"),
+    (re.compile(r"\bshutdown(?:\.exe)?\b", re.I), "shutdown.exe"),
+    (re.compile(r"\badb(?:\.exe)?\b", re.I), "adb.exe"),
+    (re.compile(r"\bpip(?:\.exe)?\b", re.I), "pip.exe"),
+    (re.compile(r"\bgit(?:\.exe)?\b", re.I), "git.exe"),
+    (re.compile(r"\bpythonw?(?:\.exe)?\b", re.I), "python.exe"),
+)
+
+_STATUS_CODE_RE = re.compile(r"(?:HTTP\s*Error|HTTPError|status(?:\s*code)?|状态码)[ =:：]*(\d{3})\b", re.I)
+_EXIT_CODE_RE = re.compile(r"(?:exit status|returncode|rc|退出码)[ =:：]*(-?\d+)\b", re.I)
 
 
 def fault_cause(what: str) -> str:
-    """The cause a relay WARNING / ERROR line names in Python's, Windows' or the network
-    stack's words, in plain Chinese; '' when it names none of _FAULTS."""
+    """将日志原话中的系统/网络/HTTP/Win32/Python 异常翻成直白中文原因；未匹配时返回空串。"""
     for pat, said in _FAULTS:
         if m := pat.search(what or ""):
             return said.format(code=next((g for g in m.groups() if g), ""))
     return ""
 
 
+def _scrub_plain_zh(text: str) -> str:
+    """把中文报错主干里的常见工程术语替换成直白人话，并清掉残留英文异常碎片。"""
+    s = str(text or "")
+    for old, new in _JARGON_PLAIN_MAP:
+        s = s.replace(old, new)
+    # 剥离 URL、文件路径、十六进制码以外的未允许英文词，避免中文主干里夹杂异常类名或堆栈词
+    def _clean_word(m: re.Match) -> str:
+        w = m.group(0)
+        if w in ALLOWED_WORDS or re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
+            return w
+        return ""
+
+    # 先保护合法路径、URL、错误码，再清除其余未允许英文单词
+    kept: list[str] = []
+
+    def _hold(m: re.Match) -> str:
+        kept.append(m.group(0))
+        return f"\x00{len(kept) - 1}\x00"
+
+    s = _URL.sub(_hold, s)
+    s = _PATH.sub(_hold, s)
+    s = _HEX.sub(_hold, s)
+    s = _WORD.sub(_clean_word, s)
+    for i, val in enumerate(kept):
+        s = s.replace(f"\x00{i}\x00", val)
+    # 清除模糊词与剥离英文后留下的空括号、孤立符号
+    for v in VAGUE:
+        if v in s:
+            s = s.replace(v, "")
+    s = re.sub(r"[（(]\s*[:：，,、\-—]*\s*[）)]", "", s)
+    s = re.sub(r"<[^>]*>", "", s)
+    s = re.sub(r"\[[^\]]*\]", "", s)
+    s = re.sub(r"['\"`]", "", s)
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[：:,，；;｜|\-—\s]+$", "", s).strip("：:,，；;｜| ")
+    # 只有包含实质中文内容时才作为业务主干返回
+    if not re.search(r"[\u4e00-\u9fff]{2,}", s):
+        return ""
+    return s[:72]
+
+
+def _extract_fault_context(what: str, cause: str = "") -> list[str]:
+    """提取原话里的关键定位上下文（文件名/路径、错误码、状态码、命令名），绝不裸露英文堆栈。"""
+    text = str(what or "")
+    ctx: list[str] = []
+    # 1. 文件名或路径（plain() 允许路径与带后缀文件名）
+    for m in _PATH.finditer(text):
+        p = m.group(0).rstrip(".,;:)'\"」）")
+        if p and p not in ctx:
+            ctx.append(f"文件 {p}")
+        if len(ctx) >= 2:
+            break
+    # 2. 十六进制错误码（如 0xc0000005）
+    for m in _HEX.finditer(text):
+        hx = m.group(0)
+        if hx not in cause and f"错误码 {hx}" not in ctx:
+            ctx.append(f"错误码 {hx}")
+            break
+    # 3. HTTP 状态码（如未在 cause 中写出时补充）
+    if (m := _STATUS_CODE_RE.search(text)) and m.group(1) not in cause:
+        ctx.append(f"状态码 {m.group(1)}")
+    # 4. 退出码（如未在 cause 中写出时补充）
+    if (m := _EXIT_CODE_RE.search(text)) and f"退出码 {m.group(1)}" not in cause:
+        ctx.append(f"退出码 {m.group(1)}")
+    # 5. 相关命令（转为带 .exe 的标准命令文件名，既清晰又过 plain()）
+    for pat, label in _CMD_NAMES:
+        if pat.search(text) and not any(label in x for x in ctx):
+            ctx.append(f"命令 {label}")
+            break
+    return ctx[:3]
+
+
+def format_fault_reason(what: str) -> str:
+    """结构化人话错误原因格式化：输出直白中文原因＋关键上下文，彻底替代旧版盲盒翻译。"""
+    raw = str(what or "").strip()
+    if not raw:
+        return "记录里没有写具体原因，详见中继日志"
+    # 若原话本身不含违规英文，则保留原话（同时把工程术语换成人话，保证读得懂且不吞真错因）
+    if not any(p.startswith("英文") for p in plain(raw)):
+        clean = raw
+        for old, new in _JARGON_PLAIN_MAP:
+            clean = clean.replace(old, new)
+        return clean
+    cause = fault_cause(raw)
+    # 切出异常分隔符前的中文业务描述作为主干（保留具体是哪件事失败）
+    head_part = re.split(r"\s*[｜|]\s*", raw, maxsplit=1)[0]
+    lead = _scrub_plain_zh(head_part)
+    ctx = _extract_fault_context(raw, cause)
+    # 若主干里已经带了文件名，避免在上下文括号里重复打印
+    ctx = [c for c in ctx if c.split(" ", 1)[-1] not in lead]
+    parts: list[str] = []
+    if lead:
+        parts.append(lead)
+    if cause and cause not in lead:
+        parts.append(cause)
+    if not parts:
+        parts.append("程序发生运行异常")
+    msg = "——".join(parts)
+    if ctx:
+        msg += f"（{'，'.join(ctx)}）"
+    return f"{msg}，原文已记日志"
+
+
 def _said(what: str) -> str:
-    """The record's own words when they carry no raw English: quoted whole. Otherwise map
-    the fault cause into plain Chinese (fault_cause), or note that it is recorded in the log."""
-    if what and not any(p.startswith("英文") for p in plain(what)):
-        return f"它说：{what}"
-    if cause := fault_cause(what):
-        return f"原因：{cause}，原文已记日志"
-    return RELAY_ERROR_UNREAD
+    """将一条报错日志转成推群可读的直白人话：无英文直接引用，含英文输出结构化中文原因＋上下文。"""
+    raw = str(what or "").strip()
+    if raw and not any(p.startswith("英文") for p in plain(raw)):
+        return f"它说：{raw}"
+    return f"原因：{format_fault_reason(raw)}"
 
 
 def relay_error_recurred(fixed_in: str) -> str:
@@ -1186,10 +1347,7 @@ def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: s
 
 
 def relay_faults_section(rows: list) -> str:
-    """The daily report's lines on the relay's own faults of the day (errwatch.day_faults), '' when none.
-
-    One line per kind, at most 10: where, how often, what it said (when plain),
-    and whether every occurrence has reached the group yet."""
+    """技术日志中的当日中继报错汇总（仅写入技术日志，绝不进入用户日报；无「只进日报/原话有术语」盲盒）。"""
     if not rows:
         return ""
     lines = []
@@ -1199,18 +1357,13 @@ def relay_faults_section(rows: list) -> str:
         if r.get("fixed_in"):
             tags.append(f"复发：v{r['fixed_in']} 修过的又出现了")
         pushed = int(r.get("pushed") or 0)
-        if r.get("daily_only"):
-            tags.append("只进日报")
-        elif r.get("recovered"):
-            tags.append("自己好了，只进日报")
-        elif pushed >= n:
+        if pushed >= n:
             tags.append("已报群")
         elif pushed:
             tags.append(f"已报群 {pushed} 次，还有 {n - pushed} 次在排队等着报")
         else:
             tags.append("还在排队等着报群")
-        said = str(r.get("line") or "")
-        said = said if said and not plain(said) else "原话有术语，见中继日志"
+        said = format_fault_reason(str(r.get("line") or ""))
         lines.append(f"· {relay_part(str(r.get('where') or ''))}：{said}"
                      + (f"（{n} 次）" if n > 1 else "") + f"｜{'；'.join(tags)}")
     if len(rows) > 10:

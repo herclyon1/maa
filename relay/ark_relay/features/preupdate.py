@@ -1935,9 +1935,8 @@ def ensure_okww_deps(okww_dir: Path, problems: "list[str] | None" = None, *, run
                         "OK-WW 一启动就会崩")
     if not fixed:
         return ""
-    from ark_relay.features import errwatch  # noqa: PLC0415
-    log.warning("OK-WW 更新后自带的 Python 缺包 %s，已自动补装、再导入核对过", "、".join(fixed),
-                extra=errwatch.recovered())
+    # OK-WW 更新后自带 Python 缺包触发自动补装：属于真实上游环境异常，直推企微群知情，绝不压出群或进日报。
+    log.warning("OK-WW 更新后自带的 Python 缺包 %s，已自动补装、再导入核对过", "、".join(fixed))
     return f"OK-WW 缺的 Python 包已补装：{'、'.join(fixed)}"
 
 

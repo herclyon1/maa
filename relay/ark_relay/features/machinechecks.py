@@ -200,10 +200,9 @@ def _stop_push(ctx):
         # A Windows shutdown stays strict - its next start is the next power-on.
         boot = next((r for r in _following(ctx, s) if f"{PUSHED}开机" in r.msg), None)
         if boot is not None and OS_STOP not in stop.msg:
-            from ark_relay.features import errwatch  # noqa: PLC0415
-            _log_system.warning(
-                "停止前那份状态没送完，中继重新启动后开机那份已送到手机：%s；%s", bad.show(), boot.show(),
-                extra=errwatch.recovered())
+            # 服务重启（更新/手动重启）后开机推送已送达手机：属正常更新重启闭环，仅记 info，不刷群、不进日报。
+            _log_system.info(
+                "停止前那份状态没送完，中继重新启动后开机那份已送到手机：%s；%s", bad.show(), boot.show())
             return _once(ctx, "#11", mc.Result(mc.PASS, f"{stop.show()}；{bad.show()}；重启后{boot.show()}"))
         return _once(ctx, "#11", mc.Result(mc.FAIL, f"{stop.show()}；{bad.show()}"))
     # The relay's own power-off pushes 「关机前」 just before it issues the command,
@@ -419,14 +418,8 @@ HYPOTHESIS_ZH = {"H1": "WMI 服务自己重启过", "H2": "WMI 的提供程序�
 
 @mc.check("#59", "系统的程序启动通知断了又自己订上的，报群一次，并写明是哪种原因", "B", "boot")
 def _wmi_recovered(ctx):
-    """What procwatch._subscribed does since 324b640b (2026-10-10): a drop of unknown cause
-    that came back by itself is pushed to the group once (a plain WARNING, errwatch's
-    🩺 push quotes its line and time); an outage already pushed meanwhile (long, or at a
-    stop) ends with a line tagged errwatch.recovered() - its errkinds row says
-    `recovered`, and that line is not pushed again. Either way the diag line names
-    the case (H1/H2/H3, wmi_diag._wmi_hypothesis). Until 2026-10-13 this check still
-    wanted the 10-05 rule (daily report only, never the group) and failed on every
-    such drop - a second push per drop (day replay 2026-10-06, BACKLOG daysim-R1)."""
+    """核验 procwatch._subscribed：未在断开期间报过群的掉线恢复记录为 WARNING 并报群一次、带 H1/H2/H3 原因；
+    断开期间已经报过群的恢复改记 INFO 闭环，不再重复刷群也不进日报。"""
     s = _prev(ctx)
     if s is None:
         return None
@@ -437,27 +430,19 @@ def _wmi_recovered(ctx):
     good = ""
     for r in back:
         day = _day_of(r.md, now)
-        rows = [x for _sig, x in mc.errkind_rows(ctx.get("state_dir"), day)]
-        held = any(x.get("line") == r.msg.strip()[:200] and x.get("recovered") for x in rows)
-        needle = r.msg.strip()[:60]      # errwatch's push quotes the line cut at 160
-        # The push names the record's time (texts.relay_error_body / relay_error_line):
-        # two drops with the same words on one day (10-06 16:16:59 and 18:08:22) are
-        # two pushes, one each.
+        needle = r.msg.strip()[:60]      # errwatch 推送会引用日志首行前 160 字
         n = sum(1 for x in mc.alert_rows(ctx.get("state_dir"), day.replace("-", ""))
                 if needle in str(x.get("text") or "") and r.hms in str(x.get("text") or ""))
-        if held and n:
-            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：期间已经报过群，结束这一行却又进了群"))
-        if not held and n == 0:
-            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：没进群，日报的报错记录里也没记成「期间报过群、自己好了」"))
+        if n == 0:
+            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：没进群"))
         if n > 1:
             return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：同一次断开进了群 {n} 次"))
         diag = next((m for x in r.more if (m := _HYPOTHESIS.search(x))), None)
         if diag is None:
             raw = next((x.strip() for x in r.more if x.strip().startswith("diag:")), "（没有 diag 行）")
-            raw = raw[raw.find("WMI hosts"):] if "WMI hosts" in raw else raw    # the part that tells them apart
+            raw = raw[raw.find("WMI hosts"):] if "WMI hosts" in raw else raw
             return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：说不出是哪种原因：{raw[:160]}"))
-        how = "期间已报过群，这一行只进日报" if held else "报了一次群"
-        good = f"{r.show()}；{how}；原因：{HYPOTHESIS_ZH[diag.group(1)]}"
+        good = f"{r.show()}；报了一次群；原因：{HYPOTHESIS_ZH[diag.group(1)]}"
     return _once(ctx, "#59", mc.Result(mc.PASS, good))
 
 
@@ -715,13 +700,12 @@ def _age(row: dict, now: datetime) -> float:
     return (now - last).total_seconds()
 
 
-def _pb_lines(ctx, since: datetime, where: tuple, *, old=(), recovered=(), alarm=()) -> tuple[list, list]:
-    """(problems, notes) for one signature group's WARNING / ERROR lines since `since`."""
+def _pb_lines(ctx, since: datetime, where: tuple, *, old=(), alarm=()) -> tuple[list, list]:
+    """核验指定模块自 `since` 起的 WARNING / ERROR：旧错不得复现，真错必须全部直推企微群（废除旧「只进日报」假设）。"""
     state_dir, now = ctx.get("state_dir"), _now(ctx)
-    queued = _queued_sigs(state_dir)
     bad: list[str] = []
     notes: list[str] = []
-    for sig, r in _rows_since(state_dir, since, now):
+    for _sig, r in _rows_since(state_dir, since, now):
         line = str(r.get("line") or "")
         if str(r.get("where") or "") not in where:
             continue
@@ -729,20 +713,15 @@ def _pb_lines(ctx, since: datetime, where: tuple, *, old=(), recovered=(), alarm
         at = str(r.get("last") or "")[11:19]
         if _hit(old, line):
             bad.append(f"改掉的旧报错又出现了 {n} 次（最后 {at}）：{line[:120]}")
-        elif _hit(recovered, line):
-            if r.get("recovered") and pushed == 0 and sig not in queued:
-                notes.append(f"自己好了的 {n} 次只进了日报（{line[:24]}…）")
-            else:
-                bad.append(f"自己好了的却{'进了群' if pushed else '排着队要进群'}（{at}）：{line[:120]}")
         elif _hit(alarm, line):
             if pushed >= n and _in_alert_copy(state_dir, r):
-                notes.append(f"没好的 {n} 次都进了群（{line[:24]}…）")
+                notes.append(f"报错 {n} 次都进了群（{line[:24]}…）")
             elif _age(r, now) < FRESH_S:
-                notes.append(f"没好的那条 {at} 刚记下，正在进群（{line[:24]}…）")
+                notes.append(f"那条报错 {at} 刚记下，正在进群（{line[:24]}…）")
             elif pushed >= n:
-                bad.append(f"没好的 {n} 次推出去了，报警抄件里却没有（{at}）：{line[:120]}")
+                bad.append(f"报错 {n} 次推出去了，报警抄件里却没有（{at}）：{line[:120]}")
             else:
-                bad.append(f"没好的 {n} 次里 {n - pushed} 次还没进群（最后 {at}）：{line[:120]}")
+                bad.append(f"报错 {n} 次里 {n - pushed} 次还没进群（最后 {at}）：{line[:120]}")
     return bad, notes
 
 
@@ -926,18 +905,19 @@ def _opens_shown(ctx):
     opens = getattr(tr, "opens", None) or []
     if not opens:
         return None          # no official source had a new-character banner open
-    bad, ok, unread = [], [], []
+    bad, ok, omitted = [], [], []
     for game, pool, who, start, end, by in opens:
         said = _block_says(text, game, pool)
         if said is None:
             ok.append(f"{game}「{pool}」")
-        elif "没读到" in said:
-            unread.append(f"{game}「{pool}」（{said}）")    # said as not read: honest, alarmed on its own
+        elif said == "没有这一块":
+            # 日报白名单：未读到该游戏卡池时日报严格省略整块（报错已直推企微群），绝不写「当期无新角色卡池」误导。
+            omitted.append(f"{game}「{pool}」（未读到已省略并报群）")
         else:
             bad.append(f"{game}「{pool}」{who}（{by}：{start or '版本更新后'} 开，{end or '结束未公布'} 结束）日报却是：{said}")
     if bad:
         return mc.Result(mc.FAIL, "；".join(bad[:3]))
-    return mc.Result(mc.PASS, "日报当期写上了：" + "、".join(ok) + (f"；按没读到报的：{'、'.join(unread)}" if unread else ""))
+    return mc.Result(mc.PASS, "日报当期写上了：" + "、".join(ok) + (f"；未读到已省略：{'、'.join(omitted)}" if omitted else ""))
 
 
 @mc.check("#68", "预告过的卡池开了以后，日报没有变成「当期无新角色卡池」", "A", "banners")
@@ -1090,10 +1070,9 @@ def _states(ctx):
     bad, notes = _pb_lines(ctx, since, ("ark.phone", "ark.service"),
                         old=_rx(r"^状态没能发到信箱", r"^第 \d+/\d+ 片没发出去",
                                 r"^状态没能上报到手机（[^）]*；今天 ntfy 已发"),
-                        recovered=_rx(r"^状态没存上腾讯云，这一份改走手机信箱发到了",
-                                      r"^状态(的通知)?没发到手机信箱，状态已存到腾讯云",
-                                      r"^发到手机信箱第一次没成"),
-                        alarm=_rx(r"^状态没能上报到手机（[^；）]*）"))
+                        alarm=_rx(r"^状态没存上腾讯云，这一份改走手机信箱发到了",
+                                  r"^状态(的通知)?没发到手机信箱，状态已存到腾讯云",
+                                  r"^状态没能上报到手机（[^；）]*）"))
     failed = t.get("failed") or []
     if not t.get("n"):
         bad.insert(0, "这一班一份状态都没上报（关机前那份也没算上）")
@@ -1133,7 +1112,7 @@ def _backlog(ctx):
         return None
     m = ctx.get("mailbox") or {}
     bad, notes = _pb_lines(ctx, _since(ctx), _PHONE, old=_rx(r"^取不到信箱里的指令"),
-                        recovered=_rx(r"^开机时没读到手机信箱，手机通道连上后补读到了"))
+                        alarm=_rx(r"^开机时没读到手机信箱，手机通道连上后补读到了"))
     late = m.get("backlog_late") or {}
     if m.get("backlog_missed"):
         head = f"开机读信箱没成（{m.get('backlog_why') or '原因没记下'}）"
@@ -1156,7 +1135,7 @@ def _stream(ctx):
     since = _since(ctx)
     drops = [d for d in m.get("drops") or [] if float(d.get("at") or 0) >= since.timestamp()]
     bad, notes = _pb_lines(ctx, since, _PHONE, old=_rx(r"^手机通道断了"),
-                        recovered=_rx(r"^手机通道断过 "), alarm=_rx(r"^手机通道连不上 ntfy 已经"))
+                        alarm=_rx(r"^手机通道断过 ", r"^手机通道连不上 ntfy 已经"))
     if not drops and not bad:
         return None          # it never dropped this shift
     down = m.get("down_since")
@@ -1170,7 +1149,7 @@ def _stream(ctx):
     return _verdict(f"这一班手机通道断过 {len(drops)} 次（{listed}）", bad, notes)
 
 
-@mc.check("#50", "三家停服维护公告读得到，第一次没响应的重试取到只进日报（一并核 #53）", "A", "phone_state")
+@mc.check("#50", "三家停服维护公告读得到，两次全失败必须报群（一并核 #53）", "A", "phone_state")
 def _maintenance(ctx):
     if not _shift_end(ctx):
         return None
@@ -1178,7 +1157,6 @@ def _maintenance(ctx):
     if not st:
         return None          # tomorrow's plan never asked for them this time
     bad, notes = _pb_lines(ctx, _since(ctx), ("ark.maintenance",), old=_rx(r"^维护公告：\S+ 取不到$"),
-                        recovered=_rx(r"^停服维护公告的官网第一次没响应"),
                         alarm=_rx(r"^维护公告：\S+ 官方公告取不到"))
     for game, row in st.items():
         if not row.get("last_ok"):
@@ -1190,7 +1168,7 @@ def _maintenance(ctx):
     return _verdict(f"这一班状态上报 {n} 次，维护公告真去官网取了 {reads}（其余用一小时内取到的）", bad, notes)
 
 
-@mc.check("#56", "心跳写得进腾讯云，写不进又好了的只进日报", "A", "phone_state")
+@mc.check("#56", "心跳写得进腾讯云，连续写不进必须报群", "A", "phone_state")
 def _cos_beat(ctx):
     if not _shift_end(ctx):
         return None
@@ -1202,7 +1180,7 @@ def _cos_beat(ctx):
     if not h.get("cos") or not (h.get("ok") or h.get("failed") or h.get("down_since")):
         return None          # no COS on this machine, or no beat this shift
     bad, notes = _pb_lines(ctx, _since(ctx), _PHONE, old=_rx(r"^心跳没能写到腾讯云 COS"),
-                        recovered=_rx(r"^心跳又写得进腾讯云了"), alarm=_rx(r"^心跳从 .* 起一直写不进腾讯云"))
+                        alarm=_rx(r"^心跳从 .* 起一直写不进腾讯云"))
     down = h.get("down_since")
     if down:
         gone = _now(ctx).timestamp() - float(down)
@@ -1726,7 +1704,7 @@ def _update_restart_check(ctx, cid: str):
             failed.append(f"{head}，却进了群：{rows[0].get('ts')} 「{rows[0].get('title')}」")
             continue
         noisy = [e for e in ctx.get("relay_errors") or []
-                 if stem in e.get("msg", "") and not (e.get("pushed") or e.get("recovered"))]
+                 if stem in e.get("msg", "") and not e.get("pushed")]
         if noisy:
             failed.append(f"{head}，中继却记了一条会进群的报错：{_cut(noisy[0]['msg'])}")
             continue

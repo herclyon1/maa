@@ -270,15 +270,14 @@ def render(banners: list[Banner], now: datetime,
     for game in _GAME_ORDER:
         lines = [game]
         if game in lost:
-            lines.append(f"· 这次没读到{lost[game]}，不是没有卡池")
-            blocks.append("\n".join(lines))
+            # 日报严格白名单：卡池未读到一律直推企微群告警，日报省略该游戏，严禁把“没读到”塞进日报。
+            log.warning("卡池未读到（已从日报省略）：%s%s", game, lost[game])
             continue
         when, who = nxt.get(game, (None, ""))
         swapped = False
         for b in live.get(game, []):
             if b.end is None:
-                # The official notice says 「版本更新维护前」 and no source has
-                # published that maintenance yet: no countdown, and saying so.
+                # 官方公告写「版本更新维护前」且尚未公布维护时刻：如实展示官方预告（不含报错词）
                 lines.append(f"· 当期：{b.name} · {'、'.join(b.chars)} · 版本更新维护前结束（几点官方还没公布）")
                 continue
             swap = when is not None and abs(when - b.end) <= _SWAP
@@ -297,11 +296,14 @@ def render(banners: list[Banner], now: datetime,
         else:
             ln = "· 下期：官方未公告" + (f" · {nt[game]}" if game in nt else "")
         if trace is not None and (why := gate_preview(ln, trace)):
+            # 来源核对不通过直接推企微群并扣下该行，绝不把「⚠️ 没通过来源核对」塞进日报。
             log.warning("卡池下期没通过来源核对，扣下：%s ← %s", ln, why)
             trace.withheld.append(f"{ln} ← {why}")
-            ln = "· 下期：⚠️ 这一行没通过来源核对，已扣下（原文在日志）"
-        lines.append(ln)
+        else:
+            lines.append(ln)
         blocks.append("\n".join(lines))
+    if not blocks:
+        return ""
     return "🎴 卡池（时间为北京时间）\n" + "\n".join(blocks)
 
 def gh_raw(owner: str, repo: str, branch: str, path: str) -> list[str]:
@@ -569,15 +571,14 @@ def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None
     check #66 pushes to the group once (the log line is INFO: a WARNING of its own
     rang the group a second time for the same banner).
     """
-    from ark_relay.features import errwatch  # noqa: PLC0415
     when = f"{b.start:%m-%d %H:%M}" if b.start else (b.start_note or "开始时刻没写")
     if b.end is not None:
         tr.ends |= _stamps(b.end)
         tr.checks.append(f"{game}：{main}里没有在开的「{b.name}」，{by}写着 {when} 开、"
                          f"{b.end:%m-%d %H:%M} 结束，已按官方补进当期 ✓")
+        # 主数据源漏掉当期卡池属于真实数据源异常：保持 warning 直推企微群，绝不压出群。
         log.warning("%s：%s里没有正在开的「%s」（%s），已按%s补进当期\n%s 开，%s 结束",
-                    game, main, b.name, "、".join(b.chars), by, when, f"{b.end:%Y-%m-%d %H:%M}",
-                    extra=errwatch.recovered())
+                    game, main, b.name, "、".join(b.chars), by, when, f"{b.end:%Y-%m-%d %H:%M}")
         return
     tr.checks.append(f"{game}：{main}里没有在开的「{b.name}」，{by}写着 {when} 开，"
                      f"结束时刻官方还没公布，已补进当期但没有倒计时 ✗")
@@ -799,7 +800,6 @@ def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "li
     卡池」 - and the verdict in `tr.continuity` makes machine check #68 push it to
     the group once (the log line is INFO, as in official_fill).
     """
-    from ark_relay.features import errwatch  # noqa: PLC0415
     tr.continuity = []
     for game, (start, who, end, snap) in sorted(_announced(state_dir, now).items()):
         if any(f.startswith(game) for f in failed):
@@ -821,9 +821,9 @@ def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "li
             tr.ends |= _stamps(end)
             tr.checks.append(f"{game}：{said}，今天各来源都没读到它，按预告和它公布的 {end:%m-%d %H:%M} 结束补回当期 ✓")
             tr.continuity.append([game, "recovered", f"{said}，今天各来源都没有，按预告补回（{end:%m-%d %H:%M} 结束）"])
+            # 全部来源均失踪属于真实外部接口故障：保持 warning 直推企微群，绝不压出群或进日报。
             log.warning("%s：之前预告 %s 开的%s今天哪个来源都没读到，已按预告补回当期\n%s 结束（%s）",
-                        game, f"{start:%m-%d %H:%M}", who, f"{end:%Y-%m-%d %H:%M}", snap,
-                        extra=errwatch.recovered())
+                        game, f"{start:%m-%d %H:%M}", who, f"{end:%Y-%m-%d %H:%M}", snap)
             continue
         failed.append(f"{game}（{start:%m-%d %H:%M} 已预告开的{who}）")
         tr.continuity.append([game, "lost", f"{said}，今天各来源都没有，按没读到报"])

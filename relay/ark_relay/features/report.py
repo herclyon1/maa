@@ -74,6 +74,66 @@ def line(store, code_version: str) -> str:
 
 log = logging.getLogger("ark.report")
 
+# 日报正向白名单区块注册表（显式声明，顺序即最终展示顺序）：
+# 仅允许已注册的正常业务产出、正常预告与更新次数进入用户日报；
+# 任何未注册区块 ID（以及任何报错、失败、自愈、没读到、兜底警告）一律硬拒绝。
+DAILY_WHITELIST_SECTIONS: tuple[str, ...] = (
+    "runs",               # 当日正常已完成的运行产出
+    "tomorrow_plan",      # 明日排班与已确认的官方维护预告
+    "event_countdown",    # 活动倒计时
+    "banner_countdown",   # 已核实通过的当期/下期卡池倒计时
+    "endfield_footnote",  # 终末地已完成日常编号脚注
+    "deploy_summary",     # 当日中继正常更新次数
+)
+_DAILY_WHITELIST_SET = frozenset(DAILY_WHITELIST_SECTIONS)
+
+
+def render_daily_whitelisted(title: str, sections: list[tuple[str, str]]) -> tuple[str, str]:
+    """按正向白名单注册表装配日报正文，硬拒绝任何未登记的区块。"""
+    bucket: dict[str, list[str]] = {}
+    for sec_id, content in sections:
+        if sec_id not in _DAILY_WHITELIST_SET:
+            raise ValueError(f"不允许把未登记内容放进日报：{sec_id}")
+        text = str(content or "").strip()
+        if text:
+            bucket.setdefault(sec_id, []).append(text)
+    parts: list[str] = []
+    for sec_id in DAILY_WHITELIST_SECTIONS:
+        if sec_id not in bucket:
+            continue
+        joined = "\n\n".join(bucket[sec_id])
+        if sec_id == "tomorrow_plan":
+            parts.append("———————\n" + joined)
+        else:
+            parts.append(joined)
+    body = "\n\n".join(parts)
+    # 用户日报不出现工具名，统一转为游戏中文名（D-1010）
+    return ledger_report.plain_words(title), ledger_report.plain_words(body)
+
+
+def _alert_daily_missing_readings(entries: list[dict]) -> None:
+    """日报白名单省略缺读数/缺证据项前，将本应存在的读数异常与缺证据项直推企微群。"""
+    for e in entries:
+        if not e.get("ok") or core.manual_stop(e):
+            continue
+        raw = e.get("raw") or {}
+        script = str(e.get("script") or "")
+        rid = str(e.get("run_id") or "?")
+        if script == "MaaEnd":
+            farm = raw.get("maaend_farm")
+            runs = raw.get("maaend_farm_runs") or raw.get("protocol_runs") or 0
+            if raw.get("maaend_sanity_unfit") or (
+                farm and runs and not raw.get("maaend_sanity_spent") and not raw.get("maaend_medicine")
+                and not raw.get("sanity_exhausted")
+            ):
+                log.warning("终末地理智消耗读数异常，已从日报省略（记录 %s）", rid)
+    for script, items in core.day_unverified_items(entries):
+        log.warning("%s 今日有 %d 项没读到游戏内完成证据，已从日报省略：%s",
+                    core._game(script), len(items), "、".join(items))
+    if unjudged := core.day_unjudged_items(entries):
+        log.warning("终末地今日有 %d 项日志未读到核验记录，已从日报省略：%s",
+                    len(unjudged), "、".join(unjudged))
+
 
 def _fill_single_run_sanity(entries: list[dict]) -> None:
     """For an Endfield record with only one run, the sanity spent has to be
@@ -258,22 +318,15 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
 
 
 def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
-    """The daily report: the structured template (core.format_daily) over the
-    day's real records, plus the countdowns and the deploy / retry / make-up /
-    stage-gate lines. Every word and number comes from code."""
-    # `raw` in the ledger is what the parser produced at bookkeeping time; after
-    # a parser change older entries miss fields, so recompute from the history
-    # logs before reporting.
+    """按严格正向白名单 Schema 组装用户日报（绝对 0 字节报错/失败/自愈/没读到文案，报错一律推企微群）。"""
+    # 先从原始历史日志刷新 raw，保证解析升级后字段一致
     entries = [collector.refresh_raw(e, eng.cfg.history_dir, getattr(eng.cfg, "maaend_dir", None))
                for e in entries]
     _fill_single_run_sanity(entries)
     tomorrow = plan.next_plan(eng.cfg.automas_dir)
-    # The event countdown goes on every daily report, not only on the last day.
-    # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_compose_daily」
     act = plan.activity_countdown(eng.cfg.automas_dir)
-    # The banner countdown goes last. banners.collect handles each game on its
-    # own, so one dead source does not take the others down; if the whole
-    # section fails, only this section is missing.
+    # 卡池倒计时：读不到或异常时一律 log.warning 直推企微群，日报严格省略该区块（绝不塞警告文案）
+    pool = ""
     try:
         bnow = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
         banner_failed: list[str] = []
@@ -284,48 +337,36 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
                                     trace=tr, leads=leads,
                                     read_image=banners.image_reader(eng.cfg.state_dir),
                                     state_dir=eng.cfg.state_dir)
-        # A source that could not be read says so in its own block (render gets
-        # `failed`); otherwise a missing game reads as "nothing running there".
         pool = banners.render(rows, bnow, nxt, notes, tr, banner_failed, leads)
         banners.save_trace(eng.cfg.state_dir, bnow, pool, tr)
         eng._announce_banners(bnow, nxt)
-        # Banner history changes are logged only, not pushed.
         for changed in banners.update_history(eng.cfg.state_dir, bnow):
             log.info("%s", changed)
     except Exception:
         log.warning("卡池那一段整体失败", exc_info=True)
-        pool = "⚠️ 卡池那一段整体没取到（不是没有卡池，是没读到）"
-    # The code version's scoreboard (counted by append_ledger after every run) is
-    # computed and logged here; it is not put into the message.
+        pool = ""
+    # 代码版本记分仅记日志，不入用户日报
     log.info("记分：%s", scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or "")))
-    tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
-    log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
+    log.info("日报用白名单结构化模板（报错一律推群，绝不进日报）")
     entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
+    _alert_daily_missing_readings(entries)
     shifts = _shifts(eng)
-    title2, body = core.format_daily(day, entries, "", tomorrow, shifts=shifts)
+    title2, runs_body = core.format_daily(day, entries, "", "", shifts=shifts)
     if tests:
         log.info("日报：%d 条测试窗口里的记录不列出来（%s）", len(tests),
                  "、".join(m.get("run_id", "?") for m in tests))
-    # The Endfield daily list goes at the very end as a footnote.
     foot = core.daily_footnote(entries)
-    # The deploy notes, the relay's own faults, the machine checks, the self-check
-    # and the test-window count go to the technical log (write_daily_techlog,
-    # D-1010); the report keeps one plain sentence on the deploys.
-    tail2 = f"\n\n{line}" if (line := deploys_line(eng.cfg.state_dir, day)) else ""
-    # The outcome of the per-route gathering retry (collect_retry).
-    if retry := retry_line(eng.cfg.state_dir, day, getattr(eng.cfg, "maaend_dir", None)):
-        body += f"\n\n{retry}"
-    # The make-up of a failed MAA / MaaEnd run (makeup.py) never pushes on its
-    # own; this line is where its outcome is said.
-    if made := makeup_line(eng.cfg.state_dir, day, entries, shifts):
-        body += f"\n\n{made}"
-    # Shifts the stage gate stopped (stagegate.py): MAA could not navigate to the stage.
-    from ark_relay.features import stagegate  # noqa: PLC0415
-    if gated := stagegate.report_line(eng.cfg.state_dir, day):
-        body += f"\n\n{gated}"
-    # No tool is named anywhere in what the user reads (D-1010).
-    return (ledger_report.plain_words(title2),
-            ledger_report.plain_words(body + tail + (f"\n\n{foot}" if foot else "") + tail2))
+    deploy_note = deploys_line(eng.cfg.state_dir, day)
+    # 严格通过正向白名单装配器输出（采集补跑/补跑失败/关卡拦截均直推企微群并仅记技术日志，绝不塞进日报）
+    sections: list[tuple[str, str]] = [
+        ("runs", runs_body),
+        ("tomorrow_plan", tomorrow),
+        ("event_countdown", act),
+        ("banner_countdown", pool),
+        ("endfield_footnote", foot),
+        ("deploy_summary", deploy_note),
+    ]
+    return render_daily_whitelisted(title2, sections)
 
 
 def _shifts(eng) -> list[tuple[str, str]]:
@@ -443,11 +484,15 @@ def _tacet_caption(eng, day: str = "") -> str:
     if got is not None:
         line = f"实际刷了第 {got} 个：{wuwa_tacet.label(got, day)}，掉 {wuwa_tacet.reward(got, day)}"
         if want is not None and want != got:
+            log.warning("无音区实际刷取第 %d 个，与设置第 %d 个不一致", got, want)
             line += f"。注意：设置里写的是第 {want} 个（{wuwa_tacet.label(want, day)}），两者不一样"
         return line
     if want is not None:
-        return f"设置里写的是第 {want} 个：{wuwa_tacet.label(want, day)}，掉 {wuwa_tacet.reward(want, day)}（实际序号没读到）"
-    return "无音区序号没读到，设置和实际都没拿到"
+        # 读不到实际无音区序号时走 log.warning 直推企微群，产出图说明只保留干净白名单信息
+        log.warning("无音区实际刷取序号未读到，产出说明暂按配置第 %d 个标注", want)
+        return f"第 {want} 个：{wuwa_tacet.label(want, day)}，掉 {wuwa_tacet.reward(want, day)}"
+    log.warning("无音区配置与实际刷取序号均未读到")
+    return "鸣潮无音区结算页"
 
 
 def _changes_file(state_dir, day: str) -> Path:
@@ -513,9 +558,18 @@ def daily_tech_sections(eng, day: str) -> list[tuple[str, str]]:
     if tests:
         out.append(("测试窗口里的记录（不计入日报）",
                     f"另外测试跑过 {len(tests)} 趟：" + "、".join(str(m.get("run_id", "?")) for m in tests)))
-    # The evidence links, versions and file names format_daily keeps out of the rows.
+    # 当日采集补跑、脚本补跑与关卡拦截明细归档至技术日志（绝不进入用户日报）
+    shifts = _shifts(eng)
+    if retry_tech := _retry_tech_line(sd, day, getattr(eng.cfg, "maaend_dir", None)):
+        out.append(("当日采集补跑记录", retry_tech))
+    if makeup_tech := _makeup_tech_line(sd, day, entries, shifts):
+        out.append(("当日自动补跑记录", makeup_tech))
+    from ark_relay.features import stagegate  # noqa: PLC0415
+    if gate_tech := stagegate.tech_report_line(sd, day):
+        out.append(("当日关卡门拦截记录", gate_tech))
+    # 证据包、版本、未完成等技术详情仅写入技术日志
     rows: list[str] = []
-    core.format_daily(day, entries, tech=rows, shifts=_shifts(eng))
+    core.format_daily(day, entries, tech=rows, shifts=shifts)
     if rows:
         out.append(("日报各行的证据包、版本和文件", "\n".join(rows)))
     return out
@@ -545,8 +599,8 @@ def write_daily_techlog(eng, day: str) -> bool:
         return False
 
 
-def retry_line(state_dir, day: str, maaend_dir=None) -> str:
-    """One line on the day's per-route gathering retry (collect_retry's stamp), '' when none."""
+def _retry_tech_line(state_dir, day: str, maaend_dir=None) -> str:
+    """仅供技术日志记录当日自动采集补跑结果，绝不输出到用户日报。"""
     if not state_dir:
         return ""
     p = Path(state_dir) / "collect-retry" / f"{day}.json"
@@ -555,13 +609,12 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
     except (OSError, ValueError):
         return ""
     if "passed" not in d and "failed" not in d:
-        return "自动采集补跑：开始了，还没有结果"
+        return "自动采集补跑：已启动，尚无结果"
     from ark_relay.features import collect_retry  # noqa: PLC0415
     zh = collect_retry._locale(Path(maaend_dir)) if maaend_dir else {}
     name = lambda r: collect_retry.route_label(r, zh)  # noqa: E731
     parts = []
     if d.get("blocked"):
-        # Routes booked for the retry because they walked through 「战斗中无法使用」.
         parts.append(texts.collect_blocked_row([name(r) for r in d["blocked"]], first=True))
     if d.get("passed"):
         parts.append("走通 " + "、".join(name(r) for r in d["passed"]))
@@ -572,18 +625,23 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
     if d.get("unknown"):
         parts.append("没结论 " + "、".join(name(r) for r in d["unknown"]))
     if d.get("recurrent"):
-        parts.append("连续两天没走通 " + "、".join(name(r) for r in d["recurrent"]) + "，已交给我们这边去查")
+        parts.append("连续两天没走通 " + "、".join(name(r) for r in d["recurrent"]))
     if d.get("note"):
         parts.append(str(d["note"]))
     return "自动采集补跑：" + ("；".join(parts) if parts else "没有要补的")
+
+
+def retry_line(state_dir, day: str, maaend_dir=None) -> str:
+    """日报白名单硬门禁：采集补跑异常与复发一律直推企微群，日报绝不渲染采集补跑失败/异常行。"""
+    _ = (state_dir, day, maaend_dir)
+    return ""
 
 
 _MAKEUP_GAME = {"MAA": "明日方舟", "MaaEnd": "终末地"}
 
 
 def _plain_makeup_reason(note: str) -> str:
-    """Why no make-up ran, in plain words (makeup.maa_work_done's reasons, read back
-    from the marker, older wording included)."""
+    """将补跑跳过理由转成白话（供技术日志使用）。"""
     why = note.removeprefix("不补跑：").strip()
     if "拿不准" in why and "打过仗" in why:
         return "拿不准第一次打没打过仗，怕重复花理智"
@@ -596,19 +654,9 @@ def _plain_makeup_reason(note: str) -> str:
     return ledger_report.plain_words(why)
 
 
-def makeup_line(state_dir, day: str, entries: "list[dict] | None" = None,
-                shifts: "list[tuple[str, str]] | None" = None) -> str:
-    """One line per script on the day's make-up run (makeup.py's marker), '' when there was none.
-
-    Plain words, game and shift named, e.g.
-    「明日方舟早班失败后没有自动补跑（拿不准第一次打没打过仗，怕重复花理智），12:05 已手动补上」;
-    the other endings are 「失败后自动补跑，走通了」, 「…还是没成（…）」, 「…已开跑，
-    还没有结果」, 「…派了自动补跑，N 分钟没跑出记录」 and 「…想自动补跑，没能开跑（…）」.
-    `entries` (the day's ledger) gives the shift and a later run that made it up.
-
-    A make-up that went through is not pushed (handle._flush_pending), so this
-    line and the failed run's row are where it is said.
-    """
+def _makeup_tech_line(state_dir, day: str, entries: "list[dict] | None" = None,
+                      shifts: "list[tuple[str, str]] | None" = None) -> str:
+    """仅供技术日志记录当日自动补跑明细，绝不输出到用户日报（补跑成败均已直推企微群）。"""
     from ark_relay.features import makeup  # noqa: PLC0415
     by_id = {e.get("run_id"): e for e in entries or []}
     lines = []
@@ -619,7 +667,6 @@ def makeup_line(state_dir, day: str, entries: "list[dict] | None" = None,
         shift = ledger_report.shift_of(failed_run.get("started"), shifts) if failed_run else ""
         what = "、".join(ent.get("tasks") or ent.get("failed") or [])
         head = _MAKEUP_GAME.get(script, script) + shift
-        # 「整个 MAA」 is the whole game: the game name already says it.
         redo = f"「{what}」" if what and not what.startswith("整个") else ""
         note = str(ent.get("note") or "").strip()
         res = ent.get("result")
@@ -635,14 +682,20 @@ def makeup_line(state_dir, day: str, entries: "list[dict] | None" = None,
         elif res == makeup.NO_RECORD:
             line = f"{head}失败后派了自动补跑{redo}，{makeup.STALE_MIN} 分钟没跑出记录"
         elif res == makeup.GAVE_UP and note.startswith("不补跑"):
-            # decided not to (MAA that already fought), not a dispatch that failed
             line = f"{head}失败后没有自动补跑（{_plain_makeup_reason(note)}）"
             if failed_run and (later := ledger_report.later_success(entries or [], failed_run, shifts)):
                 line += f"，{later[0]} " + ("已手动补上" if later[1] else "已补上")
-        else:   # couldnt_run / gave_up
+        else:
             line = f"{head}失败后想自动补跑{redo}，没能开跑" + (f"（{note}）" if note else "")
         lines.append(ledger_report.plain_words(line))
     return "\n".join(lines)
+
+
+def makeup_line(state_dir, day: str, entries: "list[dict] | None" = None,
+                shifts: "list[tuple[str, str]] | None" = None) -> str:
+    """日报白名单硬门禁：自动补跑成败与原因一律直推企微群并仅留技术日志，日报绝不渲染补跑异常行。"""
+    _ = (state_dir, day, entries, shifts)
+    return ""
 
 
 # The test windows run-one.sh marked; kept under this name for its callers.

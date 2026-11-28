@@ -67,7 +67,6 @@ from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from pathlib import Path
 from ark_relay.core import notify as netretry
 from ark_relay.core import statestore as techlog
-from ark_relay.features import errwatch
 from ark_relay.features.phone import cos_put, state_cos, state_key, Mailbox
 
 ZONAI = "https://zonai.skland.com"
@@ -1249,8 +1248,9 @@ def _settle(cfg, today: str, at: datetime, ok: bool, what: str, *, skip=False, e
             before = [f"之前连着 {missed} 天没算成，App 库存页那几天用的是{last_ok}的表"] if missed else []
             if failed_today:
                 before.append(f"今天第 1 次没算成（{failed_today}），过了半小时重试成了")
-            log.warning("终末地「最新六星满练要多少」表今天重算成了；%s", "；".join(before),
-                        extra=errwatch.recovered())
+            # 重试/次日恢复成功属于事后闭环与瞬态重试成功：记 info（不进日报、不刷群）；
+            # 连败达到上限时下方仍打 warning 直推企微群。
+            log.info("终末地「最新六星满练要多少」表今天重算成了；%s", "；".join(before))
         mark.update(missed_days=0, fails_in_row=0, unpushed_fails=0, last_ok_day=today)
     else:
         later = "过半小时再试一次" if tries < BUILDS_A_DAY else "明天再试"

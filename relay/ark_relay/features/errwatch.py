@@ -264,10 +264,10 @@ log = logging.getLogger("ark.errwatch")
 # lint (one name per module) has nothing to object to.
 ARK = log.name.rsplit(".", 1)[0]
 
-# LogRecord attributes (set through `extra=`).
-PUSHED = "ark_group_pushed"     # the caller already delivered this to the group
-RECOVERED = "ark_recovered"     # the relay recovered from this by itself: daily report only
-ALARM = "ark_alarm"             # (title, body) to push instead of the generic text
+# 日志记录扩展标记（通过 logging 的 `extra=` 传入）：
+# 彻底废除旧版“自愈只进日报”分流，任何真实 WARNING/ERROR 一律走企微群报警通道，绝不压出群。
+PUSHED = "ark_group_pushed"     # 调用方已直接推送至企微群，避免重复发群
+ALARM = "ark_alarm"             # 指定推送的 (标题, 正文)，替代通用中继报错模板
 # Threads of the push path; a record logged on one of them is never pushed.
 PUSH_THREAD = "errwatch-push"
 QUEUE_FILE = "errwatch-queue.json"
@@ -373,23 +373,11 @@ def going_down(extra=lambda: False) -> bool:
         return False
 
 
-# ---------- what callers put on a record ----------
+# ---------- 调用方附带在日志记录上的扩展参数 ----------
 
 def alarm(title: str, body: str) -> dict:
     """`extra=` for a log call whose push needs its own title and body."""
     return {ALARM: (str(title), str(body))}
-
-
-def recovered() -> dict:
-    """`extra=` for a WARNING about a fault the relay has already recovered from by
-    itself (a retry, a make-up or a reconnect that then worked): it goes to the daily
-    report's 「中继自己记下的报错」 tagged 自己好了, and is NOT pushed to the group.
-
-    What fixed itself goes to the daily report only (the user's words are in
-    relay/USER-SWITCHES.txt). Only for what already recovered: a fault that is
-    still there is a plain WARNING / ERROR and is pushed every time.
-    Every caller is listed in relay/USER-SWITCHES.txt (tests/test_user_switches.py)."""
-    return {RECOVERED: True}
 
 
 def group_pushed(title: str, errs, notifier=None) -> dict:
@@ -657,18 +645,13 @@ class ErrorKindAlert(logging.Handler):
         if record.name == log.name or getattr(record, PUSHED, False):
             return
         try:
-            # Before the push-thread filter: a fault that recovered on the push path
-            # (notify.py:_post's transport retry that went through) still writes its
-            # red item. It only counts and writes the technical log, so it cannot loop
-            # back into a push; _run holds no lock while it delivers.
-            if getattr(record, RECOVERED, False):
-                self._note_recovered(record)
-                return
+            # 推送线程自身产生的警告仅记入当日错误统计，避免发送报错时形成推送死循环；
+            # 其余任何模块的 WARNING / ERROR 全部入队直推企微群（保留退避重发、20条/分合包与10分钟 Server酱兜底）。
             if record.threadName.startswith(PUSH_THREAD):
                 self._count_only(record)
                 return
             self._take(record)
-        except Exception:  # noqa: BLE001 - a logging handler must never raise into the caller
+        except Exception:  # noqa: BLE001 - 日志捕手绝不能把异常抛回业务调用方
             super().handleError(record)
 
     def _item(self, record: logging.LogRecord, sig: str, stamp: str) -> dict:
@@ -715,7 +698,7 @@ class ErrorKindAlert(logging.Handler):
             self._start()
 
     def _count_only(self, record: logging.LogRecord) -> None:
-        """Count a record taken on the push thread, without queueing it."""
+        """统计推送线程上记录的警告，不二次入队推送，防止循环刷群。"""
         from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
         when = datetime.fromtimestamp(record.created, tz=SERVER_TZ)
         stamp = when.strftime("%Y-%m-%d %H:%M:%S")
@@ -723,23 +706,6 @@ class ErrorKindAlert(logging.Handler):
         item = self._item(record, sig, stamp)
         with self._cv:
             self._count(when.strftime("%Y-%m-%d"), sig, record, item, stamp)
-
-    def _note_recovered(self, record: logging.LogRecord) -> None:
-        """A fault the relay recovered from by itself: counted, never pushed, and one
-        red item in the technical log (techlog.self_heal) so a session looks at why it
-        happened - the user, 2026-10-11 17:44, in techlog.self_heal's docstring."""
-        from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
-        when = datetime.fromtimestamp(record.created, tz=SERVER_TZ)
-        stamp = when.strftime("%Y-%m-%d %H:%M:%S")
-        sig = record_signature(record)
-        with self._cv:
-            day = when.strftime("%Y-%m-%d")
-            self._count(day, sig, record, {}, stamp)
-            self._day(day)[sig]["recovered"] = True
-            self._save_day(day)
-        if self._dir:
-            from ark_relay.core import statestore as techlog  # noqa: PLC0415
-            techlog.self_heal(record.name, first_line(record)[:300], state_dir=self._dir, now=when)
 
     def _count(self, day: str, sig: str, record: logging.LogRecord, item: dict, stamp: str) -> None:
         rows = self._day(day)

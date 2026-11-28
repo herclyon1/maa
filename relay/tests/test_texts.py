@@ -203,12 +203,15 @@ def _part_texts_wording():
         check(f"说出原因：{want}", (want in body, texts.plain(body)), (True, []))
         check(f"不抄带英文的原话：{want}", any(w in body for w in ("urlopen", "Error", "WinError", "Errno")), False)
     check("同时占用和权限两种说法时，说占用", "没有权限" in texts.relay_error_body("ark.config", cases[3][0], ""), False)
-    check("带英文的原话一个字都不抄（半句也不抄）", "官方公告取不到" in texts.relay_error_body("ark.maintenance", cases[0][0], ""),
-          False)
+    body0 = texts.relay_error_body("ark.maintenance", cases[0][0], "")
+    check("保留中文上下文且不抄任何英文原话", ("官方公告取不到" in body0, "域名解析失败" in body0, texts.plain(body0)), (True, True, []))
     unknown = texts.relay_error_body("ark.service", "Traceback: KeyError 'x'", "09:00:01")
-    check("认不出原因的：说中继还不认识、原文已记日志", (texts.RELAY_ERROR_UNREAD in unknown, texts.plain(unknown)), (True, []))
+    check("去盲盒：KeyError 输出直白中文原因，无盲盒话术",
+          ("读取数据时缺少必要内容" in unknown, not hasattr(texts, "RELAY_ERROR_UNREAD"),
+           "这种报错中继还不认识" not in unknown, texts.plain(unknown)),
+          (True, True, True, []))
     # #180: the relay's own warning names the upstream file it pins; a file name standing alone
-    # is not English prose, so the line is quoted instead of replaced by RELAY_ERROR_UNREAD.
+    # is not English prose, so the line is quoted directly in plain Chinese.
     from ark_relay.features import evidence as _ev
     check("三处钉的上游名字", [p.name for p in _ev.PINS],
           ["MaaEnd 导出（MXU file_ops.rs）", "MAA 生成日志压缩包（IssueReportUserControlModel.cs）", "OK-WW 导出日志（diagnostics.py）"])
@@ -216,7 +219,8 @@ def _part_texts_wording():
         said = f"上游导出代码变了：{pin.name}"
         check(f"带文件名的中文原话过得了检查：{pin.name}", texts.plain(said), [])
         body = texts.relay_error_body("ark.service", said, "09:09:46")
-        check(f"群里照抄原话，不说还不认识：{pin.name}", (f"它说：{said}" in body, texts.RELAY_ERROR_UNREAD in body, texts.plain(body)),
+        check(f"群里照抄原话，不说还不认识：{pin.name}",
+              (f"它说：{said}" in body, "这种报错中继还不认识" in body, texts.plain(body)),
               (True, False, []))
     all3 = "上游导出代码变了：" + "、".join(p.name for p in _ev.PINS) + "（都已报过，不再重发）"
     check("三处一起变、已报过的那句也照抄", "它说：" + all3[:20] in texts.relay_error_body("ark.service", all3, ""), True)
@@ -2582,11 +2586,6 @@ def _part_mute_verdicts():  # noqa: C901
         "outcome and a shutdown.exe request at most 30 min later (ark_relay/features/procwatch.py:"
         "farm_poweroff_planned); relay.log 2026-11-13 08:20:06 / 08:22:20 is such a power-off. Every other "
         "shutdown exit is still the WARNING in ark_relay/features/automas_keeper.py:_AutomasKeeper.stopping",
-        "ark_relay/features/handle.py:_drop_update_after_done":
-            "MaaEnd installing its own new build after the shift's round had done its work: the upstream "
-        "update, no work left undone (ark_relay/features/handle.py:done_in_shift counts only a "
-        "round that started before the restart; ark_relay/features/handle.py:_update_restart_done "
-        "checks the done round; without one ark_relay/features/handle.py:_flush_pending pushes the restart)",
         "ark_relay/features/okww_files/ark_overrides.tasks.py:_skip_short":
             "only the skip is normal: no fight for no reward and no AUTO-MAS retry that would find no more "
         "waveplates; the shortage itself is red and pushed (ark_relay/features/outcome.py:okww_checks)",
@@ -2873,17 +2872,20 @@ def _part_daily_format():
         "· 产出　贝币×336000",
         "· 剩余　波片 8/240，备用 0，次日 08:53 回满（东京 09:53）",
         "· 备注　残象聚落（已刷满）；周本（已完成，本周已领满）"])
-    check("终末地", rows(blocks[2]), [
+    check("终末地（白名单不写没证据报错，只展正常产出）", rows(blocks[2]), [
         "· 做了　刷 基质刷取·枢纽区 ×2",
         "· 消耗　理智 160，加强剂 0",
         "· 产出　无暇基质×6 高纯基质×4",
         "· 剩余　理智 74/360，本日 21:00 回满（东京 22:00）",
-        "· 备注　日常 1-5 项完成；没证据，不算完成（只有程序自己说做完了）：赠送干员礼物、装备制造、拜访好友、自动采集"])
-    check("失败的只有一行，说清为什么", blocks[3], "❌ 鸣潮 21:30–21:35（东京 22:30–22:35）没跑成（鸣潮 流程产生错误）")
+        "· 备注　日常 1-5 项完成"])
+    check("失败行严禁进日报（已推群、仅留技术日志）", (len(blocks), "❌" in body, "没跑成" in body, "没证据" in body),
+          (3, False, False, False))
     check("「体力不够再开一局」不再出现", "体力不够" in body, False)
     foot = core.daily_footnote(entries)
     check("名单当注释放最末（只列有证据的）", foot, "———————\n日常：1.基建任务 2.信用点购物 3.应急理智加强剂 4.选剑演武 5.日常奖励领取")
-    check("标题不说全绿，点名没证据的项数", title.endswith("终末地 4 项没证据 ⚠️"), True)
+    check("存在异常/未验证项时标题不用全绿也不塞报错词",
+          ("全绿" in title, "没证据" in title, "失败" in title, title.endswith("今日日报")),
+          (False, False, False, True))
     check("没有终末地成功记录就没有注释", core.daily_footnote(entries[:2]), "")
     _nf = {"script": "MAA", "ok": True, "sanity": 0,
            "started": "2026-09-04T12:41:00+08:00", "finished": "2026-09-04T12:52:00+08:00",
@@ -2937,7 +2939,8 @@ def _part_daily_format():
                   "tasks_evidence": {"日常奖励领取": "获得 x"}}}
     check("unjudged this day", _lr.day_unjudged_items([_e]), ["赠送干员礼物"])
     _t, _ = _lr.format_daily("2026-11-08", [_e])
-    check("title says 待核, not 全绿", ("待核" in _t, "全绿" in _t), (True, False))
+    check("title uses neutral 今日日报, not 全绿 and no error tag",
+          ("今日日报" in _t, "全绿" in _t, "待核" in _t), (True, False, False))
     _e2 = dict(_e, run_id="2026-11-08/endfield/MaaEnd-13-30-00", started="2026-11-08T17:30:00+08:00",
                raw={"tasks_done": ["赠送干员礼物"], "tasks_trail_miss": 0,
                     "tasks_trail": {"赠送干员礼物": {"found": True, "ok": True}}})
@@ -2945,41 +2948,32 @@ def _part_daily_format():
 
 
 def _part_daily_partial_failure():
-    """A run that failed one task still has to report the nineteen it finished."""
+    """日报白名单：失败趟严禁进入日报正文（由群告警与技术日志承接），成功趟正常呈现且标题不误报全绿、不塞报错/重试词。"""
     import json
 
     from ark_relay.core import ledger as core
 
     entries = json.loads((fx_dir(Path(__file__), "fixtures") / "daily-2026-09-09.json")
                          .read_text(encoding="utf-8"))
-    bare_title, _ = core.format_daily("2026-09-09", entries)
-    check("账上没有证据：标题不说全绿，说没证据", ("全绿" in bare_title, "项没证据" in bare_title), (False, True))
-    # What this test is about is the rendering of a partial failure; give each task
-    # the evidence a real log would carry so the rest reads as it did on the day.
+    bare_title, bare_body = core.format_daily("2026-09-09", entries)
+    check("账上没有证据：标题不用全绿，也不塞「没证据」报错词",
+          ("全绿" in bare_title, "没证据" in bare_title, "今日日报" in bare_title, "没证据" in bare_body),
+          (False, False, True, False))
     for e in entries:
         raw = e.get("raw") or {}
         if raw.get("tasks_done"):
             raw["tasks_evidence"] = {t: "获得 信用 ×400" for t in raw["tasks_done"]}
-    title, body = core.format_daily("2026-09-09", entries)
+    tech_rows: list[str] = []
+    title, body = core.format_daily("2026-09-09", entries, tech=tech_rows)
     blocks = body.split("\n\n")
-    long_run = next(b for b in blocks if "1h20m" in b)
     retry_run = next(b for b in blocks if "2m" in b and "终末地" in b)
 
-    print("[跑了 80 分钟的那趟：做过的事必须都在]")
-    check("说了刷什么刷了几次", "基质刷取" in long_run and "×18" in long_run)
-    check("说了花掉的理智", "1422" in long_run)
-    check("说了产出", "无暇基质" in long_run and "高纯基质" in long_run)
-    check("说了剩余理智", "6/360" in long_run)
-    check("不再只剩一行「失败于」", long_run.count("· ") >= 5)
+    print("[失败的那趟进技术日志、不进日报；日报标题和正文 0 报错/重试词]")
+    check("失败那趟已记进技术日志", any("据点交易" in ln for ln in tech_rows), True)
+    check("日报正文没有失败与重试词", any(w in (title + body) for w in ("失败", "重试", "❌", "没跑成")), False)
+    check("标题用中性今日日报，不误报全绿", ("今日日报" in title, "全绿" in title), (True, False))
 
-    print("[重试成功要说清楚，而且只说一次]")
-    check("点名是哪一项", "据点交易" in long_run)
-    check("说了后来做成了", "重试里做成了" in long_run)
-    check("没有自相矛盾的「失败」二字", "；失败" not in long_run)
-    check("整天判成全绿", "全绿" in title)
-    check("标题里点明有重试", "重试" in title)
-
-    print("[两分钟的重试那趟：一行说完，不摆四个破折号]")
+    print("[成功的那趟照常按白名单简洁输出，不摆四个破折号]")
     check("只有一行", retry_run.count("· "), 1)
     check("那一行说了做的是什么", "据点交易" in retry_run)
     check("没有空占位", "—" not in retry_run)
@@ -3000,10 +2994,14 @@ def _part_daily_range_prefix():
     _t, body = core.format_daily("2026-10-08", es, "", "")
     blocks = body.split("\n\n")
     late = next(b for b in blocks if "10:35→11:12" in b)
-    early = next(b for b in blocks if "09:30→10:30" in b)
+    require("failed early run is omitted by daily whitelist", not any("09:30→10:30" in b for b in blocks), body)
     require("10:35 run names its own tasks", "日常 1-" not in late and "做了 拜访好友" in late, late)
     require("10:35 run lists 自动采集 it did", "自动采集、日常奖励领取" in late, late)
-    require("the footnote's own run keeps 1-13", "日常 1-13 项完成" in early, early)
+    # Mark early run as ok=True to verify the 1-13 range-prefix rendering for a clean run
+    es_ok = [dict(e, ok=True, failed_tasks=[]) for e in es]
+    _t2, body2 = core.format_daily("2026-10-08", es_ok, "", "")
+    early_ok = next(b for b in body2.split("\n\n") if "09:30→10:30" in b)
+    require("the footnote's own clean run keeps 1-13", "日常 1-13 项完成" in early_ok, early_ok)
     require("footnote starts with 05:29's list", core.daily_footnote(es).startswith("———————\n日常：1.赠送干员礼物 2.装备制造"))
 
 
@@ -3107,9 +3105,9 @@ def _part_daily_techlog():
         run("ww1", "OK-WW", "09:00", 1, False, transitional=True, okww_restart_dialog=True,
             okww_client_change="patch", okww_client_files=[PAK]),
         run("ww2", "OK-WW", "09:02", 10, True, tasks_done=["日常"]),
-        # MaaEnd: installed its new build and restarted, then a clean run.
+        # MaaEnd: installed its new build and restarted, then a clean verified run.
         run("ef1", "MaaEnd", "09:20", 2, False, failed=["MaaEnd 进程超时"], maaend_update_restart=VERSION),
-        run("ef2", "MaaEnd", "09:23", 20, True, tasks_done=["赠送干员礼物"]),
+        run("ef2", "MaaEnd", "09:23", 20, True, tasks_done=["赠送干员礼物"], tasks_shot=["赠送干员礼物"]),
         # A test run inside a marked test window.
         run("test", "MAA", "12:00", 5, True, tasks_done=["日常"]),
         # MAA's evening run failed for good; its evidence bundle was uploaded.
@@ -3163,18 +3161,16 @@ def _part_daily_techlog():
     check("终末地的版本号在技术日志里", f"{TODAY}/x/ef1 MaaEnd 装新版 {VERSION} 后自己重启" in tech)
     check("鸣潮换了的文件在技术日志里", f"{TODAY}/x/ww1 OK-WW 游戏更新换了的文件：{PAK}" in tech)
 
-    print("\n[日报正文里一行技术内容都没有]")
+    print("\n[日报正文里一行技术内容和报错/重启自愈内容都没有]")
     check("正文里没有技术行", TECH_IN_BODY.findall(body), [])
     check("行首是游戏名，不是脚本名", SCRIPT_ROW.findall(body), [])
-    check("各游戏的行都在", all(f"{icon} {g}　" in body for icon, g in
-                             (("↪️", "鸣潮"), ("✅", "鸣潮"), ("↪️", "终末地"), ("✅", "终末地"))))
-    check("失败那一趟一行说清是哪一班、哪一步",
-          "❌ 明日方舟 晚班 21:30–21:33（东京 22:30–22:33）没跑成（失败于：基建换班）" in body)
-    check("鸣潮更新那一行还在，只是不点名文件", "游戏更新成功（更新了客户端文件），重启后重跑，不算失败" in body)
-    check("终末地更新那一行还在，只是不报版本", "终末地装了新版后自己重启，用掉一次重试，不算失败" in body)
+    check("各游戏正常成功的行都在", all(f"✅ {g}　" in body for g in ("鸣潮", "终末地")))
+    check("失败趟与更新重启过渡行严禁进日报（已进技术日志/群告警）",
+          any(w in body for w in ("❌", "↪️", "没跑成", "失败于", "不算失败", "用掉一次重试")), False)
     check("部署只剩一句次数", body.rstrip().endswith("今天中继更新了 2 次"))
     check("测试那一趟不在日报里", "12:00→" in body, False)
-    check("标题照旧点名失败的游戏和班次", "明日方舟晚班没跑成" in title)
+    check("有失败趟时标题用中性今日日报（不误报全绿，也不塞失败词）",
+          ("今日日报" in title, "全绿" in title, "没跑成" in title), (True, False, False))
 
     print("\n[只在发出并落记号的那一次写；重试发送不写第二遍]")
     e = machine()
@@ -3239,22 +3235,26 @@ def _part_daily_techlog():
         "x1", "MaaEnd", "09:20", 30, False, failed=["MaaEnd 进程超时"], tasks_done=["赠送干员礼物"],
         tasks_shot=["赠送干员礼物"]), ensure_ascii=False) + "\n", encoding="utf-8")
     t_x, b_x = e2._compose_daily(TODAY, e2.state.read_ledger(TODAY))
-    check("工具自己的话换成人话", ("失败于：终末地跑得太久，被停掉了" in b_x, TOOL_WORD.findall(t_x + b_x)), (True, []))
+    check("失败趟不进日报且不露工具名",
+          ("失败于" in b_x, "❌" in b_x, TOOL_WORD.findall(t_x + b_x)), (False, False, []))
+    check("工具自己的话在 plain_words 里仍换成人话（供群告警与技术日志）",
+          core.plain_words("MaaEnd 进程超时"), "终末地跑得太久，被停掉了")
 
-    print("\n[连续几次空失败合成一行，写班次、原因和后来补上没有（验收 10-11）]")
-    check("三次合成一行", [l for l in b10.splitlines() if l.startswith("❌")],
-          ["❌ 明日方舟 早班 09:00–09:04（东京 10:00–10:04）连试 3 次没跑成（关卡 YW-4 当时走不到），12:15 手动补跑成功"])
-    check("标题按一件事说", "明日方舟早班没跑成（12:15 补上了）" in t10, True)
-    check("补跑那一行写班次和人话", "明日方舟早班失败后没有自动补跑（拿不准第一次打没打过仗，怕重复花理智），12:15 已手动补上" in b10,
-          True)
+    print("\n[日报白名单：失败行、补跑失败行、重试说明全部只进群/技术日志，绝不进日报]")
+    check("日报正文无 ❌ 失败行、无补跑行，保留 12:15 正常成功行",
+          ([l for l in b10.splitlines() if l.startswith("❌")], "补跑" in b10, "✅ 明日方舟　12:15" in b10),
+          ([], False, True))
+    check("存在失败记录时标题用中性今日日报（不误报全绿，不塞没跑成）",
+          ("今日日报" in t10, "全绿" in t10, "没跑成" in t10), (True, False, False))
 
-    print("\n[重试的话留着：他从这句看出哪一项失败过（验收 10-11）]")
+    print("\n[重试场景：失败趟不进日报、成功趟保留、日报正文与标题无「重试」字样]")
     retry = [run("r1", "MaaEnd", "09:20", 10, False, failed=["转交委托"], tasks_done=["赠送干员礼物"],
                  tasks_shot=["赠送干员礼物"]),
              run("r2", "MaaEnd", "09:40", 10, True, tasks_done=["转交委托"], tasks_shot=["转交委托"])]
     t_r, b_r = core.format_daily(TODAY, retry)
-    check("正文写后来在哪一趟重试里做成了", "转交委托　后来在 09:40（东京 10:40）开始的那趟重试里做成了" in b_r, True)
-    check("标题写有项目重试后成功", t_r.endswith("全绿 ✅（有项目重试后成功）"), True)
+    check("成功趟照常保留、正文与标题 0 重试/失败词",
+          ("✅ 终末地　09:40" in b_r, "重试" in (t_r + b_r), "失败" in (t_r + b_r), t_r.endswith("今日日报")),
+          (True, False, False, True))
 
     print("\n[红项的格式：读取工具按这个认（ac38f466 的格式）]")
     when = datetime(2026, 10, 11, 21, 45, tzinfo=SERVER_TZ)
@@ -3519,7 +3519,7 @@ def _part_report_due():
     report._maybe_daily_report(e2, at(TODAY, "22:00"))
     check("没部署过就没有这一句", "中继更新了" in e2.notifier.sent[-1][1], False)
 
-    print("\n[当天补跑过的结果附在日报里（补跑开始/完成不再单独推）]")
+    print("\n[采集补跑结果按日报白名单绝不进用户日报，只记技术日志]")
     import json as _json
     e = make({TODAY: [entry(TODAY)]})
     e.cfg.state_dir = _tmpd()
@@ -3529,7 +3529,9 @@ def _part_report_due():
          "failed": ["AutoCollectRoute16"], "unknown": [], "note": ""}), encoding="utf-8")
     report._maybe_daily_report(e, at(TODAY, "22:00"))
     body = e.notifier.sent[-1][1]
-    check("日报里有补跑结果", "自动采集补跑：走通 AutoCollectRoute15；仍失败 AutoCollectRoute16" in body, True)
+    tech = (e.cfg.state_dir.parent / "tech" / f"{TODAY}.md").read_text(encoding="utf-8")
+    check("用户日报绝不含采集补跑/仍失败文案", ("自动采集补跑" in body, "仍失败" in body), (False, False))
+    check("采集补跑明细记在技术日志里", "自动采集补跑：走通 AutoCollectRoute15；仍失败 AutoCollectRoute16" in tech, True)
 
     print("\n[推送失败时不许落记号：落了这一天就永远丢了]")
     e = make({TODAY: [entry(TODAY)]})
@@ -3596,8 +3598,8 @@ def _part_report_due():
     check("走的是结构化模板那条路", "9:01" in body or "09:01" in body, True)
     check("日志里一条 WARNING 都不许有——假伤会让真伤没人看",
           GRAB.worst() < logging.WARNING, True)
-    check("而且确实说了这是正常路径",
-          any("正常路径" in r.getMessage() for r in GRAB.records), True)
+    check("而且确实记了走白名单结构化模板",
+          any("白名单结构化模板" in r.getMessage() for r in GRAB.records), True)
 
     # ============================================================ 白天那份速览
     print("\n[白天速览：关掉就不发]")
@@ -4069,25 +4071,26 @@ def _part_ledger_incomplete():
         check("第二条带上原因", back[1].get("incomplete"), why)
         check("ok 仍然是 True（不进重试队列）", back[1]["ok"], True)
 
-        print("\n[日报]")
-        title, body = core.format_daily(day, back)
-        check("标题不再是全绿", "全绿" not in title)
-        check("标题说几项没干完", "1 项没干完" in title)
-        check("那一趟的图标是 ⚠️", "⚠️ 终末地" in body)
-        check("正文写明没干完的原因", "没干完：" in body and "自动采集" in body)
-        check("多条原因并成一行，冒号后面不带分号", "：；" not in body and "没报错：新版本认得全部旧设置" in body)
+        print("\n[日报白名单：incomplete 明细只留技术日志和群告警，绝不进用户日报]")
+        tech_rows: list[str] = []
+        title, body = core.format_daily(day, back, tech=tech_rows)
+        check("标题不再是全绿，也绝不塞没干完", ("全绿" in title, "没干完" in title, "今日日报" in title), (False, False, True))
+        check("正文没有 ⚠️ 和没干完原因", ("⚠️" in body, "没干完" in body), (False, False))
+        check("未完成原因留在技术日志里", any("没干完：" in ln and "自动采集" in ln for ln in tech_rows), True)
         check("好的那趟还是 ✅", "✅ 终末地" in body)
 
-        print("\n[只是设置被新版本重置：日报说没按你的设置跑，不说没干完（2026-10-12）]")
+        print("\n[设置被新版本重置：同样只留技术日志/群告警，日报 0 报错词且不误报全绿]")
         from ark_relay.features import outcome
         reset = outcome.summarize([outcome.Check("任务全部完成（跑完没自己退出）", True),
                                    *outcome._dropped_checks(["AutoStockBuyDailyGoodsValleyIV"])], "MaaEnd")
-        title3, body3 = core.format_daily(day, [e1, dict(e2, incomplete=reset)])
-        check("标题说没按你的设置跑", "终末地 1 趟没按你的设置跑" in title3, True)
-        check("标题不说没干完", "没干完" not in title3, True)
-        check("正文那一行以「没按你的设置跑：」开头，不重复总说法", "没按你的设置跑：自动囤货的设置：1 个购买选项" in body3
-              and "这一轮没按你的设置跑" not in body3, True)
-        check("正文不说没干完", "没干完" not in body3, True)
+        tech3: list[str] = []
+        title3, body3 = core.format_daily(day, [e1, dict(e2, incomplete=reset)], tech=tech3)
+        check("标题用中性今日日报，不误报全绿、不塞报错词",
+              ("今日日报" in title3, "全绿" in title3, "没按你的设置跑" in title3, "没干完" in title3),
+              (True, False, False, False))
+        check("正文不塞没按你的设置跑/没干完，明细进技术日志",
+              ("没按你的设置跑" in body3, "没干完" in body3, any("没按你的设置跑：自动囤货的设置" in ln for ln in tech3)),
+              (False, False, True))
 
         print("\n[没有 incomplete 时一切照旧]")
         title2, _ = core.format_daily(day, [e1])
@@ -4853,9 +4856,10 @@ def _part_config_skip():
     report._fill_single_run_sanity(entries)
     entries, _tests = core.split_test(entries, [])
     title2, body2 = core.format_daily("2026-10-16", entries, shifts=[("早班", "09:00"), ("晚班", "21:30")])
-    check("title is not 全绿", "全绿" in title2, False)
-    check("title says 终末地早班没跑成", "终末地早班没跑成" in title2, True)
-    check("the row gives the reason", "开跑前检查没过：找不到终末地官方启动器" in body2, True)
+    check("title is not 全绿 and has no failure text (neutral 今日日报)",
+          ("全绿" in title2, "没跑成" in title2, "今日日报" in title2), (False, False, True))
+    check("config-skip failure stays in group alarm only, omitted from daily body",
+          ("开跑前检查没过" in body2, "❌" in body2), (False, False))
 
     print("\n[a relay restarted on the same day re-reads app.log from the top: no second alarm]")
     e2 = build(state_dir=e.cfg.state_dir)
@@ -5339,12 +5343,11 @@ def _part_engine_pending():  # noqa: C901
 
     # ---------------------------------------------------------------- 告警落盘
 
-    print("[待推告警落盘：存进去，重启后还在（09-08 轰炸事故就炸在这一行）]")
+    print("[待推告警落盘：存进去，重启后还在（09-08 轰炸事故就炸在这一行；_recovered 旁路已彻底删除）]")
     sdir = tmpdir()
     e1 = build(sdir)
+    check("eng._recovered 旁路已彻底清除", hasattr(e1, "_recovered"), False)
     e1._pending[("OK-WW", "wuwa")] = rec("2026-09-08/wuwa/OK-WW-05-22-26")
-    e1._recovered[("MaaEnd", "endfield")] = rec("2026-09-08/endfield/MaaEnd-06-01-00",
-                                                script="MaaEnd", user="endfield")
     raised = ""
     try:
         e1._persist_pending()
@@ -5354,7 +5357,6 @@ def _part_engine_pending():  # noqa: C901
 
     e2 = build(sdir)          # 重启：同一个 state 目录，全新实例
     check("重启后待推告警还在", list(e2._pending), [("OK-WW", "wuwa")])
-    check("重启后自愈告警也还在", list(e2._recovered), [("MaaEnd", "endfield")])
     check("内容没走样", e2._pending[("OK-WW", "wuwa")].failed_tasks, ["任务执行：某个错"])
     check("run_id 对得上", e2._pending[("OK-WW", "wuwa")].run_id,
           "2026-09-08/wuwa/OK-WW-05-22-26")
@@ -5378,10 +5380,9 @@ def _part_engine_pending():  # noqa: C901
 
     print("\n[推出去之后要能清干净，否则下次开机又推一遍]")
     e2._pending.clear()
-    e2._recovered.clear()
     e2._persist_pending()
     e3 = build(sdir)
-    check("清空后重启是空的", (dict(e3._pending), dict(e3._recovered)), ({}, {}))
+    check("清空后重启是空的", dict(e3._pending), {})
 
     print("\n[盘上有一条残缺记录，不许连累好的那条]")
     sdir2 = tmpdir()
@@ -5777,26 +5778,24 @@ def _part_loop_parts():  # noqa: C901
     dirwatch.win32file = orig_file
 
     class RecLog:
-        """Records (level, message, recovered) - what errwatch would push or put in the daily report."""
+        """Records (level, message) - WARNING/ERROR lines go straight to the group; INFO stays in log."""
 
         def __init__(self):
             self.lines = []
 
         def _add(self, level, fmt, *a, **k):
-            from ark_relay.features import errwatch
-            rec = bool((k.get("extra") or {}).get(errwatch.RECOVERED))
-            self.lines.append((level, fmt % a if a else fmt, rec))
+            self.lines.append((level, fmt % a if a else fmt))
 
         def info(self, fmt, *a, **k): self._add("INFO", fmt, *a, **k)
         def warning(self, fmt, *a, **k): self._add("WARNING", fmt, *a, **k)
         def exception(self, fmt, *a, **k): self._add("ERROR", fmt, *a, **k)
 
         def loud(self):
-            """WARNING / ERROR lines errwatch pushes (not marked recovered)."""
-            return [m for lv, m, rec in self.lines if lv != "INFO" and not rec]
+            """WARNING / ERROR lines errwatch pushes straight to the group."""
+            return [m for lv, m in self.lines if lv != "INFO"]
 
-        def recovered(self):
-            return [m for lv, m, rec in self.lines if lv != "INFO" and rec]
+        def infos(self):
+            return [m for lv, m in self.lines if lv == "INFO"]
 
     def lost_watch():
         """A _DirWatch whose re-arm has just failed (the 2026-10-06 rule: decided by the rebuild)."""
@@ -5818,13 +5817,13 @@ def _part_loop_parts():  # noqa: C901
     dirwatch.win32file = ok_file
     now[0] = w.retry_at
     w.maybe_rebuild()
-    check("rebuilt: one WARNING for the group, none marked recovered", (len(lg.loud()), lg.recovered()), (1, []))
+    check("rebuilt: one WARNING straight to group", len(lg.loud()), 1)
     check("it says how long and that results are handled at once again",
           bool(lg.loud()) and "目录变更通知断过" in lg.loud()[0] and "马上处理" in lg.loud()[0], True)
     check("no WATCH_LOST alarm on top", n.sent, [])
     check("armed again", (w.handle, w.lost_since), ("handle:9", None))
 
-    print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败只记 INFO（一件事只报一次）；最后重建好了 -> 只进日报（这次断开已经报过群）]")
+    print("[目录监听：断满 10 分钟还没重建 -> 报群一次；之后每次重建失败只记 INFO；最后重建好了 -> 记 INFO 闭环（不进日报也不重复刷群）]")
     now[0] = 6000.0
     w, lg, n = lost_watch()
     dirwatch.win32file = boom
@@ -5842,7 +5841,7 @@ def _part_loop_parts():  # noqa: C901
     w.maybe_rebuild()
     check("a failed rebuild after the alarm: INFO (not pushed), no second alarm",
           (len(lg.loud()), n.sent), (0, [dirwatch.texts.WATCH_LOST]))
-    check("the failed rebuild is still in the log", [lv for lv, m, _ in lg.lines if "重建失败" in m][-1:], ["INFO"])
+    check("the failed rebuild is still in the log", [lv for lv, m in lg.lines if "重建失败" in m][-1:], ["INFO"])
     for _ in range(60):     # an hour of failed rebuilds at the 60 s cap
         now[0] += 61
         w.retry_at = now[0]
@@ -5853,8 +5852,8 @@ def _part_loop_parts():  # noqa: C901
     now[0] += 61
     w.retry_at = now[0]
     w.maybe_rebuild()
-    check("rebuilt at last: one recovered WARNING that says it was pushed meanwhile",
-          [("期间报过群" in m) for m in lg.recovered()], [True])
+    check("rebuilt at last: logged as INFO closure (not pushed again, never enters daily report)",
+          (len(lg.loud()), any("期间报过群" in m for m in lg.infos())), (0, True))
 
     print("[目录监听：断着时服务停了 -> WARNING（报群）]")
     now[0] = 9000.0
@@ -6006,7 +6005,6 @@ def _part_netretry():
     from types import SimpleNamespace
 
     from ark_relay.core import notify as netretry, notify
-    from ark_relay.features import errwatch
     from ark_relay.features import maintenance as efstatus
     from ark_relay.features import needtable as build
     from ark_relay.features import phone as cos_store
@@ -6018,7 +6016,7 @@ def _part_netretry():
             self.rows = []
 
         def emit(self, record):
-            self.rows.append((record.levelname, bool(getattr(record, errwatch.RECOVERED, False)), record.getMessage()))
+            self.rows.append((record.levelname, record.getMessage()))
 
 
     rows = Rows()
@@ -6075,10 +6073,10 @@ def _part_netretry():
     out, seen, logged = run([ConnectionResetError(54, "reset"), "ok"])
     check("断了一次、第二次成了", out, "ok")
     check("第一次用整个时限，第二次用剩下的", (seen[0], 0 < seen[1] < 8.0 - 0.3), (8.0, True))
-    check("一条 INFO、一条标自己好了的 WARNING", [(lv, r) for lv, r, _ in logged], [("INFO", False), ("WARNING", True)])
+    check("瞬态重试成功仅记 INFO（既不刷群也绝不进日报）", [lv for lv, _ in logged], ["INFO", "INFO"])
     out, seen, logged = run([http_error(503), http_error(502), http_error(504)])
     check("三次都是网关错：报最后一次", (getattr(out, "code", None), len(seen)), (504, notify._RETRIES))
-    check("……没有 WARNING（由调用方报）", [lv for lv, _, _ in logged], ["INFO", "INFO"])
+    check("……没有 WARNING（由调用方报）", [lv for lv, _ in logged], ["INFO", "INFO"])
     out, seen, _ = run([http_error(404)])
     check("404：不再试，原样报出", (getattr(out, "code", None), len(seen)), (404, 1))
     out, seen, _ = run([TimeoutError("timed out"), "ok"], limit=8.0, cost=8.0)

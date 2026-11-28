@@ -896,9 +896,8 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     if errors:
         hhmm, name, msg = errors[0]
         part = texts.relay_part(name)
-        said = (f"它说：{msg[:80]}" if not texts.plain(msg[:80])
-                else f"原因：{c}，原文已记日志" if (c := texts.fault_cause(msg[:240]))
-                else texts.RELAY_ERROR_UNREAD)
+        # 统一走结构化人话错误原因格式化，禁止回退到旧盲盒文案
+        said = texts.format_fault_reason(msg[:240])
         out.append(f"· 中继今天报错 {len(errors)} 条，第一条 {hhmm} 出在「{part}」：{said}")
     else:
         out.append("· 中继今天没有报错")

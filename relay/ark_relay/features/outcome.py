@@ -386,13 +386,11 @@ def check_round(eng, rec) -> "list[tuple[str, int]]":
         _log_gamelog_errors.warning("%s %s 的日志读不了（%s），这一趟日志里的报错没查", script, rec.run_id, type(exc).__name__)
         return []
     if healed := recovered_kinds(script, text):
-        # Each kind the program got past by itself in this round: one red item per round.
-        # The first line is what the daily report quotes (plain words, one kind per game);
-        # the run and the raw lines follow for us.
-        _log_gamelog_errors.warning("%s那一趟跑成功了，日志里有 %d 种报错是程序自己恢复过来的\n%s %s: %s",
+        # 成功轮次日志中已登记的已知上游自恢复行：仅记 info（不进日报、不刷群）；
+        # 未登记的未知 ERROR 行仍在下方 100% 走 errwatch.alarm 直推企微群。
+        _log_gamelog_errors.info("%s那一趟跑成功了，日志里有 %d 种已登记的自恢复行\n%s %s: %s",
                     GAME_ZH.get(script, script), len(healed), script, rec.run_id,
-                    "; ".join(f"{line} ({n} lines, line {e.line_no} of {REGISTRY.name})" for e, line, n in healed[:8]),
-                    extra=errwatch.recovered())
+                    "; ".join(f"{line} ({n} lines, line {e.line_no} of {REGISTRY.name})" for e, line, n in healed[:8]))
     found = unregistered(script, text)
     if not found:
         return []

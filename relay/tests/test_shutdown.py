@@ -3229,7 +3229,8 @@ def _part_state_unread():
             self.rows = []
 
         def emit(self, record):
-            self.rows.append((record.levelname, record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+            # errwatch.RECOVERED 已清零废除，第三项恒为 False
+            self.rows.append((record.levelname, record.getMessage(), False))
 
     rows = Rows()
     statestore.log.addHandler(rows)

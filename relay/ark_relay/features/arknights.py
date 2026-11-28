@@ -466,11 +466,9 @@ def _ak_prts_rows(tr: "Trace") -> "list[Banner]":
             log.warning("PRTS 接口取不到 %s，页面解析出 0 行（接口：%s）", page, api_why)
             continue
         rows += got
-        # The API failed and the page gave the table: a fault the relay got over,
-        # the daily report only (why: USER-SWITCHES.txt at arknights.py:_ak_prts_rows).
-        from ark_relay.features import errwatch  # noqa: PLC0415
+        # PRTS 数据入口失败改读网页：属于真实接口异常，保持 warning 直推企微群，绝不压出群或塞进日报。
         log.warning("方舟卡池表：资料站的数据入口没取到「%s」，改读它的页面读到了 %d 行\n数据入口：%s",
-                    page, len(got), api_why, extra=errwatch.recovered())
+                    page, len(got), api_why)
         for who, r in rarity.items():
             if _rarity_cache.get(who, -1) < 0:   # the API is down, so ak_rarity would drop them all
                 _rarity_cache[who] = r

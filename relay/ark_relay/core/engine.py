@@ -415,13 +415,9 @@ class Engine:
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
         self.log_tails: dict[str, str] = {}
-        # Failures held back until we know whether a retry rescued them.
-        # AUTO-MAS retries a failed script up to RunTimesLimit times; alerting
-        # on the first attempt turns a self-healing hiccup into a false alarm.
+        # 暂存本轮运行中尚未决定最终告警的失败记录（等待脚本自身重试/补跑结果）；
+        # 彻底废除旧版 _recovered 自愈压报警旁路：更新重启后成功仅记 info，真失败一律推企微群、绝不进日报。
         self._pending: dict[tuple[str, str], RunRecord] = {}
-        # Failures that a later retry got past. Still reported, and reported as
-        # an unresolved fault - the run survived, the bug did not go away.
-        self._recovered: dict[tuple[str, str], RunRecord] = {}
         self._pending_restored = False
         self._fetch_owed = False
         self._restore_pending()
@@ -522,20 +518,18 @@ class Engine:
                      type(exc).__name__)
             return False
         dropped = []
-        for bucket, target in (("pending", self._pending), ("recovered", self._recovered)):
-            for item in data.get(bucket, []):
-                try:
-                    rec = payload_to_record(item)
-                except (KeyError, ValueError, TypeError):
-                    # Boot-only path: say it directly, or an alarm held across the
-                    # restart vanishes with no trace.
-                    got = item if isinstance(item, dict) else {}
-                    dropped.append(" ".join(str(got.get(k) or "") for k in ("script", "run_id")).strip()
-                                   or "（认不出是哪条）")
-                    continue
-                target[(rec.script, rec.user)] = rec
-                if tail := item.get("log_tail"):
-                    self.log_tails[rec.run_id] = str(tail)
+        for item in data.get("pending", []):
+            try:
+                rec = payload_to_record(item)
+            except (KeyError, ValueError, TypeError):
+                # 开机恢复阶段：无法反序列化的待推告警必须直接告警，绝不静默丢弃
+                got = item if isinstance(item, dict) else {}
+                dropped.append(" ".join(str(got.get(k) or "") for k in ("script", "run_id")).strip()
+                               or "（认不出是哪条）")
+                continue
+            self._pending[(rec.script, rec.user)] = rec
+            if tail := item.get("log_tail"):
+                self.log_tails[rec.run_id] = str(tail)
         for item in data.get("unsent", []):
             if isinstance(item, list) and len(item) == 5 and all(isinstance(x, str) for x in item):
                 self._unsent_unresolved.append(tuple(item))
@@ -544,9 +538,9 @@ class Engine:
         if dropped:
             log.warning("磁盘上有 %d 条未送达的告警恢复不出来，已丢弃：%s",
                         len(dropped), "；".join(dropped))
-        if self._pending or self._recovered or self._unsent_unresolved:
+        if self._pending or self._unsent_unresolved:
             log.info("从磁盘恢复了 %d 条未送达的告警",
-                     len(self._pending) + len(self._recovered) + len(self._unsent_unresolved))
+                     len(self._pending) + len(self._unsent_unresolved))
         self._pending_restored = True
         return True
 
@@ -556,13 +550,12 @@ class Engine:
         from ark_relay.core.collector import record_to_payload  # noqa: PLC0415 - avoid cycle
         def payload(r: RunRecord) -> dict:
             p = record_to_payload(r)
-            # A record restored from disk has no log file to read: keep the tail it came with.
+            # 从磁盘恢复的记录本地可能无日志，需保留随记录保存的日志尾部
             if not p.get("log_tail") and self.log_tails.get(r.run_id):
                 p["log_tail"] = self.log_tails[r.run_id]
             return p
         self.state.save_pending({
             "pending": [payload(r) for r in self._pending.values()],
-            "recovered": [payload(r) for r in self._recovered.values()],
             "unsent": [list(x) for x in self._unsent_unresolved],
         })
 

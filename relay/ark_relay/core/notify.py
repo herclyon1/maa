@@ -94,14 +94,8 @@ def _post(req: urllib.request.Request) -> dict:
                 time.sleep(delay)
             continue
         if last is not None:
-            # Went through on a later attempt: one WARNING marked recovered, which
-            # goes to the daily report's list of the relay's own faults, not the
-            # group (USER-SWITCHES.txt, notify.py:_post). A send whose every attempt
-            # failed raises below and the caller logs it (Notifier.send,
-            # _announce_outage), which is pushed.
-            from ark_relay.features import errwatch  # noqa: PLC0415
-            log.warning("推送传输失败 %d 次，第 %d 次送到了: %s", attempt, attempt + 1, last,
-                        extra=errwatch.recovered())
+            # 瞬态传输重试成功：仅记 info（不进日报、不刷群）；若全部重试耗尽则会向上抛异常并直推企微群。
+            log.info("推送传输前 %d 次没成，第 %d 次送到了: %s", attempt, attempt + 1, last)
         return data
     if isinstance(last, _Busy):
         # Busy every time: hand the caller the answer itself, so it reads as the
@@ -376,14 +370,9 @@ class ServerChan:
                 # A 0 here only means accepted, NOT delivered: if the account's
                 # message channel is misconfigured it silently goes nowhere.
                 if errors:
-                    # An earlier endpoint refused it and this one took it: one
-                    # WARNING marked recovered, daily report only, not the group
-                    # (USER-SWITCHES.txt, notify.py:ServerChan.send_text). The
-                    # transport attempts in _post are INFO lines, so this is the
-                    # line the daily report counts.
-                    from ark_relay.features import errwatch  # noqa: PLC0415
+                    # 主推送地址拒绝、靠备用地址送达属于真实通道故障，必须直推企微群暴露问题，绝不压出群或塞进日报。
                     log.warning("Server酱 前面的地址没送到（%s），换 %s 送到了", "；".join(errors),
-                                url.split("/")[2], extra=errwatch.recovered())
+                                url.split("/")[2])
                 return
             errors.append(f"{url.split('/')[2]}: {r}")
         raise RuntimeError("Server酱 发送失败 -> " + "；".join(errors))
@@ -608,8 +597,15 @@ class Notifier:
                         if modes.set_alarm_hold(sd, title, now=evt_now, at=evt_now,
                                                 external=False, boot_at=boot_iso):
                             shutdown.on_alarm_hold()
-                    except Exception:  # noqa: BLE001 - deferred alarm hold must never crash worker
-                        pass
+                    except Exception as exc:  # 写盘失败绝不能静默吞错放行关机
+                        # 记录错误日志并立刻启用内存级 fail-closed 留机标志，阻止后续自动关机
+                        log.error("故障留机锁后台写盘失败（已启用内存级留机保护，禁止自动关机）：%s ｜ %s",
+                                  title, exc, exc_info=True)
+                        modes.set_memory_alarm_hold(sd, title, now=evt_now)
+                        try:
+                            shutdown.on_alarm_hold()
+                        except Exception as hold_exc:
+                            log.error("通知关机看门模块进入留机态失败：%s", hold_exc, exc_info=True)
                     finally:
                         _NOTE_TLS.busy = False
 
@@ -617,8 +613,15 @@ class Notifier:
                 return
             if modes.set_alarm_hold(sd, title, at=evt_now, external=False):
                 shutdown.on_alarm_hold()
-        except Exception:  # noqa: BLE001 - note_alarm must never break alarm sending
-            pass
+        except Exception as exc:  # 不中断发群报警，但必须报错并置内存级 fail-closed 留机保护
+            log.error("故障留机锁写盘失败（已启用内存级留机保护，禁止自动关机）：%s ｜ %s",
+                      title, exc, exc_info=True)
+            try:
+                from ark_relay.features import modes as _modes, shutdown as _sd  # noqa: PLC0415
+                _modes.set_memory_alarm_hold(self._state_dir, title)
+                _sd.on_alarm_hold()
+            except Exception as hold_exc:
+                log.error("启用内存级故障留机保护失败：%s", hold_exc, exc_info=True)
         finally:
             _NOTE_TLS.busy = False
 
@@ -790,9 +793,8 @@ def call(fn, what: str, limit: float, *, detail: str = "", clock=None, sleep=Non
                 raise
             continue
         if attempt:
-            from ark_relay.features import errwatch  # noqa: PLC0415 - avoid an import cycle
-            _log_netretry.warning("%s第一次没成，第 %d 次成了\n%s 第一次：%s", what, attempt + 1, detail, first,
-                        extra=errwatch.recovered())
+            # 瞬态网络重试成功：仅记 info（绝不进日报）；重试耗尽时向上抛异常，由调用方直推企微群。
+            _log_netretry.info("%s第一次没成，第 %d 次成了\n%s 第一次：%s", what, attempt + 1, detail, first)
         return got
     raise RuntimeError("unreachable")
 

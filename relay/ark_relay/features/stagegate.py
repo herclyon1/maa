@@ -484,16 +484,19 @@ def recent_pulled(state_dir, now: datetime, window_min: int = 120) -> list[dict]
     return out
 
 
-def report_line(state_dir, day: str) -> str:
-    """The daily report's section on the shifts the gate stopped, '' when none.
-
-    Only a pull (or a failed pull) is listed: with PULL_FROM_QUEUE off MAA ran and
-    refused the stage itself, which the report already shows as MAA's own failure."""
+def tech_report_line(state_dir, day: str) -> str:
+    """供技术日志记录当日关卡门拦截明细（绝不进入用户日报，拦截当时已直推企微群）。"""
     rows = []
     for key, row in sorted((_dues(state_dir).get(day) or {}).items()) if state_dir else ():
         if isinstance(row, dict) and row.get("verdict") == NO and row.get("pulled") in (True, False):
             rows.append((key.rpartition("/")[0], row.get("stage", ""), row.get("why", "")))
     return texts.stage_gate_report(rows)
+
+
+def report_line(state_dir, day: str) -> str:
+    """日报严格白名单门禁：关卡拦截属于异常报警（拦截当下已直推企微群），日报绝不渲染此段。"""
+    _ = (state_dir, day)
+    return ""
 
 
 # ---------- the tick ----------

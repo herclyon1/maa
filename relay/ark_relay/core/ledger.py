@@ -142,9 +142,8 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
         cost.append(f"波片 {raw.get('okww_stamina_spent') or 0}，"
                     f"备用体力 {raw.get('okww_backup_spent') or 0}")
     if n := raw.get("okww_weekly_topup_unread"):
-        # Claims topped up with backup in a log without the top bar: the split
-        # between waveplates and backup is not in the log, so it is not guessed.
-        cost.append(f"另有周本领奖 {n} 次用备用体力补足（各 60，波片和备用各占多少日志里没记）")
+        # 周本使用备用体力属正常业务行为，日报仅呈现客观事实，不带「日志里没记」类异常措辞。
+        cost.append(f"另有周本领奖 {n} 次用备用体力补足")
     if drops := _fmt_items(raw.get("okww_farm_drops") or {}):
         out.append(drops)
     elif runs:
@@ -159,8 +158,10 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
             s += "，" + full
         left.append(s)
     for step in raw.get("okww_steps") or []:
-        # The farming entry is already in 做了; keep only the extra tasks here.
+        # 已在「做了」列出的刷本步骤不重复；未核实/没读到的异常步骤绝不塞进日报（群报警负责汇报）。
         if any(k in step for k in ("模拟领域", "凝素领域", "无音区")):
+            continue
+        if UNVERIFIED_STEP in step or "没读到" in step:
             continue
         notes.append(step)
     if raw.get("okww_nest_full") and not any("残象聚落" in n or "残像聚落" in n for n in notes):
@@ -192,16 +193,14 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
         place = raw.get("maaend_farm_place")
         did.append(f"刷 {farm}" + (f"·{place}" if place else "") + f" ×{runs}")
     if raw.get("maaend_sanity_unfit"):
-        # The log's readings do not fit the per-claim rule
-        # (collector_maaend._claims_fit): no sanity figure.
-        cost.append("理智消耗没读到" + (f"，加强剂 {raw['maaend_medicine']}" if raw.get("maaend_medicine") else ""))
+        # 日报严格白名单：理智消耗读数异常时绝不往日报塞「理智消耗没读到」（异常由群报警汇报），
+        # 仅呈现已确认的正常消耗项（如加强剂）。
+        if raw.get("maaend_medicine"):
+            cost.append(f"加强剂 {raw['maaend_medicine']}")
     elif raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
         cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
                     f"加强剂 {raw.get('maaend_medicine') or 0}")
-    elif farm and runs:
-        # It ran but no figure was read: never say it did not run.
-        cost.append("理智消耗没读到")
-    elif farm and raw.get("sanity_exhausted"):
+    elif farm and raw.get("sanity_exhausted") and not runs:
         cost.append("理智不足，一次没开成")
     if drops := _fmt_items(raw.get("maaend_farm_drops") or {}):
         out.append(drops)
@@ -210,54 +209,28 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
         if cap := raw.get("sanity_cap"):
             s += f"/{cap}"
             if e["sanity"] > cap:
-                s += "　⚠️ 已超上限，理智在溢出"
+                s += "（已超上限，理智在溢出）"
         if full := _sanity_full(e.get("sanity_full_at"), finished):
             s += "，" + full
         left.append(s)
     done = _maaend_listed(raw)
-    # Every task MaaEnd skipped by its weekday schedule is in
-    # raw["maaend_tasks_skipped"] and already out of tasks_done
-    # (collector_maaend._schedule_skipped); it is named in the notes below.
     skipped = raw.get("maaend_tasks_skipped") or {}
-    # Done only with evidence from the game; the rest are named as unverified, and
-    # the four left unjudged (MaaFW's log held none of them) are said as such.
+    # 日报严格白名单：仅列有证据确认已完成的正常日常任务；
+    # 失败、无证据、没读到、没走通、受阻路线全部由企微群告警负责，绝对 0 字节进日报。
     unverified = maaend_unverified(raw)
     unjudged = maaend_unjudged(raw)
     done = [t for t in done if t not in unverified and t not in unjudged]
-    failed = raw.get("tasks_failed") or []
-    if done or failed or unverified or unjudged:
-        # More than three: 「日常 1-N 项完成」, names in the footnote
-        # (daily_footnote). Three or fewer are named here, and so is a list the
-        # footnote's 1-N would not name (another run's longer list is the key).
-        if not done:
-            n = "日常 0 项"
-        elif len(done) <= 3 or (footnote is not None and footnote[:len(done)] != done):
+    if done:
+        if len(done) <= 3 or (footnote is not None and footnote[:len(done)] != done):
             n = "做了 " + "、".join(done)
         else:
             n = f"日常 1-{len(done)} 项完成"
-        # Only when AUTO-MAS still called the run a success: on a run marked
-        # failed the renderer already names the failure.
-        if failed and e.get("ok"):
-            n += "；失败 " + "、".join(_with_causes(failed, raw.get("maaend_fail_causes")))
         notes.append(n)
-        if unverified:
-            # With what MaaEnd's own record shows for each of the four (e.g. it stopped
-            # itself inside the task, and why), so the report keeps the cause after
-            # another run of the day did the task (machine check #28 then stays quiet).
-            notes.append(UNVERIFIED + "：" + "、".join(
-                f"{t}（{why}）" if (why := maaend_unbacked_why(raw, t)) else t for t in unverified))
-        if unjudged:
-            notes.append(texts.trail_unread_note(unjudged, int(raw.get("tasks_trail_miss") or 0), TRAIL_MISS_FAIL))
     if total := raw.get("maaend_collect_total"):
-        # Walked/total from the run's own 「路线N：…」 lines (a narrowed retry
-        # round reads 「自动采集 2/2 条走通」).
-        n = f"自动采集 {raw.get('maaend_collect_done', 0)}/{total} 条走通"
-        if bad := raw.get("maaend_collect_failed"):
-            n += "，没走通：" + "、".join(bad)
-        if blocked := raw.get("maaend_collect_blocked"):
-            # Walked, but gathered nothing (collector_maaend.blocked_routes).
-            n += "，" + texts.collect_blocked_row(blocked)
-        notes.append(n)
+        # 日报仅呈现正常完成的采集路线数，不拼接「没走通」「撞上战斗中无法使用」报错明细
+        done_cnt = int(raw.get("maaend_collect_done") or 0)
+        if done_cnt:
+            notes.append(f"自动采集 {done_cnt}/{total} 条走通")
     elif routes := raw.get("maaend_collect_routes"):
         notes.append(f"自动采集 {routes} 条路线")
     elif wd := raw.get("maaend_collect_skipped"):
@@ -546,10 +519,10 @@ def _ran_later(e: dict, entries: list[dict]) -> bool:
 _KIND_ICON = {"update": "↪️", "maintenance": "⏸", "nosanity": "🟡", "manual": "⏹"}
 
 
-_KIND_NOTE = {"update": "游戏更新后重跑，不算失败",
-              "manual": "被停一切中途停掉，不算成功也不算失败",
-              "maintenance": "进不了游戏（服务器维护／客户端待更新），今天跳过",
-              "nosanity": "理智不够这关的费用，没打，不算失败"}
+_KIND_NOTE = {"update": "游戏更新后重跑",
+              "manual": "被停一切中途停掉，本轮已中止",
+              "maintenance": "官方维护或客户端待更新，本轮跳过",
+              "nosanity": "理智不够这关的费用，本轮未刷"}
 
 
 def _collapse_retries(entries: list[dict], kinds: dict) -> list[tuple[dict, list[dict]]]:
@@ -762,83 +735,6 @@ def later_success(entries: list[dict], failed: dict,
     return None
 
 
-# What _block_maa says for a run with no stage on record: nothing was fought.
-_NOTHING_FARMED = "只做日常（未刷关卡）"
-
-
-def _bare(e: dict) -> bool:
-    """A failed run with nothing to show: no cost, no output, nothing left over, no note."""
-    did, cost, out, left, notes = _rows_for(e, datetime.fromisoformat(e["finished"]))
-    return (not (cost or out or left or notes) and set(did) <= {_NOTHING_FARMED}
-            and not e.get("incomplete"))
-
-
-def _bare_reason(runs: list[dict]) -> str:
-    """Why a group of bare failures did not run, in plain words."""
-    for e in runs:
-        if rejected := (e.get("raw") or {}).get("maa_config_rejected"):
-            return plain_rejected(str(rejected))
-        if (e.get("raw") or {}).get("annihilation_no_proxy"):
-            return texts.ANNIHILATION_NO_PROXY
-        # AUTO-MAS refused the script before starting it (runwatch.check_config_skips).
-        if skipped := (e.get("raw") or {}).get("automas_config_skip"):
-            return "开跑前检查没过：" + texts.config_skip_why(str(skipped))
-    if runs[0].get("script") == "MAA" and all((e.get("raw") or {}).get("fight_count") == 0 for e in runs):
-        return "一仗都没打就停了"
-    said: dict[str, None] = {}      # a tool's own sentence, said plainly
-    tasks: dict[str, None] = {}     # task names
-    for e in runs:
-        for n in _with_causes([str(x) for x in e.get("failed_tasks") or []],
-                              (e.get("raw") or {}).get("maaend_fail_causes")):
-            p = plain_words(n)
-            (said if p != n else tasks)[p] = None
-    parts = list(said) + (["失败于：" + "、".join(tasks)] if tasks else [])
-    return "；".join(parts) or "原因没写"
-
-
-def _bare_failure_groups(entries: list[dict], failed: list[dict],
-                         shifts: "list[tuple[str, str]] | None") -> dict[str, dict]:
-    """run_id -> its group, for consecutive bare failures of one game in one shift.
-
-    A group: {script, user, shift, runs, reason, later}; `later` is later_success()."""
-    failed_ids = {e["run_id"] for e in failed}
-    out: dict[str, dict] = {}
-    group: "dict | None" = None
-    for e in entries:
-        if e["run_id"] not in failed_ids or not _bare(e):
-            group = None
-            continue
-        shift = shift_of(e.get("started"), shifts)
-        prev_end = datetime.fromisoformat(group["runs"][-1]["finished"]) if group else None
-        if group and group["script"] == e.get("script") and group["user"] == e.get("user") \
-                and group["shift"] == shift \
-                and datetime.fromisoformat(e["started"]) <= prev_end + timedelta(minutes=30):
-            group["runs"].append(e)
-        else:
-            group = {"script": e.get("script"), "user": e.get("user"), "shift": shift, "runs": [e]}
-        out[e["run_id"]] = group
-    for g in {id(g): g for g in out.values()}.values():
-        g["reason"] = _bare_reason(g["runs"])
-        g["later"] = later_success(entries, g["runs"][-1], shifts)
-    return out
-
-
-def _bare_line(g: dict) -> str:
-    """One line for a group: game, shift, both clocks, tries, why, and the later run that made it up."""
-    runs = g["runs"]
-    first = datetime.fromisoformat(runs[0]["started"])
-    last = datetime.fromisoformat(runs[-1]["finished"])
-    tk = lambda d: f"{d.astimezone(USER_TZ):%H:%M}"  # noqa: E731
-    span = _hm(first) if _hm(first) == _hm(last) else f"{_hm(first)}–{_hm(last)}"
-    tspan = tk(first) if tk(first) == tk(last) else f"{tk(first)}–{tk(last)}"
-    tries = f"连试 {len(runs)} 次" if len(runs) > 1 else ""
-    shift = f" {g['shift']}" if g["shift"] else ""
-    made = ""
-    if g["later"]:
-        made = f"，{g['later'][0]} " + ("手动补跑成功" if g["later"][1] else "补跑成功")
-    return f"❌ {_game(g['script'])}{shift} {span}（东京 {tspan}）{tries}没跑成（{g['reason']}）{made}"
-
-
 def _no_exit_note(e: dict) -> str:
     idle = (e.get("raw") or {}).get("maaend_no_self_exit")
     tail = f"（空等 {idle} 分钟）" if idle else ""
@@ -928,41 +824,14 @@ def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
     return [(s, len(items)) for s, items in day_unverified_items(entries)]
 
 
-def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
-                no_exit: list | None = None, unverified: list | None = None,
-                bare: "dict | None" = None, unjudged: "list | None" = None) -> str:
-    """The verdict in the report title, worst thing first.
-
-    Failures and unfinished runs are counted per game. Items done with no
-    evidence (day_unverified) keep the title off 全绿: they are neither done nor
-    failed, and are named as such.
+def _daily_head(kinds: dict, all_green: bool = True) -> str:
+    """日报白名单标题：仅在当日无失败、无未干完、无缺证据项时展示全绿标题；
+    存在任何已省略异常时仅用中性标题「今日日报」，严禁误标全绿，也严禁把报错词塞进日报标题。
     """
-    # A group of bare failures (_bare_failure_groups) is one item: game + shift + not run.
-    bare = bare or {}
-    parts: list[str] = []
-    for g in {id(g): g for g in bare.values()}.values():
-        made = f"（{g['later'][0]} 补上了）" if g["later"] else ""
-        parts.append(f"{_game(g['script'])}{g['shift']}没跑成{made}")
-    parts += [f"{_game(s)}失败 {n} 次"
-              for s, n in _count_by_script([e for e in failed if e["run_id"] not in bare])]
-    # Settings reset to defaults (outcome.summarize) is its own item, not 「没干完」.
-    reset = [e for e in undone if texts.outcome_settings_only(str(e.get("incomplete") or ""))]
-    parts += [f"{_game(s)} {n} 项没干完" for s, n in _count_by_script([e for e in undone if e not in reset])]
-    parts += [f"{_game(s)} {n} 趟没按你的设置跑" for s, n in _count_by_script(reset)]
-    parts += [_no_exit_note(e) for e in (no_exit or [])]
-    unv = [f"{_game(s)} {n} 项没证据" for s, n in (unverified or [])]
-    if unjudged:
-        unv.append(f"{_game('MaaEnd')} {len(unjudged)} 项待核（自己的记录没读到）")
-    if parts:
-        return "、".join(parts + unv) + " ⚠️"
-    if unv:
-        return "、".join(unv) + "，不算完成 ❔"
-    # Before the retry line on purpose: a run stopped by hand means that
-    # script's work is not done today, which outranks "a retry got it".
+    if not all_green:
+        return "今日日报"
     if manual := sum(1 for k in kinds.values() if k == "manual"):
         return "其余全绿 ✅（" + ("有一趟" if manual == 1 else f"有 {manual} 趟") + "被手动停止）"
-    if retried:
-        return "全绿 ✅（有项目重试后成功）"
     if "nosanity" in kinds.values():
         return "全绿 ✅（有一关理智不够没打）"
     if "maintenance" in kinds.values():
@@ -1049,155 +918,125 @@ def _incomplete_note(text: str) -> str:
 
 
 def _annihilation_note(raw: dict) -> str:
-    """The daily row's note for an Annihilation pass: fought to the cap, short of it,
-    skipped with Skland's figure behind it (handle._annihilation_checked_full), or nothing
-    to show."""
+    """剿灭轮次白名单备注：仅呈现已读到的正常进度或森空岛官方已满数据；读不到返回空串省略，绝不写「没读到」。"""
     prog = raw.get("annihilation_progress")
     off = raw.get("annihilation_official") or {}
     if prog and prog[0] >= prog[1]:
         return f"本周剿灭已打满（{prog[0]}/{prog[1]}）"
     if prog:
-        return f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
+        return f"本周剿灭进度 {prog[0]}/{prog[1]}"
     if off:
         return (f"终端里没有剿灭入口，MAA 没打；森空岛官方数据本周剿灭已满"
                 f"（{off.get('current')}/{off.get('total')}，{str(off.get('read_at', ''))[11:16]} 读）")
-    # No progress line = no proof of anything fought (collector_maa);
-    # the gate stays open, so say exactly that.
-    return "没读到剿灭进度，本周按没打满算，下一轮再打"
+    return ""
 
 
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "", tech: "list[str] | None" = None,
                  shifts: "list[tuple[str, str]] | None" = None) -> tuple[str, str]:
-    """The one message of the day. Numbers here are copied, never generated.
-
-    Laid out for a narrow phone screen: no nested indentation (full-width
-    spaces do not line up across fonts), one fact per short line.
-
-    Rows name the game, not the script. Evidence links, version numbers and
-    file names are not in the message (D-1010: the report is for a person, the
-    technical parts are ours); one line each goes to `tech` when a list is
-    given, for the technical log (report.write_daily_techlog).
-
-    Failed runs of one game in one shift that have nothing to show (no cost, no
-    output, nothing left) are one line saying why and whether it was made up
-    later; `shifts` [(name, "HH:MM")] names the shift. A finished run that did
-    not exit by itself (the relay closed it) is not the user's business: it
-    goes to `tech`, not the title or a row.
+    """按严格白名单渲染当日运行日报：
+    - 仅输出白名单允许的正常业务产出（成功完成轮次、正常维护跳过、手动停止、理智不够跳过）与明日排班；
+    - 严禁输出任何失败、没干完、没证据、没读到、重试成功、更新重启次数等报错/自愈文案；
+    - 证据包、未完成明细、重启与失败记录仅写入 `tech` 技术日志，真错一律由企微群告警通道推送。
     """
+    _ = shifts
     tech = tech if tech is not None else []
-    # An emulator-launch miss is a one-second attempt with no game in it: no
-    # row. Matched on the text as well as the flag, so older records read the
-    # same way. A MaaEnd self-update restart gets one information line at the
-    # end, not a row and not a failure.
     restarts = sum(1 for e in entries if _maaend_restart(e))
+    if restarts:
+        tech.append(f"终末地装新版后自己重启 {restarts} 次")
     entries = [e for e in entries if not _launch_miss(e)]
     if not entries:
         return f"📋 {day} 日报", "今天没有任何运行记录。"
 
     kinds = episode_kinds(entries)
-    retried = retried_notes(entries)
-    failed = [e for e in entries if not e["ok"]
-              and e["run_id"] not in kinds and e["run_id"] not in retried]
-    # A run that exited cleanly but did not do its work (incomplete) is not
-    # green either.
-    undone = [e for e in entries if e["ok"] and e.get("incomplete")
-              and kinds.get(e["run_id"]) != "manual"]
     no_exit = [e for e in entries if e["ok"] and "maaend_no_self_exit" in (e.get("raw") or {})
                and not e.get("incomplete")]
     for e in no_exit:
         tech.append(f"{e['run_id']} {_no_exit_note(e)}")
-    bare = _bare_failure_groups(entries, failed, shifts)
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, None, day_unverified(entries), bare, day_unjudged_items(entries))}"
 
     foot = footnote_tasks(entries)
     lines: list[str] = []
+    shown_kinds: dict[str, str] = {}
+    has_anomalies = bool(day_unverified_items(entries) or day_unjudged_items(entries))
     for e, attempts in _collapse_retries(entries, kinds):
         started = datetime.fromisoformat(e["started"])
         finished = datetime.fromisoformat(attempts[-1]["finished"])
         raw = e.get("raw") or {}
         kind = kinds.get(e["run_id"], "")
         if _skipped_gathering_only(e, raw):
-            # AUTO-MAS runs the gathering task as its own record; on a day that is
-            # not a gathering day it opens and closes with nothing done: not listed.
             continue
-        if e["run_id"] in bare:
-            if raw.get("evidence_page"):
-                tech.append(f"{e['run_id']} 证据包 {raw['evidence_page']}")
-            group = bare[e["run_id"]]
-            if group["runs"][0] is e:
-                lines += [_bare_line(group), ""]
-            continue
-        icon = (_KIND_ICON["manual"] if kind == "manual"
-                else "⚠️" if e["ok"] and e.get("incomplete") else "✅" if e["ok"]
-                else _KIND_ICON.get(kind) or ("↻" if e["run_id"] in retried else "❌"))
-        tag = "（剿灭检查）" if raw.get("annihilation") else ""
-        tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
-        lines.append(icon + f" {_game(e['script'])}{tag}　"
-                     + _span(started, finished, e.get('duration_known', True)) + tries)
-        # A run that did not go through: its evidence bundle link goes to the
-        # technical log (the failure alarm carries it too), not into a row.
+        # 证据包链接仅记入技术日志
         if not e["ok"] and not kind and raw.get("evidence_page"):
             tech.append(f"{e['run_id']} 证据包 {raw['evidence_page']}")
+        # 更新重启过渡行属于内部重启过程（且旧文案含「重试/不算失败/没查到」），仅记入技术日志，不进日报
+        if kind == "update":
+            if raw.get("maaend_update_restart"):
+                tech.append(f"{e['run_id']} MaaEnd 装新版 {raw['maaend_update_restart']} 后自己重启")
+            if raw.get("okww_restart_dialog"):
+                files = "、".join(raw.get("okww_client_files") or [])
+                tech.append(f"{e['run_id']} OK-WW 游戏更新换了的文件：{files}" if files
+                            else f"{e['run_id']} OK-WW 游戏更新重启（未检出文件变更）")
+            continue
+        # 真实失败行（非维护/手动停止/理智不足）严禁进入日报正文（由群告警通道汇报），仅记技术日志
+        if not e["ok"] and not kind:
+            has_anomalies = True
+            fail_line = _fmt_failed(e.get("failed_tasks") or [], causes=raw.get("maaend_fail_causes"))
+            if cf := raw.get("maaend_collect_failed") or []:
+                fail_line += f"；未走通：{'、'.join(cf)}"
+            tech.append(f"{e['run_id']} {fail_line}")
+            continue
         if kind:
+            shown_kinds[e["run_id"]] = kind
+            icon = _KIND_ICON[kind]
+            tag = "（剿灭检查）" if raw.get("annihilation") else ""
+            tries = f"　连试 {len(attempts)} 次" if len(attempts) > 1 else ""
+            lines.append(icon + f" {_game(e['script'])}{tag}　"
+                         + _span(started, finished, e.get("duration_known", True)) + tries)
             note = _KIND_NOTE[kind]
             if kind == "manual" and not _ran_later(e, entries):
-                # A script the red button stopped is not re-dispatched
-                # automatically that day (gameupdate.stopped_today).
                 note += "；已停，未补"
             if kind == "nosanity":
                 sh = raw.get("maa_sanity_short") or {}
-                note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，没打，不算失败"
-            if kind == "update" and raw.get("maaend_update_restart"):
-                note = "终末地装了新版后自己重启，用掉一次重试，不算失败"
-                tech.append(f"{e['run_id']} MaaEnd 装新版 {raw['maaend_update_restart']} 后自己重启")
-            if kind == "update" and raw.get("okww_restart_dialog"):
-                # OK-WW says 「游戏更新成功」 for any 「游戏即将重启」 dialog. The
-                # collector looked at the game folder; the note says what it found
-                # in one of three definite forms. The file names go to the technical log.
-                files = "、".join(raw.get("okww_client_files") or [])
-                if files:
-                    tech.append(f"{e['run_id']} OK-WW 游戏更新换了的文件：{files}")
-                note = {
-                    "patch": "游戏更新成功（更新了客户端文件），重启后重跑，不算失败",
-                    "anticheat": "游戏更新成功（只更新了反作弊组件），重启后重跑，不算失败",
-                    "none": "游戏弹了「即将重启」但客户端文件没有变，重启后重跑，不算失败",
-                }.get(str(raw.get("okww_client_change")), "游戏弹了「即将重启」，重启后重跑；客户端有没有换文件没查到，不算失败")
+                note = f"理智 {sh.get('have')} 不够这关要的 {sh.get('cost')}，本轮未刷"
             lines += [_row("备注", [note]), ""]
             continue
-        if not e["ok"]:
-            # A failed run still shows what it did: the rows, with the failure
-            # (or the retry that fixed it) as the first note.
-            did, cost, out, left, notes = _rows_for(e, finished, foot)
-            notes.insert(0, retried.get(e["run_id"])
-                         or _fmt_failed(e.get("failed_tasks") or [],
-                                        causes=(e.get("raw") or {}).get("maaend_fail_causes")))
-            if not (did or cost or out or left):
-                lines += [_row("备注", notes), ""]
-                continue
-            lines += [_row(label, v) for label, v in
-                      zip(_LABELS, (did, cost, out, left, notes), strict=True)]
-            lines.append("")
-            continue
+        # 正常完成的轮次：若带 incomplete，未完成明细仅记技术日志（早已直推企微群），日报只展示已完成的正常产出
+        if e.get("incomplete"):
+            has_anomalies = True
+            tech.append(f"{e['run_id']} {_incomplete_note(str(e['incomplete']))}")
         if raw.get("annihilation"):
-            lines += [_row("备注", [_annihilation_note(raw)]), ""]
+            anote = _annihilation_note(raw)
+            if not anote:
+                has_anomalies = True
+                tech.append(f"{e['run_id']} 剿灭进度未读到")
+                continue
+            lines.append("✅" + f" {_game(e['script'])}（剿灭检查）　"
+                         + _span(started, finished, e.get("duration_known", True)))
+            lines += [_row("备注", [anote]), ""]
             continue
         did, cost, out, left, notes = _rows_for(e, finished, foot)
-        if e.get("incomplete"):
-            notes.insert(0, _incomplete_note(str(e["incomplete"])))
+        # 若整行正常产出为空且存在未核实/待核项（即全部内容被白名单过滤），不在日报中输出空壳
+        if not (did or cost or out or left or notes) and (
+            (e.get("script") == "MaaEnd" and (maaend_unverified(raw) or maaend_unjudged(raw)))
+            or (e.get("script") == "OK-WW"
+                and any(UNVERIFIED_STEP in str(s) for s in (raw.get("okww_steps") or [])))
+        ):
+            continue
+        lines.append("✅" + f" {_game(e['script'])}　"
+                     + _span(started, finished, e.get("duration_known", True)))
         if notes and not (did or cost or out or left):
-            # Notes only: one 备注 row, not four 「—」 rows above it.
             lines += [_row("备注", notes), ""]
             continue
         lines += [_row(label, v) for label, v in
                   zip(_LABELS, (did, cost, out, left, notes), strict=True)]
         lines.append("")
 
-    if restarts:
-        lines += [f"ℹ️ 终末地装新版后自己重启 {restarts} 次，未计失败", ""]
+    has_rows = bool(lines)
+    title = f"📋 {day[5:]} · {_daily_head(shown_kinds, all_green=(has_rows and not has_anomalies))}"
+    if not has_rows:
+        lines = ["今天暂无已完成的正常产出记录。", ""]
     if prose:
         lines += ["———————", prose, ""]
-    # Tomorrow's plan goes last, while there is still time to change it.
     if plan:
         lines += ["———————", plan]
     return title, "\n".join(lines).rstrip()

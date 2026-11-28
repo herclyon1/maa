@@ -101,7 +101,6 @@ def _part_preupdate_automas_carry():
     import types
 
     import boot_stages
-    from ark_relay.features import errwatch
     from ark_relay.features import preupdate as P
 
 
@@ -111,7 +110,7 @@ def _part_preupdate_automas_carry():
             self.rows = []
 
         def emit(self, record):
-            self.rows.append((record.levelname, bool(getattr(record, errwatch.RECOVERED, False)), record.getMessage()))
+            self.rows.append((record.levelname, record.getMessage()))
 
 
     class Machine:
@@ -160,7 +159,7 @@ def _part_preupdate_automas_carry():
                                      lambda problems: P.run_automas(Path("x"), budget_s=1.0, problems=problems,
                                                                     after_update=after.append,
                                                                     **({"carry": box} if carry else {})))
-        return out, problems, after, [(lv, r) for lv, r, _ in rows.rows if lv != "INFO"]
+        return out, problems, after, [lv for lv, _ in rows.rows if lv != "INFO"]
 
 
     try:
@@ -169,7 +168,8 @@ def _part_preupdate_automas_carry():
         check("说已更新（旧 → 新）", out, "AUTO-MAS 已更新：v1 → v2")
         check("更新后的核对补做了一次，用的是新版本号", after, ["v2"])
         check("没有留下「没确认装成」的问题", problems, [])
-        check("一条标自己好了的 WARNING（只进日报）", logged, [("WARNING", True)])
+        check("瞬态重试记 INFO，无 WARNING/ERROR",
+              (logged, any(lv == "INFO" and "再试一次给出了结论" in m for lv, m in rows.rows)), ([], True))
 
         print("\n[第二次还是旧版：第一次的话照旧，不做核对]")
         out, problems, after, _ = run(lands=False)
@@ -452,9 +452,11 @@ def _part_preupdate_not_alarm():
     check("the day's pre-update is clean", marks, [True])
     check("nothing at ERROR", errors(), [])
     from ark_relay.features import errwatch
-    healed = [r for r in REC.records if r.levelno == logging.WARNING and getattr(r, errwatch.RECOVERED, False)]
-    check("one WARNING marked recovered for the first try's problem",
-          [("OK-WW" in r.getMessage(), NO_VERDICT in r.getMessage()) for r in healed], [(True, True)])
+    healed = [r for r in REC.records if r.levelno == logging.INFO and "再试一次给出了结论" in r.getMessage()]
+    check("one INFO note for the first try's problem (no WARNING/ERROR)",
+          ([("OK-WW" in r.getMessage(), NO_VERDICT in r.getMessage()) for r in healed],
+           [r for r in REC.records if r.levelno >= logging.WARNING]),
+          ([(True, True)], []))
     check("…its first line reads as plain words", [texts.plain(errwatch.first_line(r)) for r in healed], [[]])
 
     print("\n[no verdict twice (09-29 08:50:34): a group alarm (2026-10-06)]")
@@ -487,14 +489,17 @@ def _part_preupdate_not_alarm():
     notes, calls = stage([None], automas_answers=["AUTO-MAS 预更新：后端 180 秒内没起来，**没有检查更新**"])
     check("AUTO-MAS asked twice", calls["automas"], 2)
     check("it answered the second time: clean", marks, [True])
-    check("…and the first try's problem is one recovered WARNING",
-          len([r for r in REC.records if getattr(r, errwatch.RECOVERED, False) and "AUTO-MAS" in r.getMessage()]), 1)
+    check("…and the first try's problem is one INFO line (no WARNING/ERROR)",
+          (len([r for r in REC.records if r.levelno == logging.INFO and "再试一次给出了结论" in r.getMessage() and "AUTO-MAS" in r.getMessage()]),
+           [r for r in REC.records if r.levelno >= logging.WARNING]),
+          (1, []))
     check("nothing at ERROR", errors(), [])
 
     print("\n[an item that answers at once runs once]")
     notes, calls = stage([None])
     check("AUTO-MAS, OK-WW once each", calls, {"automas": 1, "okww": 1})
-    check("no recovered WARNING when nothing failed", [r for r in REC.records if getattr(r, errwatch.RECOVERED, False)], [])
+    check("no retry INFO or WARNING when nothing failed",
+          [r for r in REC.records if r.levelno >= logging.WARNING or "再试一次给出了结论" in r.getMessage()], [])
     check("clean", marks, [True])
 
     print("\n[game update that could not confirm: a group alarm, the WARNING after it]")
@@ -954,7 +959,6 @@ relay-opt-round3-1108 O-01; preupdate_okww.ensure_okww_deps).
     import subprocess
     from types import SimpleNamespace
 
-    from ark_relay.features import errwatch
     from ark_relay.features import preupdate, preupdate as po
     from ark_relay.features.preupdate import PWSH_GUARD_S
 
@@ -965,7 +969,7 @@ relay-opt-round3-1108 O-01; preupdate_okww.ensure_okww_deps).
             self.rows = []
 
         def emit(self, record):
-            self.rows.append((record.levelname, bool(getattr(record, errwatch.RECOVERED, False)), record.getMessage()))
+            self.rows.append((record.levelname, record.getMessage()))
 
 
     rows = Rows()
@@ -1010,7 +1014,7 @@ relay-opt-round3-1108 O-01; preupdate_okww.ensure_okww_deps).
         rows.rows.clear()
         problems = []
         out = po.ensure_okww_deps(root, problems, run=fake)
-        return out, problems, [(lv, r) for lv, r, _ in rows.rows if lv != "INFO"]
+        return out, problems, [lv for lv, _ in rows.rows if lv != "INFO"]
 
 
     REQ = ("# autogenerated\nok-script[ocr,qt]==3.0.3\n    # via -r\nopencv-python==4.12.0.88\npywin32==311\n"
@@ -1037,13 +1041,13 @@ relay-opt-round3-1108 O-01; preupdate_okww.ensure_okww_deps).
     check("没补装、没问题、没 WARNING", (out, problems, logged, fake.pips()), ("", [], [], []))
     check("试导入用的是 OK-WW 自己的 python", fake.calls[0][1], "-c")
 
-    print("\n[缺 packaging（#115，OK-WW 清单里没有）：照样补装，核对过，只进日报]")
+    print("\n[缺 packaging（#115，OK-WW 清单里没有）：照样补装，核对过，直推群告警]")
     fake = Fake("MODULE packaging\n", "")
     out, problems, logged = run(okww(REQ), fake)
     check("装的是 packaging", fake.pips(), [FLAGS + ["packaging"]])
     check("返回补装了什么", out, "OK-WW 缺的 Python 包已补装：packaging")
-    check("没有要报群的问题", problems, [])
-    check("一条标自己好了的 WARNING", logged, [("WARNING", True)])
+    check("没有未解决阻断问题", problems, [])
+    check("一条直推群的 WARNING（不压进日报）", logged, ["WARNING"])
 
     print("\n[清单里的包没装（按包名查，不靠模块名）：按清单写的装回]")
     fake = Fake("DIST opencv-python\nDIST pywin32\nDIST onnxocr-ppocrv5\nMODULE cv2\n", "")
@@ -2125,17 +2129,18 @@ def _part_gameupdate_main():  # noqa: C901
         finally:
             gu.log.removeHandler(keep)
             gu._prepare_client = _orig_prep
-        healed = [r.getMessage() for r in keep.records if getattr(r, errwatch.RECOVERED, False)]
+        healed = [r.getMessage() for r in keep.records if r.levelno == logging.WARNING]
         for r in keep.records:
-            if getattr(r, errwatch.RECOVERED, False):
-                check("the recovered line's first line reads as plain words", texts.plain(errwatch.first_line(r)), [])
+            if r.levelno == logging.WARNING:
+                check("the warning's first line reads as plain words", texts.plain(errwatch.first_line(r)), [])
         return ready, pr, healed
 
     _CLICK = "终末地：点「更新游戏」没点上"
     _ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
                                    lambda pr: (True, "终末地 客户端已通过启动器更新")])
-    check("click missed, next round ready: ready, nothing left to push", (_ready, _pr), (True, []))
-    check("…one recovered WARNING naming the first round's problem", [(_CLICK in m) for m in _healed], [True])
+    check("click missed, next round ready: ready, nothing left in problems", (_ready, _pr), (True, []))
+    check("…one plain WARNING pushed straight to group naming the first round's problem",
+          [(_CLICK in m) for m in _healed], [True])
     _ready, _pr, _healed = _retry([lambda pr: (pr.append("终末地：更新后游戏仍说客户端已过时"), (False, ""))[1],
                                    lambda pr: (True, "终末地 客户端已通过启动器更新")])
     check("package not out yet, then updated: no red item (the expected wait)", (_ready, _pr, _healed), (True, [], []))
@@ -3538,22 +3543,18 @@ runtime as well when it does restart, and the keeper must not go blind without w
 
 
     class _Levels(logging.Handler):
-        """ensure_automas's lines (logger ark.service): (level, first line, marked recovered)."""
+        """ensure_automas's lines (logger ark.service): (level, first line)."""
 
         def __init__(self):
             super().__init__(logging.DEBUG)
             self.got = []
 
         def emit(self, record):
-            self.got.append((record.levelname, record.getMessage().splitlines()[0],
-                             bool(getattr(record, errwatch.RECOVERED, False))))
+            self.got.append((record.levelname, record.getMessage().splitlines()[0]))
 
         def loud(self):
-            """WARNING / ERROR lines errwatch pushes to the group (not marked recovered)."""
-            return [m for lv, m, rec in self.got if lv in ("WARNING", "ERROR") and not rec]
-
-        def recovered(self):
-            return [m for lv, m, rec in self.got if lv == "WARNING" and rec]
+            """WARNING / ERROR lines errwatch pushes to the group."""
+            return [m for lv, m in self.got if lv in ("WARNING", "ERROR")]
 
 
     _levels = _Levels()
@@ -3585,7 +3586,6 @@ runtime as well when it does restart, and the keeper must not go blind without w
     # Not back: the ERROR (pushed), and only that - the steps before it are INFO.
     check("not recovered: one line for the group, the ERROR", _levels.loud(),
           ["AUTO-MAS 拉起后 120 秒内接口仍不通"])
-    check("nothing marked recovered", _levels.recovered(), [])
 
     print("\n[窗口在、宽限期满才杀、杀后起来了：进群（没应答的原因不明，2026-10-10 前只进日报）]")
     clock["t"] = 0; revived.clear(); _levels.got.clear()
@@ -3593,7 +3593,6 @@ runtime as well when it does restart, and the keeper must not go blind without w
     check("returns True", boot_stages.ensure_automas(timeout=120, grace=150), True)
     check("one line for the group, naming the wait that failed",
           [("窗口开着、等了 150 秒还没应答" in m) for m in _levels.loud()], [True])
-    check("nothing marked recovered", _levels.recovered(), [])
 
     print("\n[窗口根本不在：立刻拉起]")
     clock["t"] = 0; revived.clear(); _levels.got.clear()
@@ -3601,7 +3600,6 @@ runtime as well when it does restart, and the keeper must not go blind without w
     commands.mas_up = _api(20)
     check("拉起后接口开了返回 True", boot_stages.ensure_automas(timeout=120, grace=150), True)
     check("立刻杀/拉起，没有先等宽限期", revived == [0.0])
-    check("nothing marked recovered", _levels.recovered(), [])
     rec_lines = _levels.loud()
     check("one WARNING for the group", len(rec_lines), 1)
     check("plain words, and selfcheck still reads it (「AUTO-MAS 已…秒）」)",

@@ -80,11 +80,8 @@ class Guard:
         self.seen_installed, self.missing_pushed = True, False
         if state == "RUNNING":
             if self.fails and not self.alerted and not self.stop_pushed:
-                # Only looks that raised, and this one worked: fixed itself, not
-                # pushed, one red item (errwatch).
-                from ark_relay.features import errwatch  # noqa: PLC0415
-                log.warning("看门服务在跑；之前连续 %d 次查不了它在不在跑，这次查到了", self.fails,
-                            extra=errwatch.recovered())
+                # 瞬态查询异常后恢复查到 RUNNING：记 info（绝不进日报）；连败达 FAIL_LIMIT 仍打 error 直推企微群。
+                log.info("看门服务在跑；之前连续 %d 次查不了它在不在跑，这次查到了", self.fails)
             elif self.fails:
                 log.info("看门服务又在跑了（之前连续 %d 次没能让它一直跑着）", self.fails)
             self.fails, self.alerted, self.stop_pushed = 0, False, False

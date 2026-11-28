@@ -173,14 +173,17 @@ def _part_stop_push_watchdog():
     held = []
     hook = logging.Handler()
     hook.emit = lambda rec: held.append(rec)
+    sysmc._log_system.setLevel(logging.INFO)
     sysmc._log_system.addHandler(hook)
 
-    print("[d. a service stop's push cut off, the restarted relay's boot push went out -> passes, recovered]")
+    print("[d. a service stop's push cut off, the restarted relay's boot push went out -> passes, closed as INFO]")
     r = judge11(SVC_STOP + BOOT_PUSHED)
     check("#11 passed", r and r.status, mc.PASS)
     check("the evidence names the boot push", "开机" in (r.evidence if r else "") and "重启后" in (r.evidence if r else ""), True)
-    check("one WARNING tagged recovered (daily report, not the group)",
-          [bool(getattr(x, errwatch.RECOVERED, False)) for x in held if x.levelno == logging.WARNING], [True])
+    check("service restart boot-push closure logs INFO (not pushed, not daily-report error)",
+          (any(x.levelno == logging.INFO and "开机那份已送到手机" in x.getMessage() for x in held),
+           [x for x in held if x.levelno == logging.WARNING]),
+          (True, []))
 
     print("[d. the same cut-off at a Windows shutdown -> still fails: its next start is the next power-on]")
     r = judge11(BEFORE + [CUT] + BOOT_PUSHED)

@@ -895,10 +895,8 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
         # so "no notes" here is not a verdict and nothing fixed itself; say nothing.
         return out
     if len(problems) == n0:
-        # The second try gave a verdict: the first try's problem fixed itself, one red item.
-        from ark_relay.features import errwatch  # noqa: PLC0415
-        log.warning("预更新：%s 第一次没给出结论，再试一次给出了结论\n%s", name, first,
-                    extra=errwatch.recovered())
+        # 预更新第 1 次无结论、第 2 次重试得出结论属瞬态中间重试成功：仅记 info（第 2 次仍无结论照常推群）。
+        log.info("预更新：%s 第一次没给出结论，再试一次给出了结论\n%s", name, first)
     return out
 
 
@@ -1103,24 +1101,14 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             log.warning("MAA 母本重复任务合并没做：%s", note)
     except Exception:
         log.exception("合并 MAA 母本重复任务出错")
-    # Route lists narrowed for an AUTO-MAS retry round must never survive a boot:
-    # the next morning's gathering would walk only yesterday's failed routes.
-    # Left over and put back here, before anything runs: a fault the relay got
-    # over by itself - the daily report only (why: USER-SWITCHES.txt at
-    # boot_stages.py:_stage_reenable_maaend). What cannot be put back is pushed.
-    from ark_relay.features import errwatch  # noqa: PLC0415
+    # 上次关机前未能改回的采集/补跑母本配置在本次开机时发现并修复：属于上次收尾异常，直推企微群暴露问题。
     try:
         from ark_relay.features import collect_retry as _cr  # noqa: PLC0415
         if back := _cr.restore_master(cfg):
-            log.warning("开机：%s（上次关机前没改回，这次开机改回了）", back, extra=errwatch.recovered())
+            log.warning("开机：%s（上次关机前没改回，这次开机改回了）", back)
     except Exception:
         log.exception("开机改回母本路线出错")
-    # Same for the make-up's narrowing (ark_relay/makeup.py): the next morning's
-    # MaaEnd must run every task, not just yesterday's failed ones.
-    # Not while that make-up is still running (a relay restart in the middle of
-    # it, the machine still up): the full master would go back under the run and
-    # AUTO-MAS's retries of it would run every task. Its record puts it back
-    # (handle._handle).
+    # 补跑改过的母本同样在开机时核查改回（若补跑进程仍在跑则等它的记录出来再改回）。
     try:
         from ark_relay.features import makeup as _mk  # noqa: PLC0415
         if _mk.maaend_still_running(cfg.state_dir):
@@ -1128,7 +1116,7 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
         else:
             back, err = _mk.try_restore(cfg, notifier)
             if back:
-                log.warning("开机：%s（上次关机前没改回，这次开机改回了）", back, extra=errwatch.recovered())
+                log.warning("开机：%s（上次关机前没改回，这次开机改回了）", back)
             elif err:
                 log.warning("开机：补跑改过的母本没能改回（%s）", err)
     except Exception:

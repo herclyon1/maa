@@ -1086,7 +1086,7 @@ def _part_evidence_relay_after_run():
     def engine(d: Path):
         cfg = types.SimpleNamespace(state_dir=d, history_dir=None, automas_dir=None,
                                     maa_dir=None, maaend_dir=None, okww_dir=None)
-        eng = types.SimpleNamespace(cfg=cfg, state=core.State(d), notifier=Notifier(), _pending={}, _recovered={})
+        eng = types.SimpleNamespace(cfg=cfg, state=core.State(d), notifier=Notifier(), _pending={})
         eng.persisted = []
         eng._persist_pending = lambda: eng.persisted.append(dict(eng._pending))
         return eng
@@ -1114,22 +1114,20 @@ def _part_evidence_relay_after_run():
     check("证据包里的中继日志带着处理行", at_(9, 20, 3) in bundle.read_text(encoding="utf-8"))
     check("首败没有任何报警推送", [t for t, _, a in eng.notifier.sent if a], [])
 
-    print("\n[重试后成功：自己好了，不推，只进日报（用户 2026-10-06 05:07），日志这么说]")
+    print("\n[重试后成功：中途失败属于真实报错，立即直推企微群，绝不进日报（2026-11-28 规则）]")
     import logging
     seen = []
     h = logging.Handler(); h.emit = lambda r: seen.append(r.getMessage())
     handle.log.addHandler(h); handle.log.setLevel(logging.INFO)
-    eng._recovered[("MAA", "u")] = eng._pending.pop(("MAA", "u"))
-    eng._scripts_running = lambda: False
-    eng._script_running = lambda name: False
-    eng._alert_key = lambda r: "StartUp"
-    eng._already_alerted = lambda d, k: handle._already_alerted(eng, d, k)
-    eng._mark_alerted = lambda d, k: handle._mark_alerted(eng, d, k)
+    retry_ok = RunRecord(run_id=f"{day}/arknights/MAA-05-05-00", script="MAA", user="u",
+                         started=started, finished=finished, ok=True, failed_tasks=[], raw={})
     before = len(eng.notifier.sent)
-    handle._flush_pending(eng)
-    check("自愈那条没发（群、Server酱都没有）", [t for t, _, _ in eng.notifier.sent[before:]], [])
-    check("日志写的是只进日报", any(m.startswith(texts.self_healed("MAA")) and "只进日报" in m for m in seen))
-    check("放下了", eng._recovered, {})
+    handle._retry_healed(eng, retry_ok, ("MAA", "u"))
+    handle.log.removeHandler(h)
+    pushed_heal = [(t, b, a) for t, b, a in eng.notifier.sent[before:]]
+    check("中途失败重试后成功立即直推群", [(t, a) for t, _, a in pushed_heal], [(texts.self_healed("MAA"), True)])
+    check("日志不再写只进日报", any("只进日报" in m for m in seen), False)
+    check("待推表已清空", eng._pending, {})
 
     print("\n[这一轮没干完（鸣潮）：报警本身带证据链接]")
     eng = engine(tmpdir())
@@ -1780,8 +1778,9 @@ def _part_game_evidence():
     end = ent("2026-10-05/endfield/MaaEnd-06-39-48", "MaaEnd", 10, 41, 4, raw=fresh["raw"])
     title, body = core.format_daily("2026-10-05", [end])
     check("做了只列有证据的", "做了 赠送干员礼物、装备制造" in body)
-    check("没证据的点名，不算完成", f"{core.UNVERIFIED}：转交委托" in body)
-    check("标题：没证据，不是全绿", title, "📋 10-05 · 终末地 1 项没证据，不算完成 ❔")
+    check("日报白名单：没证据项绝不进日报正文（改由群告警通道汇报）",
+          (core.UNVERIFIED not in body, "转交委托" not in body), (True, True))
+    check("标题：没证据不误标全绿，也不用报错词，改用中性标题", title, "📋 10-05 · 今日日报")
     check("脚注只列有证据的", core.daily_footnote([end]), "———————\n日常：1.赠送干员礼物 2.装备制造")
     all_ok = ent("2026-10-05/endfield/MaaEnd-06-39-48", "MaaEnd", 10, 41, 4,
                  raw=dict(fresh["raw"], tasks_shot=["赠送干员礼物", "装备制造", "转交委托"]))
@@ -1802,12 +1801,12 @@ def _part_game_evidence():
     retry_ev = dict(retry_bare, raw={"tasks_done": ["转交委托"], "tasks_evidence": {"转交委托": "获得 信用 ×100"}})
     check("重试有读数：做成了", core.retried_notes([failed, retry_ev])[failed["run_id"]], "转交委托　后来在 08:10（东京 09:10）开始的那趟重试里做成了")
 
-    print("\n[明日方舟剿灭：没读到「剿灭模式 x/y」不算打满]")
+    print("\n[明日方舟剿灭：没读到「剿灭模式 x/y」不误标打满、日报严格省略]")
     anni = ent("2026-10-05/arknights/MAA-1", "MAA", 21, 30, 20, raw={"annihilation": True, "annihilation_done": True})
     t, b = core.format_daily("2026-10-05", [anni])
     check("不再说「本周剿灭此前已完成」", "此前已完成" in b, False)
-    check("说没读到进度、不算打满", "没读到剿灭进度，本周按没打满算" in b)
-    check("标题点名", t, "📋 10-05 · 明日方舟 1 项没证据，不算完成 ❔")
+    check("日报不塞「没读到」报错文案", "没读到" in b, False)
+    check("标题中性不误标全绿", t, "📋 10-05 · 今日日报")
     fought = ent("2026-10-05/arknights/MAA-2", "MAA", 21, 30, 20, raw={"annihilation": True, "sanity_spent": 25})
     check("打了但没进度：也不说「已打剿灭」", "已打剿灭" in core.format_daily("2026-10-05", [fought])[1], False)
     full = ent("2026-10-05/arknights/MAA-3", "MAA", 21, 30, 20,
@@ -1817,12 +1816,13 @@ def _part_game_evidence():
                 raw={"annihilation": True, "maa_sanity_short": {"have": 17, "cost": 25}})
     check("理智不够没打的：不算没证据（另有说法）", core.day_unverified([short]), [])
 
-    print("\n[鸣潮周常乐园：只跑了没读到做完，不算完成]")
+    print("\n[鸣潮周常乐园：只跑了没读到做完，不算完成且不进日报白名单]")
     G = "2026-09-14 10:02:11,001 INFO TaskExecutor GardenTask:Garden current: [Box(name='2000/2000')]\n"
     steps = collector_okww._okww_steps(G, 0)
     check("步骤写不算完成", steps, ["周常乐园（没读到做完，不算完成）"])
     ww = ent("2026-10-05/wuwa/OK-WW-1", "OK-WW", 9, 0, 20, raw={"okww_steps": steps})
-    check("标题点名", core.format_daily("2026-10-05", [ww])[0], "📋 10-05 · 鸣潮 1 项没证据，不算完成 ❔")
+    ww_t, ww_b = core.format_daily("2026-10-05", [ww])
+    check("日报省略未核实步骤且标题中性", (ww_t, "没读到" not in ww_b), ("📋 10-05 · 今日日报", True))
     done_g = collector_okww._okww_steps(G + "2026-09-14 10:02:12,001 INFO TaskExecutor GardenTask:乐园任务完成, 已达到上限\n", 0)
     check("读到「乐园任务完成」：做完", done_g, ["周常乐园（本周已完成）"])
 
@@ -2360,9 +2360,10 @@ def _part_tacet_shots():
     check("说实际刷的是第 5 个", "实际刷了第 5 个" in cap, True)
     check("并指出设置写的是第 2 个", "设置里写的是第 2 个" in cap, True)
 
-    print("[读不到实际序号时，明说那是设置值]")
+    print("[读不到实际序号时：产出图说明保持白名单干净（不含「没读到」），读数异常走 log.warning 报群]")
     e5 = Eng(); e5.state._ledger = []
-    check("明说", "（实际序号没读到）" in report._tacet_caption(e5, day), True)
+    cap5 = report._tacet_caption(e5, day)
+    check("按配置标注且不含「没读到」", ("第 2 个" in cap5, "没读到" not in cap5), (True, True))
 
     print("[关掉之后又不发了]")
     check("关的回话", modes.set_tacet_shots(state, False), "无音区结算截图：不发了")
@@ -2565,7 +2566,7 @@ def _part_self_heal_red():
     check("one handled line clears that one only", [i for i, _ in techlog.unhandled(text)],
           ["R-20261011-1750-1", "R-20261011-1750-3"])
 
-    print("[errwatch: a recovered record writes one 「自愈待查」 red item, a plain WARNING none]")
+    print("[errwatch: 已彻底拆除 recovered() 旁路，所有 WARNING 直推企微群且不进日报]")
 
     class _N:
         channels = ()
@@ -2586,8 +2587,7 @@ def _part_self_heal_red():
     ARK.addHandler(h)
     try:
         lg = logging.getLogger("ark.test_evidence")
-        lg.warning("手机通道断了 20 秒，自己重新连上了", extra=errwatch.recovered())
-        lg.warning("手机通道断了 30 秒，自己重新连上了", extra=errwatch.recovered())
+        lg.warning("手机通道断了 20 秒，已重新连上")
         lg.warning("这个没好")
         h.drain(timeout=5.0)
     finally:
@@ -2595,13 +2595,7 @@ def _part_self_heal_red():
         h.close()
     today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     got = reds(sd, today)
-    check("two recovered records, two red items", len(got), 2)
-    check("each says 自愈待查, where, and what it said",
-          [(t.startswith(techlog.SELF_HEAL), "ark.test_evidence" in t, "自己重新连上了" in t) for _, t in got],
-          [(True, True, True)] * 2)
-    check("their ids differ", len({i for i, _ in got}), 2)
-    check("the plain WARNING went to the group and wrote no red item",
-          (len(n.sent), any("这个没好" in t for _, t in got)), (1, False))
+    check("所有 WARNING 均直推企微群，不压进日报/红项旁路", (len(n.sent), got), (2, []))
 
     print("[handle's heals write one too]")
     eng = types.SimpleNamespace(cfg=types.SimpleNamespace(state_dir=str(TMP / "c" / "state")))
@@ -2610,39 +2604,20 @@ def _part_self_heal_red():
     check("one red item naming the run and the first failure",
           [("MaaEnd-05-30-34" in t, "自动采集" in t) for _, t in got], [(True, True)])
 
-    print("[every errwatch.recovered() in the relay is the extra= of a log call]")
-    LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical", "log"}
-    bad, seen = [], 0
+    print("[全仓零 errwatch.recovered() 残留（2026-11-28 铁律）]")
+    hits = []
     for path in sorted(RELAY.rglob("*.py")):
         if "tests" in path.relative_to(RELAY).parts:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        parents = {}
         for node in ast.walk(tree):
-            for child in ast.iter_child_nodes(node):
-                parents[child] = node
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                     and node.func.attr == "recovered" and not node.args and not node.keywords):
-                continue
-            seen += 1
-            up, ok = node, False
-            while up in parents:
-                par = parents[up]
-                if isinstance(par, ast.keyword) and par.arg == "extra":
-                    call = parents.get(par)
-                    ok = (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
-                          and call.func.attr in LOG_METHODS)
-                    break
-                if isinstance(par, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
-                    break
-                up = par
-            if not ok and path.name != "errwatch.py":
-                bad.append(f"{path.relative_to(RELAY)}:{node.lineno}")
-    check("found the calls", seen > 10, True)
-    check("none outside a log call's extra=", bad, [])
+                hits.append(f"{path.relative_to(RELAY)}:{node.lineno}")
+    check("全仓无 errwatch.recovered() 调用", hits, [])
     src = (RELAY / "ark_relay" / "features" / "errwatch.py").read_text(encoding="utf-8")
-    check("errwatch has no daily-only door any more", "def note_daily" in src, False)
+    check("errwatch 已彻底移除 recovered/RECOVERED/note_daily",
+          ("def note_daily" in src, "def recovered" in src, "RECOVERED" in src), (False, False, False))
 
 
 

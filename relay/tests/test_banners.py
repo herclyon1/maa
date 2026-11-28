@@ -342,9 +342,11 @@ def _part_banners():  # noqa: C901
         check("官方已公布的预告角色与维护时间照写",
               "· 下期：官方未公告 · 官方已预告下一版新角色：心、锁暝 · 3.7 版本更新维护 北京 09-30 04:00～11:00" in teased, True)
 
-        lost = render([], now, {}, failed=["终末地（森空岛登录失败）"])
-        check("没读到的游戏说没读到，不写「无」",
-              ("终末地\n· 这次没读到（森空岛登录失败），不是没有卡池" in lost, "终末地\n· 当期无新角色卡池" in lost), (True, False))
+        with _logs() as lost_recs:
+            lost = render([], now, {}, failed=["终末地（森空岛登录失败）"])
+        check("没读到的游戏不进日报（既不写没读到也不写无），改报群告警",
+              ("终末地" not in lost, "没读到" not in lost, _warned(lost_recs, "终末地（森空岛登录失败）") == 1),
+              (True, True, True))
 
         tr = _b.Trace.new()
         import logging
@@ -356,7 +358,8 @@ def _part_banners():  # noqa: C901
             out = render([], now, {"明日方舟": (datetime(2026, 10, 9, 16, 0), "某人「某池」")}, trace=tr)
         finally:
             _b.log.removeHandler(grab)
-        check("下期时刻没有来源就扣下", ("⚠️ 这一行没通过来源核对" in out, len(tr.withheld)), (True, 1))
+        check("下期时刻没有来源就扣下（日报 0 报错字样，记入 trace）",
+              ("没通过来源核对" not in out and "某池" not in out, len(tr.withheld)), (True, 1))
         check("held back as a WARNING, not an ERROR", levels, [logging.WARNING])
 
     def _top_rarity_only() -> None:
@@ -469,7 +472,7 @@ def _part_banners():  # noqa: C901
               bool(_b.gate_preview("· 下期：09-16 19:00（版本 09-29 更新前 13 天，按规律）", tr)), True)
         check("没有日期的行放行", _b.gate_preview("· 下期：官方未公告", tr), "")
         out = render([], now, {}, notes={"明日方舟": "09-18 03:59 之后开"}, trace=tr)
-        check("render 扣下并标注", "已扣下" in out and "09-18" not in out, True)
+        check("render 扣下且不往日报塞扣下告警文案", "已扣下" not in out and "09-18" not in out, True)
         check("扣下的原文进 trace", len(tr.withheld), 1)
         # 2. cross-checks between two official sources
         a = _b.Banner("明日方舟", "石白深蓝之夜", ("结城理",), datetime(2026, 9, 4, 12, 0), datetime(2026, 9, 18, 3, 59))
@@ -919,9 +922,9 @@ def _part_banners():  # noqa: C901
         tr, notes = _b.Trace.new(), {}
         day = _b._wuwa_calendar_start(notice, "余心所向九死未悔", now, end, None, notes, tr)
         out = _b.render([xin], now, {"鸣潮": (day, "锁暝「余心所向九死未悔」")}, notes, tr)
-        check("读不出图：说公告是图片没读出，不说官方未公布",
-              ("· 下期：余心所向九死未悔 · 锁暝 · 官方公告为图片，未能读取" in out, "官方未公布" in out),
-              (True, False))
+        check("读不出图：日报留中性提示且不塞「未能读取」，也不说官方未公布",
+              ("· 下期：余心所向九死未悔 · 锁暝 · 时间见官方活动日历" in out, "未能读取" in out, "官方未公布" in out),
+              (True, False, False))
 
         # Another source already gave the time (notes=None): the calendar image has dates only, no
         # hour or minute, so it is not read at all; the trace says 「另一来源已给出」 (machine check #2).
@@ -1773,8 +1776,8 @@ def _part_banners():  # noqa: C901
         rows, _nxt, failed, text, recs = _collect_offline(now, [row])
         check("silent 798: collect lists 明日方舟 as not read", [f for f in failed if f.startswith("明日方舟")], ["明日方舟"])
         block = _block(text, "明日方舟")
-        check("silent 798: the report says not read, never 「当期无新角色卡池」",
-              ("这次没读到" in block, "当期无新角色卡池" in block), (True, False))
+        check("silent 798: the report omits the unread game, never 「当期无新角色卡池」 or 「这次没读到」",
+              (block == "", "当期无新角色卡池" in block), (True, False))
         check("silent 798: one WARNING names both operators, with the cause", _warned_exc(recs, "甲、乙"), 1)
         check("silent 798: and only one about rarity", _warned_exc(recs, "稀有度"), 1)
         # Review of 7fa60c96: the partial failure raised out of _arknights, so the
@@ -1912,7 +1915,7 @@ def _part_banners():  # noqa: C901
     read, so the report said 当期无新角色卡池 and 下期：官方未公告."""
         _rows, _nxt, failed, text, _recs = _collect_offline(datetime(2026, 8, 20), [])
         check("没有森空岛令牌：终末地记为没读到", [f for f in failed if f.startswith("终末地")], ["终末地（没有森空岛令牌）"])
-        check("没有森空岛令牌：日报写没读到", _block(text, "终末地"), "终末地\n· 这次没读到（没有森空岛令牌），不是没有卡池")
+        check("没有森空岛令牌：日报严格省略终末地块（报错走群，不写没读到）", _block(text, "终末地"), "")
 
     def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None,
                     bulletin_title="「x」版本更新说明", trace=None):
@@ -1965,8 +1968,8 @@ def _part_banners():  # noqa: C901
         _rows, _nxt, failed, text, recs = _collect_offline(datetime(2026, 8, 20), [], sk_get=sk)
         check("silent 1349: collect lists 终末地 as not read", [f for f in failed if f.startswith("终末地")], ["终末地"])
         block = _block(text, "终末地")
-        check("silent 1349: the report says not read, never 「当期无新角色卡池」",
-              ("这次没读到" in block, "当期无新角色卡池" in block), (True, False))
+        check("silent 1349: the report omits the unread game, never 「当期无新角色卡池」 or 「这次没读到」",
+              (block == "", "当期无新角色卡池" in block), (True, False))
         check("silent 1349: one WARNING names both lookups, with the cause", _warned_exc(recs, "1683、1700"), 1)
         check("silent 1349: only one about the names", _warned_exc(recs, "名字"), 1)
 
@@ -2348,10 +2351,9 @@ def _part_banners():  # noqa: C901
             check(f"fix: {label} -> crosscheck's line, nothing corrected",
                   (b is wiki, line), (True, _b.crosscheck("终末地", "森空岛", wiki, "公告", other)))
 
-    def _recovered(recs: list, part: str) -> "list[bool]":
-        """For each WARNING carrying `part`: is it marked recovered (daily report only)?"""
-        from ark_relay.features import errwatch
-        return [bool(getattr(r, errwatch.RECOVERED, False)) for r in recs
+    def _warned_msgs(recs: list, part: str) -> "list[str]":
+        """All WARNING messages carrying `part` (pushed straight to group)."""
+        return [r.getMessage() for r in recs
                 if r.levelno == logging.WARNING and part in r.getMessage()]
 
     def _audit_1108_endfield() -> None:
@@ -2367,7 +2369,7 @@ def _part_banners():  # noqa: C901
               [c for c in tr.checks if "补进当期 ✓" in c],
               ["终末地：森空岛里没有在开的「烟火邀星河」，版本更新说明、特许寻访说明、新版本导览写着 11-05 12:00 开、"
            "11-26 06:00 结束，已按官方补进当期 ✓"])
-        check("1108 ef: one WARNING, marked recovered", _recovered(recs, "烟火邀星河"), [True])
+        check("1108 ef: one plain WARNING pushed to group", len(_warned_msgs(recs, "烟火邀星河")), 1)
         check("1108 ef: no Latin letters in its first line",
               [bool(re.search(r"[A-Za-z]", r.getMessage().split("\n")[0])) for r in recs
                if r.levelno == logging.WARNING and "烟火邀星河" in r.getMessage()], [False])
@@ -2405,7 +2407,7 @@ def _part_banners():  # noqa: C901
         check("1108 ef: its line says the end is not published",
               "· 当期：烟火邀星河 · 明河 · 版本更新维护前结束（几点官方还没公布）" in out, True)
         check("1108 ef: and that is a ✗ (#66 pushes it once), no WARNING of its own",
-              (any("✗" in c and "烟火邀星河" in c for c in tr.checks), _recovered(recs, "烟火邀星河"),
+              (any("✗" in c and "烟火邀星河" in c for c in tr.checks), _warned_msgs(recs, "烟火邀星河"),
                [r.levelno for r in recs if "结束时刻哪个官方来源都没给" in r.getMessage()]), (True, [], [logging.INFO]))
         check("1108 ef: the briefing is said once, where the next banner needed it", _warned(recs, "新版本导览取不到"), 1)
         check("1108 ef: not read is not the game failing", failed, [])
@@ -2520,8 +2522,8 @@ def _part_banners():  # noqa: C901
         text = render(got, now, {}, {}, tr)
         check("1108 ak: the official post fills the running banner PRTS lacks",
               "· 当期：海渊巡游 · 克莱门莎 · 北京 10-23 03:59 结束" in text, True)
-        check("1108 ak: as a ✓ fill, one recovered WARNING",
-              ([c for c in tr.checks if "补进当期 ✓" in c and "资料站" in c] != [], _recovered(recs, "海渊巡游")), (True, [True]))
+        check("1108 ak: as a ✓ fill, one plain WARNING pushed to group",
+              ([c for c in tr.checks if "补进当期 ✓" in c and "资料站" in c] != [], len(_warned_msgs(recs, "海渊巡游"))), (True, 1))
         check("1108 ak: recorded for check #67", [o[:3] for o in tr.opens], [["明日方舟", "海渊巡游", "克莱门莎"]])
         # PRTS has it (prefixed, 07:00): no fill.
         row = _b.Banner("明日方舟", "【限定寻访·夏季】海渊巡游", ("克莱门莎",),
@@ -2578,20 +2580,20 @@ def _part_banners():  # noqa: C901
         got, nxt, tr, recs, out = run(home(), cut)
         check("1108 ww: the in-game post fills the running banner the wiki lacks",
               "· 当期：但愿长圆如此夜 · 心 · 北京 10-22 09:59 结束" in out, True)
-        check("1108 ww: as a ✓ fill, one recovered WARNING",
-              ([c for c in tr.checks if "补进当期 ✓" in c and "库街区" in c] != [], _recovered(recs, "但愿长圆如此夜")), (True, [True]))
+        check("1108 ww: as a ✓ fill, one plain WARNING pushed to group",
+              ([c for c in tr.checks if "补进当期 ✓" in c and "库街区" in c] != [], len(_warned_msgs(recs, "但愿长圆如此夜"))), (True, 1))
         check("1108 ww: the second half is still next, not the running one",
               nxt[1] if nxt else None, "锁暝「余心所向九死未悔」")
         # The wiki lists it but its character's name lookup is cut short.
         got, nxt, tr, recs, out = run(home(tab("但愿长圆如此夜", 101)), cut)
         check("1108 ww: a nameless wiki banner is named from the bulletin",
               [(b.name, b.chars) for b in got if b.name == "但愿长圆如此夜"], [("但愿长圆如此夜", ("心",))])
-        check("1108 ww: said once, marked recovered", _recovered(recs, "查不到名字"), [True])
+        check("1108 ww: said once as plain WARNING pushed to group", len(_warned_msgs(recs, "查不到名字")), 1)
         check("1108 ww: named, it is the wiki's and cross-checked, not filled again",
               ([c for c in tr.checks if "补进当期 ✓" in c], any("库街区=游戏公告" in c for c in tr.checks)), ([], True))
         # A nameless tab no notice names stays out, with the plain WARNING.
         got, nxt, tr, recs, out = run(home(tab("但愿长圆如此夜", 101), tab("别的卡池", 102)), cut)
-        check("1108 ww: a name found nowhere is the plain WARNING", _recovered(recs, "102 查不到名字"), [False])
+        check("1108 ww: a name found nowhere is the plain WARNING", len(_warned_msgs(recs, "102 查不到名字")), 1)
 
     def _audit_1108_gate() -> None:
         import tempfile
@@ -2613,12 +2615,11 @@ def _part_banners():  # noqa: C901
             return rows, failed, tr, recs
         rows, failed, tr, recs = gate([])
         out = render(rows, EF_NOW, {}, {}, tr, failed)
-        check("1108 gate: announced, opened, lost everywhere, no end -> not read",
+        check("1108 gate: announced, opened, lost everywhere, no end -> not read (omitted from daily report)",
               (failed, _block(out, "终末地")),
-              (["终末地（11-05 12:00 已预告开的明河「烟火邀星河」）"],
-               "终末地\n· 这次没读到（11-05 12:00 已预告开的明河「烟火邀星河」），不是没有卡池"))
+              (["终末地（11-05 12:00 已预告开的明河「烟火邀星河」）"], ""))
         check("1108 gate: the verdict for #68 (which pushes it once), no WARNING of its own",
-              (_recovered(recs, "之前预告"), [r.levelno for r in recs if "之前预告" in r.getMessage()],
+              (_warned_msgs(recs, "之前预告"), [r.levelno for r in recs if "之前预告" in r.getMessage()],
                [r[1] for r in tr.continuity]), ([], [logging.INFO], ["lost"]))
         ming = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 5, 12), datetime(2026, 11, 26, 6))
         rows, failed, tr, recs = gate([ming])
@@ -2628,9 +2629,9 @@ def _part_banners():  # noqa: C901
         # The end published with the announcement: put back.
         snap("2026-11-04", {"终末地": ["2026-11-05 12:00", "明河「烟火邀星河」"]}, {"终末地": "2026-11-26 06:00"})
         rows, failed, tr, recs = gate([])
-        check("1108 gate: with its end -> put back, recovered",
-              ([(b.name, b.end) for b in rows], failed, _recovered(recs, "之前预告"), [r[1] for r in tr.continuity]),
-              ([("烟火邀星河", datetime(2026, 11, 26, 6))], [], [True], ["recovered"]))
+        check("1108 gate: with its end -> put back, plain WARNING pushed to group",
+              ([(b.name, b.end) for b in rows], failed, len(_warned_msgs(recs, "之前预告")), [r[1] for r in tr.continuity]),
+              ([("烟火邀星河", datetime(2026, 11, 26, 6))], [], 1, ["recovered"]))
         # The end from the history ledger instead.
         snap("2026-11-04", {"终末地": ["2026-11-05 12:00", "明河「烟火邀星河」"]})
         (sd / "banners" / "history.json").write_text(json.dumps({"终末地": {
@@ -2795,23 +2796,12 @@ def _part_banner_post_miss():
 
         def emit(self, record):
             self.recs.append((record.levelno, record.getMessage()))
-            self.marks = getattr(self, "marks", [])
-            if record.levelno >= logging.WARNING:
-                self.marks.append((record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
 
         def warnings(self):
             return [m for lv, m in self.recs if lv >= logging.WARNING]
 
-        def loud(self):
-            """WARNINGs errwatch pushes (not marked recovered)."""
-            return [m for m, rec in getattr(self, "marks", []) if not rec]
-
-        def recovered(self):
-            return [m for m, rec in getattr(self, "marks", []) if rec]
-
         def clear(self):
             self.recs.clear()
-            self.marks = []
 
     class Pushes:
         def __init__(self):
@@ -2873,21 +2863,21 @@ def _part_banner_post_miss():
     check("……INFO 里还说了是哪边没找到",
           any(lv == logging.INFO and "库街区官方资讯里没找到 3.7 版本资讯帖" in m for lv, m in logs.recs), True)
 
-    print("\n[库街区回的不是列表：记成来源问题，B 站给了时间 -> 只进日报，不报群]")
+    print("\n[库街区回的不是列表：记成来源问题，B 站给了时间 -> 真实接口异常照常推群，绝不进日报]")
     logs.clear()
+    PUSHES.sent.clear()
     tr = _b.Trace.new()
     got = _b._wuwa_poster_span("3.7", "余心所向九死未悔", "锁暝", now, read, tr,
                                lambda p, d: {"code": 220, "msg": "系统繁忙", "data": None}, bili(feed))
     check("还是拿到时间", got, span)
-    check("nothing for the group", logs.loud(), [])
-    rec = logs.recovered()
-    check("one WARNING marked recovered: a door failed, the other gave the time",
-          [("哔哩哔哩那一帖给出了" in m, "KuroListProblem" in m) for m in rec], [(True, True)])
-    check("its first line is plain (the daily report quotes it)",
-          [texts.plain(m.splitlines()[0]) for m in rec], [[]])
-    check("not pushed", pushed(), [])
-    check("in the daily report, tagged 「自己好了，只进日报」",
-          ("给出了「余心所向九死未悔」的唤取时间" in daily(), "自己好了，只进日报" in daily()), (True, True))
+    warns = logs.warnings()
+    check("one plain WARNING pushed straight to group: a door failed, the other gave the time",
+          [("哔哩哔哩那一帖给出了" in m, "KuroListProblem" in m) for m in warns], [(True, True)])
+    check("its first line is plain",
+          [texts.plain(m.splitlines()[0]) for m in warns], [[]])
+    check("pushed to group", len(pushed(want=1)) >= 1, True)
+    check("techlog errwatch summary marks 「已报群」, never 「只进日报」",
+          ("已报群" in daily(), "只进日报" in daily()), (True, False))
     check("来源问题记进 trace，不当成「没有这一帖」",
           [p.split("｜")[3].split(":")[0] for p in tr.problems], ["KuroListProblem"])
 
@@ -2904,7 +2894,7 @@ def _part_banner_post_miss():
     check("……点名两边", ("库街区没有这一帖" in (warns or [""])[0], "B 站没有这一帖" in (warns or [""])[0]),
           (True, True))
 
-    print("\n[PRTS 接口不通、页面读到了：只进日报；页面也不通：报群]")
+    print("\n[PRTS 接口不通、页面读到了：真实接口异常照常推群；页面也不通：同样报群]")
     page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
     real_json, real_text = _b._json, _b._text
     saved_rarity = dict(_b._rarity_cache)
@@ -2931,20 +2921,18 @@ def _part_banner_post_miss():
     logs.clear()
     got = run_ak(page)
     check("the page gave the table", bool(got and got[0]), True)
-    prts = [m for m in logs.recovered() if "资料站的数据入口" in m]
-    check("one recovered WARNING per page the API missed and the page gave",
+    prts = [m for m in logs.warnings() if "资料站的数据入口" in m]
+    check("one plain WARNING per page the API missed and the page gave (pushed to group)",
           len(prts) == len(_b._AK_PAGES) and all("改读它的页面读到了" in m for m in prts), True)
-    check("no PRTS line for the group", [m for m in logs.loud() if "PRTS" in m or "资料站" in m], [])
-    check("first lines plain (the daily report quotes them)", [texts.plain(m.splitlines()[0]) for m in prts],
+    check("first lines plain", [texts.plain(m.splitlines()[0]) for m in prts],
           [[]] * len(prts))
     logs.clear()
     got = run_ak(None)
     check("API and page both down: no table", got, None)
     check("a plain WARNING per page, naming both (pushed)",
-          [("接口和页面都取不到" in m) for m in logs.loud() if "PRTS" in m], [True] * len(_b._AK_PAGES))
-    check("nothing marked recovered", [m for m in logs.recovered() if "资料站" in m], [])
+          [("接口和页面都取不到" in m) for m in logs.warnings() if "PRTS" in m], [True] * len(_b._AK_PAGES))
 
-    print("\n[库街区唤取公告取不到、版本资讯帖的长图给了开始时间：只进日报；长图也没有：报群]")
+    print("\n[库街区唤取公告取不到、版本资讯帖的长图给了开始时间：真实接口异常照常推群；长图也没有：同样报群]")
     saved_cal = (_b.wuwa_calendar_image, _b._wuwa_calendar_start)
     _b.wuwa_calendar_image = lambda notice: ("3.7", "1", "https://example.invalid/cal.png")
     _b._wuwa_calendar_start = lambda *a, **k: None
@@ -2959,21 +2947,19 @@ def _part_banner_post_miss():
         at = _b._wuwa_second_half({}, "余心所向九死未悔", "锁暝", now, None, read, None, _b.Trace.new(),
                                   kuro, bili(feed))
         check("the poster gave the start", at, span[0])
-        check("one recovered WARNING about the gacha notice, first line plain",
+        check("one plain WARNING about the gacha notice (pushed to group), first line plain",
               [("唤取公告没取到" in m and "长图给出了" in m, texts.plain(m.splitlines()[0]))
-               for m in logs.recovered() if "唤取公告" in m], [(True, [])])
-        check("nothing for the group", logs.loud(), [])
+               for m in logs.warnings() if "唤取公告" in m], [(True, [])])
         logs.clear()
         at = _b._wuwa_second_half({}, "余心所向九死未悔", "锁暝", now, None, read, None, _b.Trace.new(),
                                   kuro, bili(ended))
         check("nothing gave the start", at, None)
         check("the gacha notice's failure is a plain WARNING (pushed)",
-              any("唤取公告取不到" in m for m in logs.loud()), True)
-        check("nothing marked recovered", logs.recovered(), [])
+              any("唤取公告取不到" in m for m in logs.warnings()), True)
     finally:
         _b.wuwa_calendar_image, _b._wuwa_calendar_start = saved_cal
 
-    print("\n[版本日历图读不出、另一来源已给时间：只进日报；没别的来源：报群]")
+    print("\n[版本日历图读不出、另一来源已给时间：不读图无报错；没别的来源：报群]")
     cal_notice = {"activity": [
         {"id": "50868", "tabTitle": "3.7版本活动日历", "startTimeMs": "1790712000000",
          "content": '<p><img src="https://example.invalid/cal.png" alt="" width="1080" height="2159"></p>'}]}
@@ -2982,15 +2968,14 @@ def _part_banner_post_miss():
     day = _b._wuwa_calendar_start(cal_notice, "余心所向九死未悔", now, span[1], None, None, tr)
     check("另一来源已给出：图不读，日期 None", day, None)
     check("另一来源已给出：没有任何 WARNING（不读图就没有读不出）",
-          (logs.recovered(), logs.loud()), ([], []))
+          logs.warnings(), [])
     check("……trace 写「另一来源已给出」", any("另一来源已给出" in s for s in tr.sources), True)
     logs.clear()
     tr = _b.Trace.new()
     day = _b._wuwa_calendar_start(cal_notice, "余心所向九死未悔", now, span[1], None, {}, tr)
     check("没有别的来源：日期 None", day, None)
     check("……是 plain WARNING，报群",
-          ([m for m in logs.loud() if "这条公告只有图，没读到字" in m][:1] != [], logs.recovered()),
-          (True, []))
+          [m for m in logs.warnings() if "这条公告只有图，没读到字" in m][:1] != [], True)
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
@@ -3531,7 +3516,6 @@ def _part_needtable_publish():
         check("the relay has a need-table step (ark_relay.features.needtable)", str(exc), "")
         done()
     from ark_relay.core import engine, statestore as techlog
-    from ark_relay.features import errwatch
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.phone import state_key
     from ark_relay.features.phone import Mailbox
@@ -3546,7 +3530,7 @@ def _part_needtable_publish():
             self.rows = []
 
         def emit(self, record):
-            self.rows.append((record.levelname, record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+            self.rows.append((record.levelname, record.getMessage()))
 
     rec = Records()
     needtable.log.addHandler(rec)
@@ -3629,7 +3613,7 @@ def _part_needtable_publish():
 
     check("建不成返回 False", needtable.refresh(c3, D1, make=broken, cos="COS", put=put_ok), False)
     check("没放（COS 上留着上次那份）", puts, [])
-    check("一条 INFO，带原因，没有 WARNING", [(lv, "cannot pick hers" in m) for lv, m, _ in rec.rows], [("INFO", True)])
+    check("一条 INFO，带原因，没有 WARNING", [(lv, "cannot pick hers" in m) for lv, m in rec.rows], [("INFO", True)])
     check("技术日志一条红项，带原因", [("cannot pick hers" in t) for t in reds(c3)], [True])
     check("30 分钟内不再试", needtable.due(c3.state_dir, T, mins(10)), False)
     check("30 分钟后再试一次", needtable.due(c3.state_dir, T, mins(31)), True)
@@ -3637,10 +3621,10 @@ def _part_needtable_publish():
     print("\n[当天第二次也没建成：当场一条进群的 WARNING]")
     rec.rows.clear()
     check("第二次也建不成", needtable.refresh(c3, mins(31), make=broken, cos="COS", put=put_ok), False)
-    check("一条 INFO 带原因，一条进群的 WARNING（没标自己好了）",
-          [(lv, r) for lv, _, r in rec.rows], [("INFO", False), ("WARNING", False)])
+    check("一条 INFO 带原因，一条进群的 WARNING",
+          [lv for lv, _ in rec.rows], ["INFO", "WARNING"])
     check("WARNING 说连着 2 次、带原因、不带报错堆栈",
-          [("2 次" in m and "cannot pick hers" in m, "Traceback" not in m) for lv, m, _ in rec.rows if lv == "WARNING"],
+          [("2 次" in m and "cannot pick hers" in m, "Traceback" not in m) for lv, m in rec.rows if lv == "WARNING"],
           [(True, True)])
     check("第二条红项", len(reds(c3)), 2)
     check("当天不再到期", needtable.due(c3.state_dir, T, mins(240)), False)
@@ -3648,7 +3632,7 @@ def _part_needtable_publish():
     rec.rows.clear()
     c3b = cfg_with()
     check("放不上返回 False", needtable.refresh(c3b, D1, make=offline, cos="COS", put=lambda *a: "回 403"), False)
-    check("放不上也是 INFO，带原因", [(lv, "回 403" in m) for lv, m, _ in rec.rows], [("INFO", True)])
+    check("放不上也是 INFO，带原因", [(lv, "回 403" in m) for lv, m in rec.rows], [("INFO", True)])
     check("放不上也记红项", [("回 403" in t) for t in reds(c3b)], [True])
 
     def fail_day(c, day, tries=2):
@@ -3656,7 +3640,10 @@ def _part_needtable_publish():
             needtable.refresh(c, mins(31 * i, day), make=broken, cos="COS", put=put_ok)
 
     def warnings():
-        return [(m, recovered) for lv, m, recovered in rec.rows if lv == "WARNING"]
+        return [m for lv, m in rec.rows if lv == "WARNING"]
+
+    def infos():
+        return [m for lv, m in rec.rows if lv == "INFO"]
 
     print("\n[每天两次都没建成：每天都当场进群一条，不等三天、不只报一次]")
     rec.rows.clear()
@@ -3664,43 +3651,44 @@ def _part_needtable_publish():
     fail_day(c5, D1, tries=1)
     check("第一次没成：还没有 WARNING", warnings(), [])
     needtable.refresh(c5, mins(31, D1), make=broken, cos="COS", put=put_ok)
-    check("当天第二次也没成：一条进群的 WARNING", [r for _, r in warnings()], [False])
+    check("当天第二次也没成：一条进群的 WARNING", len(warnings()), 1)
     fail_day(c5, D2)
     fail_day(c5, D3)
-    check("第二天、第三天各一条，都进群", [r for _, r in warnings()], [False, False, False])
+    check("第二天、第三天各一条，都进群", len(warnings()), 3)
 
-    print("\n[失败几天后建成：一条标「自己好了」的 WARNING（只进日报），说漏了几天]")
+    print("\n[失败几天后建成：记 INFO 闭环，说漏了几天（既不进日报也不重复刷群）]")
     rec.rows.clear()
     check("第四天建成", needtable.refresh(c5, D4, make=offline, cos="COS", put=put_ok), True)
-    w = warnings()
-    check("一条 WARNING，标自己好了", [r for _, r in w], [True])
-    check("说漏了 3 天", ["3 天" in m for m, _ in w], [True])
+    check("无多余 WARNING", warnings(), [])
+    check("INFO 说漏了 3 天", any("3 天" in m for m in infos()), True)
     rec.rows.clear()
     needtable.refresh(c5, D5, make=offline, cos="COS", put=put_ok)
     check("再下一天建成：没有 WARNING", warnings(), [])
 
-    print("\n[当天第一次没成、半小时后重试成了：一条标「自己好了」的 WARNING（只进日报）]")
+    print("\n[当天第一次没成、半小时后重试成了：瞬态重试记 INFO（不进日报不刷群）]")
     rec.rows.clear()
     c6 = cfg_with()
     needtable.refresh(c6, D1, make=broken, cos="COS", put=put_ok)
+    rec.rows.clear()
     check("当天重试建成", needtable.refresh(c6, mins(31), make=offline, cos="COS", put=put_ok), True)
-    check("一条标自己好了的 WARNING，说第一次为什么没成、没说漏了几天",
-          [(r, "cannot pick hers" in m, "天没算成" in m) for m, r in warnings()], [(True, True, False)])
+    check("无 WARNING", warnings(), [])
+    check("INFO 说明第一次为什么没成、没说漏了几天",
+          any("cannot pick hers" in m and "天没算成" not in m for m in infos()), True)
 
     print("\n[一天只试了一次（第二次没轮到），第二天第一次又没成：当场进群，不再往后拖]")
     rec.rows.clear()
     c7 = cfg_with()
     fail_day(c7, D1, tries=1)
     fail_day(c7, D2, tries=1)
-    check("两次连着没成：一条进群的 WARNING", [(r, "2 次" in m) for m, r in warnings()], [(False, True)])
+    check("两次连着没成：一条进群的 WARNING", ["2 次" in m for m in warnings()], [True])
     rec.rows.clear()
     needtable.refresh(c7, mins(31, D2), make=broken, cos="COS", put=put_ok)
-    check("当天第二次也没成：照样进群一条，说连着 3 次", [(r, "3 次" in m) for m, r in warnings()], [(False, True)])
+    check("当天第二次也没成：照样进群一条，说连着 3 次", ["3 次" in m for m in warnings()], [True])
     c7b = cfg_with()
     fail_day(c7b, D1)
     rec.rows.clear()
     needtable.refresh(c7b, D2, make=offline, cos="COS", put=put_ok)
-    check("漏了一天后建成：一条自己好了的 WARNING，说 1 天", [(r, "1 天" in m) for m, r in warnings()], [(True, True)])
+    check("漏了一天后建成：无多余 WARNING，INFO 说 1 天", (warnings(), any("1 天" in m for m in infos())), ([], True))
 
     print("\n[没有森空岛令牌：INFO 一句，不建，当天不再试]")
     rec.rows.clear()
@@ -3710,7 +3698,7 @@ def _part_needtable_publish():
     check("没令牌返回 False",
           needtable.refresh(c8, D1, make=lambda: called.append(1) or offline(), cos="COS", put=put_ok), False)
     check("没建、没放", (len(called), len(puts)), (0, 0))
-    check("只是 INFO", {lv for lv, _, _ in rec.rows}, {"INFO"})
+    check("只是 INFO", {lv for lv, _ in rec.rows}, {"INFO"})
     check("当天不再到期", needtable.due(c8.state_dir, T, mins(240)), False)
 
     print("\n[记号写不进去：一天照样最多建两次]")
@@ -3751,7 +3739,7 @@ def _part_needtable_publish():
     c11 = cfg_with()
     c11.cos_secret_id = ""
     check("没 COS", needtable.refresh(c11, D1, make=offline, put=put_ok), False)
-    check("都只是 INFO", {lv for lv, _, _ in rec.rows}, {"INFO"})
+    check("都只是 INFO", {lv for lv, _ in rec.rows}, {"INFO"})
     check("没放", puts, [])
 
     print("\n[并发安全：_run 写 _running['ended'] 受 _lock 互斥保护，同步 start 也不死锁]")

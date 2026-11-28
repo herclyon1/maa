@@ -7,6 +7,10 @@
 门禁清单：
 - G1 (D-1010 关机红线)：AST + 行为实测，严禁引入键鼠空闲检测（GetLastInputInfo/human_idle/user_idle/user32），
   验证排班跑完照常软关机，且系统事件 1075 取消时仅进群报一句。
+- G2 (日报绝对白名单与禁压错红线)：AST 全量封禁 errwatch.recovered / RECOVERED / _note_recovered / _recovered 旁路
+  与 texts.py 盲盒翻译；正向校验 report.py 白名单 Schema 硬拒绝非白名单区块；负向注入卡池崩/采集失败/补跑失败/
+  关卡拦截/瞬态耗尽/账本失败未完未核 6 类异常，验证日报标题与正文 0 字节报错文案且报错通道 100% 收到推送；
+  同步验证 notify.py 写盘异常 fail-closed 留机锁与 texts.py 结构化中文错因输出。
 - G3-Boot (开机去海外依赖)：开机探网路径零海外 GitHub 探针，行为实测仅轮询国内 COS/官服域名。
 - G4 (零硬编码最新版工具闸门)：全仓零 PowerShell 5.1 / 零 wmic / 零 /usr/bin/python3 / 零 PY314 / 零 Python314
   / 零静态版本 floor / 零裸 python3，并在 macOS 动态校验 called_ver == max_installed_ver。
@@ -191,6 +195,373 @@ def _part_g1_d1010_shutdown():
     check("G1 行为: 1075 群报文案简洁且无误导",
           cancel_v.say.startswith("关机被取消") and ("\n" not in cancel_v.say) and ("发消息" not in cancel_v.say),
           True)
+
+
+# ---------------------------------------------------------------------------
+# G2: 日报绝对白名单 + 全仓禁压错（清零 recovered / _recovered）+ 去盲盒 + 留机锁加固
+# ---------------------------------------------------------------------------
+
+_G2_FORBIDDEN_DAILY_WORDS = (
+    "失败", "没读到", "没干完", "没跑成", "没证据", "没走通", "没能开跑",
+    "还是没成", "自己好了", "只进日报", "扣下", "未能读取", "没按你的设置跑",
+    "重试", "不算失败", "报错", "异常", "待核", "❌", "⚠️", "↪️", "↻",
+)
+_G2_BLIND_BOX_TOKENS = ("这种报错中继还不认识", "原话有术语", "自己好了，只进日报", "只进日报")
+
+
+def _g2_ast_scan(root: Path) -> dict[str, list[str]]:
+    """全仓 AST 扫描 relay/（不含 tests/），封禁 errwatch.recovered / RECOVERED / _note_recovered / _recovered 与盲盒文案。"""
+    relay_dir = root / "relay"
+    skip_dirs = {"tests", "fixtures", "__pycache__", "okww_files"}
+    hits: dict[str, list[str]] = {
+        "recovered_call": [],
+        "ark_recovered_const": [],
+        "note_recovered": [],
+        "eng_recovered": [],
+        "errwatch_symbols": [],
+        "blind_box_texts": [],
+    }
+    for cur_dir, dirs, files in os.walk(relay_dir):
+        dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith(".venv")]
+        for fn in sorted(files):
+            if not fn.endswith(".py"):
+                continue
+            py_file = Path(cur_dir) / fn
+            rel = py_file.relative_to(root).as_posix()
+            src = py_file.read_text(encoding="utf-8", errors="replace")
+            try:
+                tree = ast.parse(src, filename=str(py_file))
+            except SyntaxError as exc:
+                hits["recovered_call"].append(f"{rel}: SyntaxError({exc})")
+                continue
+            doc_ids = _docstring_ids(tree)
+            is_errwatch = py_file.name == "errwatch.py"
+            is_texts = py_file.name == "texts.py"
+            _g2_walk_ast(rel, tree, doc_ids, is_errwatch, is_texts, hits)
+    return hits
+
+
+def _g2_walk_ast(rel: str, tree: ast.AST, doc_ids: set[int], is_errwatch: bool,
+                 is_texts: bool, hits: dict[str, list[str]]) -> None:
+    """检查单个 Python 文件的 AST 节点是否残留违禁压错或盲盒符号。"""
+    for node in ast.walk(tree):
+        ln = getattr(node, "lineno", 0)
+        if isinstance(node, ast.Attribute):
+            if node.attr == "recovered":
+                hits["recovered_call"].append(f"{rel}:{ln}: .{node.attr}")
+            elif node.attr == "_note_recovered":
+                hits["note_recovered"].append(f"{rel}:{ln}: .{node.attr}")
+            elif node.attr == "_recovered":
+                hits["eng_recovered"].append(f"{rel}:{ln}: .{node.attr}")
+            elif node.attr == "RECOVERED":
+                hits["errwatch_symbols"].append(f"{rel}:{ln}: .{node.attr}")
+        elif isinstance(node, ast.Name):
+            if node.id == "_note_recovered":
+                hits["note_recovered"].append(f"{rel}:{ln}: {node.id}")
+            elif node.id == "_recovered":
+                hits["eng_recovered"].append(f"{rel}:{ln}: {node.id}")
+            elif is_errwatch and node.id in ("RECOVERED", "recovered"):
+                hits["errwatch_symbols"].append(f"{rel}:{ln}: {node.id}")
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name == "_note_recovered":
+                hits["note_recovered"].append(f"{rel}:{ln}: def {node.name}")
+            elif is_errwatch and node.name == "recovered":
+                hits["errwatch_symbols"].append(f"{rel}:{ln}: def {node.name}")
+        elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in doc_ids:
+            if "ark_recovered" in node.value:
+                hits["ark_recovered_const"].append(f"{rel}:{ln}: {node.value[:60]}")
+            if is_texts and any(tok in node.value for tok in _G2_BLIND_BOX_TOKENS):
+                hits["blind_box_texts"].append(f"{rel}:{ln}: {node.value[:60]}")
+
+
+def _g2_schema_and_negative_behavior(root: Path) -> None:
+    """G2 正向白名单 Schema 校验 + 5 类真实异常注入（卡池崩/采集失败/补跑失败/关卡拦截/瞬态耗尽+账本失败）。"""
+    import logging
+
+    relay_str = str(root / "relay")
+    if relay_str not in sys.path:
+        sys.path.insert(0, relay_str)
+
+    from ark_relay.core import notify
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.ledger import State
+    from ark_relay.features import banners, errwatch, maintenance, makeup, report, stagegate
+
+    # 1. 正向白名单 Schema 门禁：注册表非空，合法区块放行，非白名单区块硬抛出 ValueError
+    check("G2 Schema: DAILY_WHITELIST_SECTIONS 非空", len(report.DAILY_WHITELIST_SECTIONS) >= 5, True)
+    ok_title, ok_render = report.render_daily_whitelisted("📋 11-28 · 全绿 ✅", [
+        ("runs", "✅ 明日方舟　09:00→09:10　10m　东京 10:00→10:10"),
+        ("tomorrow_plan", "明天 09:00 自动执行"),
+    ])
+    check("G2 Schema: 白名单区块正常渲染",
+          ("全绿 ✅" in ok_title and "✅ 明日方舟" in ok_render and "明天 09:00" in ok_render), True)
+    rejected: list[str] = []
+    for bad_key in ("errors", "self_heal", "makeup_failed", "collect_retry", "stagegate"):
+        try:
+            report.render_daily_whitelisted("📋 11-28 · 今日日报", [(bad_key, "异常内容")])
+        except ValueError:
+            rejected.append(bad_key)
+    check("G2 Schema: 非白名单区块全部被硬拒绝", rejected,
+          ["errors", "self_heal", "makeup_failed", "collect_retry", "stagegate"])
+
+    # 2. 负向行为门禁：在隔离目录同时注入 5 类异常 + 账本失败/未完/未核实/未读理智
+    day = "2026-11-28"
+    tmp = tmpdir("iron-g2-")
+    sd = tmp / "state"
+    sd.mkdir()
+    (sd / "collect-retry").mkdir()
+    (sd / "collect-retry" / f"{day}.json").write_text(json.dumps({
+        "run_id": f"{day}/endfield/c1", "routes": ["AutoCollectRoute16"],
+        "passed": [], "failed": ["AutoCollectRoute16"], "unknown": ["AutoCollectRoute17"],
+        "recurrent": ["AutoCollectRoute16"], "blocked_again": True, "note": "还是没通",
+    }, ensure_ascii=False), encoding="utf-8")
+    makeup._write_marker(sd, day, {
+        "MAA": {"result": makeup.FAILED, "run_id": f"{day}/ark/f1", "note": "还是没成"},
+        "MaaEnd": {"result": makeup.NO_RECORD, "run_id": f"{day}/endfield/f2", "note": "超时"},
+    })
+    stagegate._note_due(sd, datetime(2026, 11, 28, 9, 0, tzinfo=SERVER_TZ), "早班", {
+        "verdict": stagegate.NO, "pulled": True, "stage": "YW-4", "why": "还没开到这关", "others": [],
+    })
+
+    check("G2 负向: retry_line / makeup_line / stagegate.report_line 全部返回空串",
+          (report.retry_line(sd, day), report.makeup_line(sd, day), stagegate.report_line(sd, day)),
+          ("", "", ""))
+
+    # 构造带真实 errwatch 捕手的日志监听，核验报错 100% 落入企微告警通道
+    class _AlertSpy(errwatch.ErrorKindAlert):
+        def __init__(self):
+            super().__init__(types.SimpleNamespace(send=lambda *a, **k: []), state_dir=tmp / "ew")
+            self.captured: list[tuple[str, str]] = []
+
+        def _take(self, record):
+            self.captured.append((record.name, record.getMessage()))
+
+    spy = _AlertSpy()
+    ark_root = "ark"
+    ark_logger = logging.getLogger(ark_root)
+    ark_logger.addHandler(spy)
+
+    # 构造带正常成功趟 + 失败趟 + incomplete + 未核实 + 未读理智的混合当日账本
+    entries = [
+        {"run_id": f"{day}/ark/ok1", "script": "MAA", "user": "arknights", "ok": True,
+         "started": f"{day}T09:00:00+08:00", "finished": f"{day}T09:12:00+08:00",
+         "failed_tasks": [], "raw": {"stages": ["1-7"], "run_times": 5, "sanity_spent": 60, "sanity": 10}},
+        {"run_id": f"{day}/ark/fail1", "script": "MAA", "user": "arknights", "ok": False,
+         "started": f"{day}T09:15:00+08:00", "finished": f"{day}T09:17:00+08:00",
+         "failed_tasks": ["基建换班"], "raw": {}},
+        {"run_id": f"{day}/endfield/ok2", "script": "MaaEnd", "user": "endfield", "ok": True,
+         "started": f"{day}T09:20:00+08:00", "finished": f"{day}T09:45:00+08:00",
+         "failed_tasks": [], "incomplete": "MaaEnd 这一轮有 1 项没干成：自动采集没走路线",
+         "raw": {"tasks_done": ["赠送干员礼物", "装备制造", "自动采集"],
+                 "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400"},
+                 "tasks_trail": {"装备制造": {"found": False, "unread": True}},
+                 "maaend_farm": "基质刷取", "maaend_farm_runs": 2, "maaend_sanity_unfit": "没对上"}},
+        {"run_id": f"{day}/wuwa/upd1", "script": "OK-WW", "user": "wuwa", "ok": False, "transitional": True,
+         "started": f"{day}T09:50:00+08:00", "finished": f"{day}T09:51:00+08:00",
+         "failed_tasks": [], "raw": {"okww_restart_dialog": True}},
+    ]
+
+    eng = types.SimpleNamespace(
+        cfg=types.SimpleNamespace(automas_dir=None, history_dir=None, maaend_dir=None,
+                                  skland_token="", state_dir=sd),
+        state=State(sd),
+        _announce_banners=lambda *a, **k: None,
+    )
+
+    real_plan = report.plan
+    real_banners = report.banners
+    real_sleep = notify._sleep
+    real_urlopen = maintenance.urllib.request.urlopen
+    try:
+        # 注入 1a: 卡池 collect 整体崩溃
+        report.plan = types.SimpleNamespace(
+            schedule=lambda _d: [{"name": "早班", "times": ["09:00"]}],
+            next_plan=lambda _d: "明天 09:00 早班",
+            activity_countdown=lambda _d: "",
+        )
+        report.banners = types.SimpleNamespace(
+            collect=lambda *a, **k: (_ for _ in ()).throw(RuntimeError("卡池源连接超时")),
+            image_reader=lambda _sd: None,
+            render=lambda *a, **k: "",
+            Trace=types.SimpleNamespace(new=lambda: None),
+            save_trace=lambda *a, **k: None,
+            update_history=lambda *a, **k: [],
+        )
+        title_crash, body_crash = report._compose_daily(eng, day, entries)
+        bad_hits_crash = [w for w in _G2_FORBIDDEN_DAILY_WORDS if w in (title_crash + body_crash)]
+        check("G2 负向(卡池崩+5类异常): 日报标题与正文 0 字节报错/失败/自愈/没读到词", bad_hits_crash, [])
+        check("G2 负向(卡池崩+5类异常): 日报仍保留正常白名单产出与中性标题",
+              ("今日日报" in title_crash, "全绿" in title_crash,
+               "✅ 明日方舟" in body_crash, "✅ 终末地" in body_crash, "明天 09:00 早班" in body_crash),
+              (True, False, True, True, True))
+
+        # 注入 1b: 单游戏卡池拉取失败 + render 仅出白名单正常行
+        pool_partial = banners.render(
+            [banners.Banner("终末地", "常驻寻访", ("管理员",),
+                            datetime(2026, 11, 20, 4, 0), datetime(2026, 12, 10, 4, 0))],
+            datetime(2026, 11, 28, 22, 0), {},
+            notes={"鸣潮": "时间见官方活动日历"}, failed=["明日方舟", "鸣潮"],
+        )
+        check("G2 负向(单游戏卡池失败): banners.render 仅出正常行，0 失败/取不到词",
+              ("常驻寻访" in pool_partial, any(w in pool_partial for w in ("失败", "取不到", "未能读取", "读不到"))),
+              (True, False))
+
+        # 注入 5: 瞬态重试耗尽（maintenance._get 连续超时耗尽重试）-> 中间重试仅 INFO，耗尽后由 today() 记 WARNING 直达企微群
+        notify._sleep = lambda _s: None
+        real_msleep = maintenance._sleep
+        maintenance._sleep = lambda _s: None
+        tries = []
+
+        def _timeout_open(*_a, **_k):
+            tries.append(1)
+            raise TimeoutError("timed out")
+
+        maintenance.urllib.request.urlopen = _timeout_open
+        failed_maint: list[str] = []
+        try:
+            got_m = maintenance.today(
+                now=datetime(2026, 11, 28, 9, 0, tzinfo=SERVER_TZ),
+                sources={"明日方舟": lambda _n: maintenance._get("https://ak.invalid/bulletin")},
+                failed=failed_maint,
+            )
+        finally:
+            maintenance._sleep = real_msleep
+        check("G2 负向(瞬态耗尽): 重试耗尽后返回空并记入 failed，不抛异常",
+              (got_m, failed_maint, len(tries)), ({}, ["明日方舟"], maintenance.GET_ATTEMPTS))
+    finally:
+        ark_logger.removeHandler(spy)
+        report.plan = real_plan
+        report.banners = real_banners
+        notify._sleep = real_sleep
+        maintenance.urllib.request.urlopen = real_urlopen
+
+    # 校验报错通道 100% 收到卡池崩、未读/未核实/待核告警与瞬态耗尽告警
+    msgs = "\n".join(m for _, m in spy.captured)
+    check("G2 告警通道收到卡池崩溃 WARNING", "卡池那一段整体失败" in msgs, True)
+    check("G2 告警通道收到终末地未核实/未读理智 WARNING",
+          ("没读到游戏内完成证据" in msgs and "理智" in msgs), True)
+    check("G2 告警通道收到瞬态耗尽 WARNING",
+          any("维护公告：明日方舟 官方公告取不到" in m for _, m in spy.captured), True)
+
+
+def _g2_hardening_checks(root: Path) -> None:
+    """G2 配套加固校验：texts.py 结构化人话错因（去盲盒）+ notify.py 写盘异常 fail-closed 留机锁。"""
+    import logging
+
+    relay_str = str(root / "relay")
+    if relay_str not in sys.path:
+        sys.path.insert(0, relay_str)
+
+    from ark_relay.core import engine as eng_mod, notify, texts
+    from ark_relay.core.config import Config, SERVER_TZ
+    from ark_relay.core.ledger import State
+    from ark_relay.features import modes, shutdown as sd
+
+    # 1. texts.py 去盲盒：结构化中文原因 + 关键上下文 + 0 盲盒话术
+    check("G2 去盲盒: RELAY_ERROR_UNREAD 已删除", hasattr(texts, "RELAY_ERROR_UNREAD"), False)
+    r_http = texts.relay_error_body("ark.banners", "公告拉取失败 ｜ HTTP Error 503: Service Unavailable", "09:05:00")
+    r_key = texts.relay_error_body("ark.service", "Traceback: KeyError 'stage'", "09:06:00")
+    r_file = texts.relay_error_body("ark.config", "FileNotFoundError: [Errno 2] 'QueueConfig.json'", "09:07:00")
+    check("G2 去盲盒: HTTP 503 输出状态码且无英文/盲盒",
+          ("状态码 503" in r_http, texts.plain(r_http), "这种报错中继还不认识" in r_http), (True, [], False))
+    check("G2 去盲盒: KeyError 输出直白原因且无盲盒",
+          ("读取数据时缺少必要内容" in r_key, texts.plain(r_key), "这种报错中继还不认识" in r_key), (True, [], False))
+    check("G2 去盲盒: FileNotFoundError 输出原因并保留文件名",
+          ("找不到要用的文件" in r_file, "QueueConfig.json" in r_file, texts.plain(r_file)), (True, True, []))
+
+    # 2. notify.py alarm_hold 落盘异常 fail-closed：必记 ERROR + 置内存级留机锁 + 阻止自动关机
+    tmp = tmpdir("iron-g2-hold-")
+    state_dir = tmp / "state"
+    state_dir.mkdir()
+    automas = tmp / "AUTO-MAS"
+    (automas / "config").mkdir(parents=True)
+    (automas / "config" / "QueueConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "q1"}],
+        "q1": {
+            "Info": {"Name": "Evening-MAA", "TimeEnabled": True, "AfterAccomplish": "NoAction"},
+            "SubConfigsInfo": {
+                "TimeSet": {"t1": {"Info": {"Enabled": True, "Time": "21:30"}}},
+                "QueueItem": {"i1": {"Info": {"ScriptId": "s1"}}},
+            },
+        },
+    }), encoding="utf-8")
+    (automas / "config" / "ScriptConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "s1"}],
+        "s1": {
+            "Info": {"Name": "arknights", "Path": r"D:\MAA"},
+            "SubConfigsInfo": {"UserData": {"u1": {"Info": {"Name": "arknights"}, "Task": {}}}},
+        },
+    }), encoding="utf-8")
+
+    err_lines: list[str] = []
+
+    class _ErrCap(logging.Handler):
+        def emit(self, record):
+            if record.levelno >= logging.ERROR:
+                err_lines.append(record.getMessage())
+
+    cap = _ErrCap()
+    notify.log.addHandler(cap)
+    orig_write = modes.set_alarm_hold
+    orig_blackout = modes.in_preboot_blackout
+    try:
+        modes.set_alarm_hold = lambda *_a, **_k: (_ for _ in ()).throw(PermissionError("disk readonly"))
+        modes.in_preboot_blackout = lambda *_a, **_k: False
+        n = notify.Notifier(types.SimpleNamespace(
+            wecom_bot_url="", wecom_corpid="", wecom_secret="", wecom_agentid=0, wecom_touser="",
+            serverchan_key="", state_dir=state_dir,
+        ))
+        n.note_alarm("模拟报警标题")
+        check("G2 fail-closed: alarm_hold 落盘失败记录了 ERROR 日志",
+              any("故障留机锁写盘失败" in m for m in err_lines), True)
+        mem_info = modes.alarm_hold_info(state_dir)
+        check("G2 fail-closed: 内存级留机锁已生效且保留原因与 memory_only 标记",
+              (bool(mem_info), (mem_info or {}).get("reason"), (mem_info or {}).get("memory_only")),
+              (True, "模拟报警标题", True))
+
+        # 实测 shutdown.decide 在班次时间内必须因内存级留机锁拒绝自动关机（固定 21:35 触发 -> 22:15 判定，避免受真实钟点影响）
+        at = lambda hh, mm: datetime(2026, 11, 28, hh, mm, tzinfo=SERVER_TZ)  # noqa: E731
+        modes.set_memory_alarm_hold(state_dir, "模拟报警标题", now=at(21, 35))
+        os.environ.update(
+            ARK_HISTORY_DIR=str(tmp / "history"), ARK_AUTOMAS_DIR=str(automas),
+            ARK_STATE_DIR=str(state_dir), ARK_SHUTDOWN_AFTER_RUN="1",
+            ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="",
+        )
+        (tmp / "history").mkdir()
+        cfg = Config()
+        e = eng_mod.Engine(cfg, source=None, state=State(state_dir), notifier=notify.Notifier(cfg))
+        e._scripts_running = lambda: False
+        e.state.report_sent = lambda _d: True
+        e._boot_time = lambda _now: at(21, 20)
+        e._handled_any = True
+        e._started_at = at(21, 20)
+        (state_dir / "ledger-2026-11-28.jsonl").write_text(
+            json.dumps({"script": "MAA", "started": at(21, 31).isoformat(),
+                        "finished": at(22, 5).isoformat(), "ok": True, "run_id": "g2-ok"}) + "\n",
+            encoding="utf-8",
+        )
+        verdict = sd.decide(e, at(22, 15))
+        check("G2 fail-closed: 内存留机锁成功阻止自动关机", (verdict.go, verdict.code), (False, "alarm-hold"))
+    finally:
+        modes.set_alarm_hold = orig_write
+        modes.in_preboot_blackout = orig_blackout
+        notify.log.removeHandler(cap)
+        modes.clear_memory_alarm_hold(state_dir)
+
+
+def _part_g2_daily_whitelist_and_no_mute():
+    """G2：核验日报绝对白名单、全仓零 recovered/_recovered 压错旁路、去盲盒翻译与 fail-closed 留机锁。"""
+    root = _gate_root()
+    hits = _g2_ast_scan(root)
+    check("G2 AST: 全 relay/ 零 errwatch.recovered 调用", hits["recovered_call"], [])
+    check("G2 AST: 全 relay/ 零 ark_recovered 常量", hits["ark_recovered_const"], [])
+    check("G2 AST: 全 relay/ 零 _note_recovered 符号", hits["note_recovered"], [])
+    check("G2 AST: 全 relay/ 零 eng._recovered 旁路", hits["eng_recovered"], [])
+    check("G2 AST: errwatch.py 零 RECOVERED/recovered 定义", hits["errwatch_symbols"], [])
+    check("G2 AST: texts.py 零盲盒/只进日报文案", hits["blind_box_texts"], [])
+
+    _g2_schema_and_negative_behavior(root)
+    _g2_hardening_checks(root)
 
 
 # ---------------------------------------------------------------------------
@@ -659,6 +1030,7 @@ def _part_g6_d213_no_crypto_private_repos():
 if __name__ == "__main__":
     sys.exit(run_parts([
         _part_g1_d1010_shutdown,
+        _part_g2_daily_whitelist_and_no_mute,
         _part_g3_boot_no_github,
         _part_g4_zero_hardcode_tool_gate,
         _part_g5_tiered_powercut_guard,

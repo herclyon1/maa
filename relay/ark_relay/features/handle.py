@@ -312,8 +312,7 @@ def _push_before_stop(eng, failed: RunRecord, stop: str) -> list:
 
 
 def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> None:
-    """Settle held alarms tied to runs just booked as manual stops (see backfill_manual_stops):
-    the failure is pushed now instead of waiting for retries a 停一切 ended."""
+    """把被「停一切」截断的暂存失败记录立刻推群（不再存在旧 _recovered 旁路桶）。"""
     def _at(v) -> datetime:
         t = v if isinstance(v, datetime) else datetime.fromisoformat(str(v))
         return t if t.tzinfo else t.replace(tzinfo=SERVER_TZ)
@@ -329,22 +328,6 @@ def _drop_alarms_for_manual(eng, patched: list[dict], entries: list[dict]) -> No
             changed = True
             _push_before_stop(eng, held, stop)
             log.info("⏹ 补记：%s %s 的失败已报群（后面那趟是停一切停掉的）", key[0], held.run_id)
-        healed = eng._recovered.get(key)
-        if healed is None or _at(healed.started) > stop_at:
-            continue
-        # A genuine success between the held failure and the stopped run is what
-        # healed it; that notice stands.
-        cured = any(x is not e and x.get("ok") and not (x.get("raw") or {}).get("manual_stop")
-                    and (x.get("script"), x.get("user")) == key
-                    and _at(healed.started) < _at(x["started"]) < stop_at
-                    for x in entries)
-        if not cured:
-            # The 「success」 that healed it was the stopped run: it was not healed.
-            eng._recovered.pop(key, None)
-            changed = True
-            _push_before_stop(eng, healed, stop)
-            log.info("⏹ 补记：%s %s 不算重试后成功（那次成功是停一切停掉的），失败已报群",
-                     key[0], healed.run_id)
     if changed:
         eng._persist_pending()
 
@@ -1068,8 +1051,7 @@ class _RunWatch(logging.Handler):
             from ark_relay.features import errwatch  # noqa: PLC0415
             self.errors.append({"level": record.levelname, "logger": record.name,
                                 "msg": record.getMessage()[:500],
-                                "pushed": bool(getattr(record, errwatch.PUSHED, False)),
-                                "recovered": bool(getattr(record, errwatch.RECOVERED, False))})
+                                "pushed": bool(getattr(record, errwatch.PUSHED, False))})
         except Exception:  # noqa: BLE001 - a log line must never fail because of this
             pass
 
@@ -1837,11 +1819,7 @@ def machinecheck(eng, ctx: dict) -> None:
 
 
 def retry_unsent(eng) -> None:
-    """Push again what `send` could not deliver (the 「没干完」 path holds no record).
-
-    Persists `pending.json` whenever at least one item goes out, so callers that return
-    early on empty `_pending`/`_recovered` (_flush_pending) do not leave stale unsent
-    entries on disk."""
+    """补发此前推送失败的「没干完」告警；成功发出任意一条即持久化 pending 状态。"""
     pending = list(getattr(eng, "_unsent_unresolved", []) or [])
     if not pending:
         return
@@ -2221,11 +2199,11 @@ def _say_annihilation_short(eng, rec: RunRecord, short: dict) -> None:
 
 
 def _heal_held(eng, rec: RunRecord, key: tuple, held: "RunRecord | None") -> None:
-    """Move a held failure of the same job to `_recovered`, or log a job mismatch."""
+    """处理后续成功落地时与暂存失败记录的配对：同任务当场结算，不同任务保留原失败继续等待。"""
     if _same_job(held, rec):
         _retry_healed(eng, rec, key)
     elif held is not None:
-        log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不算它自己好了，照旧等着报",
+        log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不能抵消，照旧等着报",
                  rec.script, rec.run_id, core.maa_mode(_job(rec)), held.run_id, core.maa_mode(_job(held)))
 
 
@@ -2307,27 +2285,45 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     return
 
 
+def _is_restart_transition(eng, bad: RunRecord, day: str) -> bool:
+    """判断暂存记录是否属于更新后正常重启或中途重启过渡（非真实业务故障）。"""
+    raw = bad.raw or {}
+    if bad.transitional or raw.get("maaend_update_restart"):
+        return True
+    return core.episode_kinds(eng.state.read_ledger(day)).get(bad.run_id) == "update"
+
+
 def _retry_healed(eng, rec: RunRecord, key: tuple) -> None:
-    """A later success means AUTO-MAS got past the held failure on its own. Report
-    it anyway - once for the whole event, not once per failed attempt."""
-    if (bad := eng._pending.pop(key, None)) is not None:
-        eng._recovered[key] = bad
-        eng._persist_pending()
-        log.info("↩️ %s 重试后成功，改为自愈通知", rec.script)
+    """后续重跑成功时立即结算暂存记录（彻底废除 _recovered 自愈压报警旁路）：
+    - 更新后正常重启/中途重启已成：仅记 info（不进日报、不重复刷群）；
+    - 真实业务失败后靠重试/补跑救回：直推企微群说明曾失败需排查，绝不塞进日报。
+    """
+    if (bad := eng._pending.pop(key, None)) is None:
+        return
+    eng._persist_pending()
+    getattr(eng, "log_tails", {}).pop(bad.run_id, None)
+    day = run_day(bad)
+    if _is_restart_transition(eng, bad, day):
+        log.info("↪️ %s 更新/中途重启后重跑成功（原记录 %s，新记录 %s）", rec.script, bad.run_id, rec.run_id)
+        return
+    title = _healed_title(eng, bad, day)
+    why = "、".join(bad.failed_tasks or []) or "未写明具体失败项"
+    tries = _attempts(eng, bad, day)
+    page = (bad.raw or {}).get("evidence_page") or ""
+    body = (f"{bad.script} 这一轮中途失败过（失败项：{why}；共跑 {tries} 次），后续重试/补跑已通过。"
+            + (f"\n证据包：{page}" if page else "")
+            + "\n原故障仍需排查，已交给我们这边查原因。")
+    ew = _errwatch()
+    errs = eng.notifier.send(title, body, alert=True)
+    log.warning("%s（%s，跑了 %d 次）：重试后通过，已报群排查", title, why, tries,
+                extra=ew.alarm(title, body) if errs else ew.group_pushed(title, errs, eng.notifier))
+    _self_heal_red(eng, f"{bad.script} {bad.run_id} {title}", why)
 
 
 def _drop_update_after_done(eng, rec: RunRecord, done: str) -> None:
-    """An update restart whose shift's round (`done`) was already done: no make-up
-    and no push - that round got its work done, so nothing is left broken. The
-    daily report carries it.
-
-    The ledger line stays; the mark on it is what makes the daily report book it
-    as the update (core.episode_kinds: a ↪️ row naming the new build) instead of a
-    failure, since no success follows it there. Not pushed: the user's words for
-    this are in relay/USER-SWITCHES.txt (this function's entry).
-    """
+    """本班已做完后 MaaEnd 装新版自重启：属正常更新重启闭环，仅记 info，不推群、不进日报。"""
     _mark_raw_on_ledger(eng, rec, "maaend_update_after_done", done)
-    log.info("↪️ MaaEnd %s 前面那趟已经做完（%s），这趟是装新版 %s 重启，只进日报（%s）",
+    log.info("↪️ MaaEnd %s 前面那趟已经做完（%s），这趟是装新版 %s 重启（%s）",
              rec.run_id, done, rec.raw.get("maaend_update_restart"), texts.MAAEND_UPDATE_AFTER_DONE)
 
 
@@ -2700,12 +2696,9 @@ def _book(eng, rec: RunRecord) -> None:
             _drop_update_after_done(eng, rec, done)
             return
         if later := _later_success(eng, rec):
-            # Its retry's record landed first: healed already, as _hold_restart does.
-            # The daily report books the pair as the update (core.episode_kinds).
-            log.info("↪️ MaaEnd %s 是装新版 %s 后的自重启，后面那次 %s 已经成功：自己好了", rec.run_id,
+            # 装新版后的正常重启已有后续成功记录接住：属更新重启闭环，仅记 info（绝不进日报）。
+            log.info("↪️ MaaEnd %s 是装新版 %s 后的自重启，后面那次 %s 已经成功", rec.run_id,
                      rec.raw["maaend_update_restart"], later)
-            _self_heal_red(eng, f"{rec.script} {rec.run_id} 装新版 {rec.raw['maaend_update_restart']} 后自重启",
-                           f"后面 {later} 成功")
             return
         _mark_downtime(eng, rec)   # held like _hold_for_retry: marked before it is persisted
         if key not in eng._pending or (eng._pending[key].raw or {}).get("maaend_update_restart"):
@@ -2796,9 +2789,10 @@ def _hold_restart(eng, rec: RunRecord, key: tuple) -> None:
     already - not held, or the next flush would push a final alarm about a script
     that got through."""
     if later := _later_success(eng, rec):
-        log.info("↪️ %s %s 是中途重启（%s），后面那次 %s 已经成功：自己好了，只进日报", rec.script, rec.run_id,
+        # 中途重启后已有后续成功记录接住：属正常过渡闭环，仅记 info（绝不进日报）；
+        # 若无后续成功记录，则保留在 _pending，待耗尽后由 _flush_pending 直推企微群。
+        log.info("↪️ %s %s 是中途重启（%s），后面那次 %s 已经成功", rec.script, rec.run_id,
                  _restart_result(rec), later)
-        _self_heal_red(eng, f"{rec.script} {rec.run_id} 中途重启", f"{_restart_result(rec)}；后面 {later} 成功")
         return
     if key not in eng._pending:
         eng._pending[key] = rec
@@ -2809,38 +2803,14 @@ def _hold_restart(eng, rec: RunRecord, key: tuple) -> None:
 
 @_one_pass
 def _flush_pending(eng) -> None:
-    """Push what is held once its script is done retrying, then settle the
-    machine-check FAILs kept while their run was held (runchecks._settle_held)."""
+    """待脚本重试/补跑结束后结算所有暂存失败记录，并推进上机核对。"""
     try:
         if getattr(eng, "_unsent_unresolved", None):
             retry_unsent(eng)
-        if not (eng._pending or eng._recovered):
+        if not eng._pending:
             return
 
-        # Wait only on the failed script's own retries, never on the rest of the queue.
-        # AUTO-MAS writes a script's records once all its attempts are over, so by the
-        # time one is held here its retries are normally spent; waiting for the whole
-        # queue would hold an alarm behind every script after it.
-        for rec in list(eng._recovered.values()):
-            if eng._script_running(rec.script):
-                continue
-            day = run_day(rec)
-            # Recovered by itself: AUTO-MAS's own retry, the rerun after an update
-            # restart, or the relay's make-up (makeup.py: its success moved the held
-            # failure here) got past it. Not pushed; the daily report says it - the
-            # failed run's row (↻ 「后来在 HH:MM 那趟重试/补跑里做成了」 with its evidence
-            # link, or ↪️ for an update's streak, core.episode_kinds), the run that got
-            # through, and the make-up line (report.makeup_line). The user's words for
-            # this are in relay/USER-SWITCHES.txt (this function's entry). The title
-            # (texts.self_healed / healed_after_update / makeup_passed) only names the
-            # log line.
-            title = _healed_title(eng, rec, day)
-            eng._recovered.pop((rec.script, rec.user), None)
-            eng._persist_pending()   # only now is it safe to forget
-            why = "、".join(rec.failed_tasks or []) or "没写失败项"
-            log.info("%s（%s，跑了 %d 次）：自己好了，只进日报", title, why, _attempts(eng, rec, day))
-            _self_heal_red(eng, f"{rec.script} {rec.run_id} {title}", why)
-
+        # 只等待失败脚本自身重试结束，不等整班队列全部跑完再报错。
         for rec in list(eng._pending.values()):
             if eng._script_running(rec.script):
                 continue
@@ -2901,9 +2871,16 @@ def _flush_pending(eng) -> None:
                     eng._persist_pending()
                     eng.log_tails.pop(rec.run_id, None)
                     passed = texts.makeup_passed(GAME[rec.script], where(eng, rec)[1])
-                    log.info("%s（尝试 %d 次）：补跑走通了，只进日报", passed, attempts)
-                    _self_heal_red(eng, f"{rec.script} {rec.run_id} {passed}",
-                                   "、".join(rec.failed_tasks or []) or "没写失败项")
+                    why = "、".join(rec.failed_tasks or []) or "未写明具体失败项"
+                    page = (rec.raw or {}).get("evidence_page") or ""
+                    body = (f"{GAME[rec.script]} 这一轮原失败于：{why}（共跑 {attempts} 次），后续自动补跑已走通。"
+                            + (f"\n证据包：{page}" if page else "")
+                            + "\n原故障仍需排查，已交给我们这边查原因。")
+                    ew = _errwatch()
+                    errs = eng.notifier.send(passed, body, alert=True)
+                    log.warning("%s（尝试 %d 次）：补跑走通，已报群排查原故障", passed, attempts,
+                                extra=ew.alarm(passed, body) if errs else ew.group_pushed(passed, errs, eng.notifier))
+                    _self_heal_red(eng, f"{rec.script} {rec.run_id} {passed}", why)
                     continue
                 if not _push_unresolved(eng, rec, phrase, attempts):
                     continue  # still on disk, retry next tick

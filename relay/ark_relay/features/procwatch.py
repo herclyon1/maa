@@ -557,11 +557,16 @@ class _ProcessWatch:
             down = time.monotonic() - self.down_since
             fault = self.fault
             if fault is not None and (fault["diag"] or released):
-                from ark_relay.features import errwatch  # noqa: PLC0415
-                self.log.warning("系统的程序启动通知%s %.0f 秒（%s），已经自己%s订上%s\n%s",
-                                 "断过" if fault["live"] else "订不上的情况持续了", down, fault["why"],
-                                 "重新" if fault["live"] else "", "（期间报过群）" if self.alarmed else "",
-                                 fault["diag"], extra=errwatch.recovered() if self.alarmed else None)
+                # 期间已报过群的恢复属事后闭环，改记 info（不重复刷群、不进日报）；
+                # 未报过群的真实断连恢复必须保持 warning 直推企微群暴露故障。
+                if self.alarmed:
+                    self.log.info("系统的程序启动通知%s %.0f 秒（%s），已经自己%s订上（期间报过群）\n%s",
+                                  "断过" if fault["live"] else "订不上的情况持续了", down, fault["why"],
+                                  "重新" if fault["live"] else "", fault["diag"])
+                else:
+                    self.log.warning("系统的程序启动通知%s %.0f 秒（%s），已经自己%s订上\n%s",
+                                     "断过" if fault["live"] else "订不上的情况持续了", down, fault["why"],
+                                     "重新" if fault["live"] else "", fault["diag"])
             else:
                 self.log.info("系统的程序启动通知已重新订上（断了 %.0f 秒），不再每 %d 秒查一次 AUTO-MAS",
                               down, AUTOMAS_CHECK_SECONDS)

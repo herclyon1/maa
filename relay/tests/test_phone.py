@@ -1015,30 +1015,18 @@ def _part_phone_quiet():  # noqa: C901
         def __init__(self):
             super().__init__()
             self.recs: list[tuple[int, str]] = []
-            self.marks: list[tuple[str, bool]] = []
 
         def emit(self, record):
             self.recs.append((record.levelno, record.getMessage()))
-            if record.levelno >= logging.WARNING:
-                self.marks.append((record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
 
         def warnings(self):
             return [m for lv, m in self.recs if lv >= logging.WARNING]
-
-        def loud(self):
-            """WARNING / ERROR records errwatch pushes to the group (not marked recovered)."""
-            return [m for m, rec in self.marks if not rec]
-
-        def recovered(self):
-            """WARNINGs marked recovered: the daily report only."""
-            return [m for m, rec in self.marks if rec]
 
         def infos(self, word):
             return [m for lv, m in self.recs if lv == logging.INFO and word in m]
 
         def clear(self):
             self.recs.clear()
-            self.marks.clear()
 
     class Pushes:
         def __init__(self):
@@ -1076,21 +1064,14 @@ def _part_phone_quiet():  # noqa: C901
     def daily():
         return errwatch.daily_section(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
 
-    def recovered_ok(word):
-        """One recovered WARNING containing `word`, its first line plain (the daily report
-    quotes it), nothing new pushed, and the day's report rows holding it as recovered
-    (texts.relay_faults_section prints those rows tagged 自己好了，只进日报)."""
-        rec = [m for m in logs.recovered() if word in m]
+    def warned_ok(word):
+        """One plain WARNING containing `word`, plain first line, pushed straight to group (never daily-only)."""
+        rec = [m for m in logs.warnings() if word in m]
         first = rec[0].splitlines()[0] if rec else ""
-        # Earlier plain WARNINGs may still be on their way to the group: count from after
-        # them. Had this record been queued instead, settled() pushes it too and errwatch
-        # counts that push on its day row, which is read below with the queue empty.
-        before = settled()
-        # errwatch writes the day row on the logging thread (_note_recovered, atomic write).
+        settled()
         rows = errwatch.day_faults(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
         row = next((r for r in rows if r.get("line") == first[:200]), {}) if rec else {}
-        new_pushes = len(pushed()) - before + int(row.get("pushed") or 0)
-        return (len(rec), texts.plain(first), new_pushes, bool(row.get("recovered")))
+        return (len(rec), texts.plain(first), int(row.get("pushed") or 0) >= 1, bool(row.get("recovered")))
 
     logs = Logs()
     phone.log.addHandler(logs)
@@ -1155,27 +1136,24 @@ def _part_phone_quiet():  # noqa: C901
                       TimeoutError("The read operation timed out"))
         use(net)
         check("COS 存上了、ntfy 通知超时两次：手机读得到，算送到了", mb.publish(BIG), True)
-        check("……nothing for the group", logs.loud(), [])
-        check("……one recovered WARNING: the notice missed ntfy, COS carried the state (daily only)",
-              recovered_ok("没发到手机信箱，状态已存到腾讯云"), (1, [], 0, True))
-        check("……the daily report prints it tagged 「自己好了，只进日报」",
-              "状态的通知没发到手机信箱" in daily() and "自己好了，只进日报" in daily(), True)
+        check("……主通道异常直推群（绝不标只进日报）",
+              warned_ok("没发到手机信箱，状态已存到腾讯云"), (1, [], True, False))
+        check("……技术日志标已报群、绝不标自己好了只进日报",
+              "状态的通知没发到手机信箱" in daily() and "自己好了，只进日报" not in daily(), True)
         logs.clear()
         mb = mailbox(cos=COS)
         use(FakeNet(*[urllib.error.HTTPError("https://cos", 503, "busy", {}, None)] * DOWN, FakeResp()))
         check("COS 一直回 503、ntfy 发到了：算送到了", mb.publish({"at": 1}), True)
-        check("……nothing for the group", logs.loud(), [])
-        check("……one recovered WARNING: COS refused, ntfy carried it (daily only)",
-              recovered_ok("状态没存上腾讯云，这一份改走手机信箱发到了"), (1, [], 0, True))
+        check("……COS 拒收改走信箱属于真实故障，直推群",
+              warned_ok("状态没存上腾讯云，这一份改走手机信箱发到了"), (1, [], True, False))
         logs.clear()
         mb = mailbox(cos=COS)
         net = FakeNet(urllib.error.HTTPError("https://cos", 503, "busy", {}, None), FakeResp(), FakeResp())
         use(net)
         check("COS 回一次 503、再写一次存上了：算送到了", mb.publish({"at": 1}), True)
         check("……两次 PUT，存上了就只发一条 ntfy 通知", [m for _, m, _ in net.sent], ["PUT", "PUT", "POST"])
-        check("……nothing for the group", logs.loud(), [])
-        check("……one recovered WARNING: written on the second try (daily only)",
-              recovered_ok("第一次没成，第 2 次成了"), (1, [], 0, True))
+        check("……瞬态重试记 INFO，无 WARNING",
+              (logs.warnings(), bool(logs.infos("第一次没成，第 2 次成了"))), ([], True))
         logs.clear()
         d = tmpdir()
         mb = mailbox(cos=COS, state_dir=d)
@@ -1212,9 +1190,8 @@ def _part_phone_quiet():  # noqa: C901
         check("42901（请求太密）：等一会儿再试一次就送到", mb.publish({"at": 1}), True)
         check("……一共两次请求", len(net.sent), 2)
         check("……按 Retry-After 等了 7 秒", mb.slept, [7])
-        check("……the retry got it through: one recovered WARNING, daily only, nothing pushed",
-              recovered_ok("发到手机信箱第一次没成"), (1, [], 0, True))
-        check("……nothing for the group", logs.loud(), [])
+        check("……瞬态重试记 INFO，无 WARNING",
+              (logs.warnings(), bool(logs.infos("发到手机信箱第一次没成"))), ([], True))
         mb = mailbox()
         net = FakeNet(ntfy_error(502), FakeResp())
         use(net)
@@ -1235,8 +1212,8 @@ def _part_phone_quiet():  # noqa: C901
         net = FakeNet(FakeResp(), ntfy_error(502), FakeResp(), FakeResp(), FakeResp())
         use(net)
         check("第 2 片碰上一次 502：这一片重试，整份送到", mb.publish(BIG), True)
-        check("……the piece's retry worked: one recovered WARNING, nothing for the group",
-              (len(logs.recovered()), logs.loud()), (1, []))
+        check("……切片瞬态重试记 INFO，无 WARNING",
+              (logs.warnings(), bool(logs.infos("发到手机信箱第一次没成"))), ([], True))
         pieces = [json.loads(b) for _, b in net.posts()]
         check("……四片都到了 ntfy（同一个 sid，序号 0-3 各一次）",
               (len({p["sid"] for p in pieces}), sorted({p["i"] for p in pieces})), (1, [0, 1, 2, 3]))
@@ -1273,11 +1250,10 @@ def _part_phone_quiet():  # noqa: C901
         check("……补读的那条走开机积压那条路（on_backlog），不当成在线按的", [b.get("action") for b in live], ["debug_mode"])
         check("……先补读、再订阅", ("poll=1" in net.sent[0][0], "poll=1" in net.sent[1][0]), (True, False))
         check("……补读完就不再补", mb.backlog_missed, False)
-        check("……the late read: one recovered WARNING with the boot read's reason, daily only",
-              recovered_ok("开机时没读到手机信箱"), (1, [], 0, True))
+        check("……开机读信箱超时补读：真实异常直推群（绝不压进日报）",
+              warned_ok("开机时没读到手机信箱"), (1, [], True, False))
         check("……that line carries why the boot read failed",
-              any("timed out" in m for m in logs.recovered() if "开机时没读到" in m), True)
-        check("……nothing for the group", logs.loud(), [])
+              any("timed out" in m for m in logs.warnings() if "开机时没读到" in m), True)
 
     class Idle(FakeResp):
         """An open stream that times out reading after its lines (ntfy sent nothing more)."""
@@ -1299,12 +1275,11 @@ def _part_phone_quiet():  # noqa: C901
                       TimeoutError("again"))
         use(net)
         mb.listen(lambda b: None, lambda: len(net.sent) >= 6)
-        check("连不上、502、对方重置，几秒内又连上：nothing for the group (#45 #49 #57)", logs.loud(), [])
         check("……每次断开记一行 INFO", len(logs.infos("手机通道断了")), 3)
         check("……重连从读到的最后一行接着要（不是固定的 10 分钟）",
               [u.split("since=")[1] for u, _, _ in net.sent[1:4]], [str(t + 45 - 30)] * 3)
-        check("……reconnected: one recovered WARNING saying how long, daily only",
-              recovered_ok("手机通道断过"), (1, [], 0, True))
+        check("……真实断线重连后记一条 WARNING 直推群",
+              warned_ok("手机通道断过"), (1, [], True, False))
         logs.clear()
         mb = mailbox()
         net = FakeNet(Idle(ntfy_lines({"id": "o", "time": t, "event": "open"})),
@@ -1322,11 +1297,11 @@ def _part_phone_quiet():  # noqa: C901
         use(net)
         before = settled()
         mb.listen(lambda b: None, lambda: len(net.sent) >= 4)
-        check("一直连不上到时限：一次断线只记一条 WARNING for the group", len(logs.loud()), 1)
-        check("……说清连不上多久、手机发的指令到不了", "手机通道连不上 ntfy" in (logs.loud() or [""])[0], True)
+        check("一直连不上到时限：一次断线只记一条 WARNING for the group", len(logs.warnings()), 1)
+        check("……说清连不上多久、手机发的指令到不了", "手机通道连不上 ntfy" in (logs.warnings() or [""])[0], True)
         check("……it reached the group", len(pushed(before + 1)) - before, 1)
-        check("……back at last: one recovered WARNING that says it was pushed meanwhile",
-              [("期间报过群" in m) for m in logs.recovered()], [True])
+        check("……期间已报过群，恢复行改记 INFO 闭环（不重复刷群、不进日报）",
+              bool(logs.infos("期间报过群")), True)
 
     def h_cos_beat_info():
         logs.clear()
@@ -1341,9 +1316,8 @@ def _part_phone_quiet():  # noqa: C901
         check("……记一行 INFO", bool(logs.infos("腾讯云 COS")), True)
         use(FakeNet())
         check("the next COS beat works", hb.cos_beat(), True)
-        check("……one recovered WARNING: written again, daily only",
-              recovered_ok("心跳又写得进腾讯云了"), (1, [], 0, True))
-        check("……nothing for the group", logs.loud(), [])
+        check("……瞬态心跳重试恢复记 INFO，无 WARNING",
+              (logs.warnings(), bool(logs.infos("心跳又写得进腾讯云了"))), ([], True))
         logs.clear()
         hb2 = phone.Heartbeat(TOPIC, tmpdir(), post=lambda p, t: None, cos=COS)
         use(FakeNet(*[urllib.error.URLError("timed out")] * 3))
@@ -1352,14 +1326,14 @@ def _part_phone_quiet():  # noqa: C901
         before = settled()
         hb2.cos_beat()
         hb2.cos_beat()
-        check("still failing 10 minutes on: one WARNING for the group", len(logs.loud()), 1)
+        check("still failing 10 minutes on: one WARNING for the group", len(logs.warnings()), 1)
         check("……it says since when and that the App reads an old beat",
-              "一直写不进腾讯云" in (logs.loud() or [""])[0], True)
+              "一直写不进腾讯云" in (logs.warnings() or [""])[0], True)
         check("……it reached the group", len(pushed(before + 1)) - before, 1)
         use(FakeNet())
         hb2.cos_beat()
-        check("……back at last: one recovered WARNING that says it was pushed meanwhile",
-              [("期间报过群" in m) for m in logs.recovered()], [True])
+        check("……期间已报过群，恢复记 INFO 闭环（不重复刷群、不进日报）",
+              (len(logs.warnings()), bool(logs.infos("期间报过群"))), (1, True))
 
     def i_ntfy_count():
         logs.clear()
@@ -3895,12 +3869,13 @@ def _part_test_windows():
     q4, t4 = core.split_test(entries, [{"since": "2026-09-14T12:50:00+08:00", "until": None}])
     check("12:50 以后的全收起", len(t4), 6)
 
-    print("\n[日报只列正常的，测试那几趟不成行]")
+    print("\n[日报只列正常的，测试那几趟不成行；失败行按日报白名单也不进日报]")
     title, body = core.format_daily("2026-09-14", queue)
-    check("没有 12:57 那趟", "12:58→13:03" in body, False)
+    check("没有测试窗口里的 13:44 那趟", "13:44→13:47" in body, False)
     check("早班的终末地还在", "终末地" in body, True)
     t_all, b_all = core.format_daily("2026-09-14", entries)
-    check("不标记的话它们本来会出现", "12:58→13:03" in b_all, True)
+    check("不标记的话测试窗口里的成功趟（13:44）会出现", "13:44→13:47" in b_all, True)
+    check("失败趟（12:58）无论标不标窗口都不进日报", "12:58→13:03" in b_all, False)
 
     print("\n[AUTO-MAS 自己没拉起模拟器的那一秒不成行（10:51 那条）]")
     check("旧记录里 transitional 还是 False", next(e for e in entries if e["run_id"].endswith("06-51-56"))["transitional"], False)
@@ -4029,13 +4004,13 @@ rest on the mailbox's heartbeat alone).
         def __init__(self):
             super().__init__()
             self.lines: list[str] = []
-            self.recovered: list[bool] = []
+            self.warns: list[str] = []
 
         def emit(self, record):
             if record.levelno >= logging.INFO:
                 self.lines.append(record.getMessage())
             if record.levelno >= logging.WARNING:
-                self.recovered.append(bool(getattr(record, "ark_recovered", False)))
+                self.warns.append(record.getMessage())
 
 
     logs = Logs()
@@ -4102,11 +4077,11 @@ rest on the mailbox's heartbeat alone).
     check("COS 回 403 也不抛", flaky.cos_beat(), False)
     net.fail = None
     logs.lines.clear()
-    logs.recovered.clear()
+    logs.warns.clear()
     check("恢复后写得进", flaky.cos_beat(), True)
-    check("恢复记一行", [l.splitlines()[0].split("（")[0] for l in logs.lines if "腾讯云" in l],
+    check("恢复记一行 INFO", [l.splitlines()[0].split("（")[0] for l in logs.lines if "腾讯云" in l],
           ["心跳又写得进腾讯云了"])
-    check("……marked recovered (not pushed)", logs.recovered, [True])
+    check("……瞬态恢复无 WARNING", logs.warns, [])
     check("……the first reason on its second line", "网断了" in (logs.lines or [""])[-1], True)
 
     print("\n[停服务：ntfy 发 bye 之后，COS 写一次带 bye 的]")
@@ -4760,19 +4735,23 @@ def _part_inbox_poll():
         inbox._fetch = _real_fetch
 
     import logging
-    from ark_relay.features import errwatch
 
     class _Lines(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
             self.got = []
+            self.infos = []
 
         def emit(self, record):
             if record.levelno >= logging.WARNING:
-                self.got.append((record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+                self.got.append(record.getMessage())
+            elif record.levelno == logging.INFO:
+                self.infos.append(record.getMessage())
 
     _lines = _Lines()
     inbox._log_inbox.addHandler(_lines)
+    old_inbox_lvl = inbox._log_inbox.level
+    inbox._log_inbox.setLevel(logging.DEBUG)
     _real_once, _real_sleep = inbox._fetch_once, inbox.time.sleep
     inbox.time.sleep = lambda s: None
     _answers: list = []
@@ -4783,7 +4762,7 @@ def _part_inbox_poll():
             errors.append(f"{inbox._netloc(url)}: timed out")
         return got
 
-    print("\n[a round with no door answering, then a later round got it: daily report only]")
+    print("\n[a round with no door answering, then a later round got it: transient retry at INFO]")
     inbox._fetch_once = _fake_once
     _real_cos_client = inbox._cos_client
     inbox._cos_client = lambda: None     # GitHub doors only in this section
@@ -4791,16 +4770,17 @@ def _part_inbox_poll():
         doors = len(inbox._alternates(inbox.DEFAULT_URL))
         _answers[:] = [None] * doors + [{"version": 7, "commands": []}] + [None] * (doors - 1)
         _lines.got.clear()
+        _lines.infos.clear()
         got = inbox._fetch(inbox.DEFAULT_URL)
         check("round 1 no door, round 2 got it", (got or {}).get("version"), 7)
-        check("one WARNING, marked recovered (daily report only)", [r for _, r in _lines.got], [True])
+        check("no WARNING for transient retry; recorded at INFO", _lines.got, [])
         check("it says which round got it, plain first line",
-              [m.splitlines()[0] for m, _ in _lines.got], ["待办文件前 1 轮一扇门都没取到，第 2 轮取到了"])
+              [m.splitlines()[0] for m in _lines.infos if "待办文件前" in m], ["待办文件前 1 轮一扇门都没取到，第 2 轮取到了"])
         _answers[:] = []
         _lines.got.clear()
         check("every round fails: None", inbox._fetch(inbox.DEFAULT_URL), None)
-        check("a plain WARNING (pushed), nothing marked recovered",
-              [("一扇门都没取到（试了" in m, r) for m, r in _lines.got], [(True, False)])
+        check("a plain WARNING (pushed)",
+              [("一扇门都没取到（试了" in m) for m in _lines.got], [True])
         _answers[:] = [{"version": 8, "commands": []}] + [None] * (doors - 1)
         _lines.got.clear()
         inbox._fetch(inbox.DEFAULT_URL)
@@ -4809,6 +4789,7 @@ def _part_inbox_poll():
         inbox._fetch_once, inbox.time.sleep = _real_once, _real_sleep
         inbox._cos_client = _real_cos_client
         inbox._log_inbox.removeHandler(_lines)
+        inbox._log_inbox.setLevel(old_inbox_lvl)
 
     class _FakeCos:
         prefix = "relay"
@@ -4853,7 +4834,7 @@ def _part_inbox_poll():
         _gh_answer[:] = [None]
         _lines.got.clear()
         check("COS and every GitHub door down: None", inbox._fetch(inbox.DEFAULT_URL), None)
-        check("the WARNING names the COS door too", any("cos: timed out" in m for m, _ in _lines.got), True)
+        check("the WARNING names the COS door too", any("cos: timed out" in m for m in _lines.got), True)
         inbox._cos_client = lambda: None
         _gh_answer[:], _order[:] = [{"version": 11, "commands": []}], []
         inbox._fetch(inbox.DEFAULT_URL)

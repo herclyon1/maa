@@ -697,8 +697,8 @@ def maintenance_lines(day) -> list[str]:
     lines = [f"⚠️ {game} {when(start)} {start.astimezone(USER_TZ):%H:%M}–{end.astimezone(USER_TZ):%H:%M} 停服维护："
              f"这一班先跳过它，跑完就更新它，{end.astimezone(USER_TZ):%H:%M} 开服后单独补跑"
              for game, (start, end, _why) in wins.items()]
-    return lines + [f"⚠️ {game} 明天的停服维护公告这次没读到：不知道有没有维护，这一班照常排"
-                    for game in dict.fromkeys(unread) if game not in wins]
+    # 日报严格白名单：未读到维护公告的游戏绝不往日报塞「公告没读到」警告（拉取失败已由 maintenance.today 直推企微群）。
+    return lines
 
 
 # The annihilation field's values are an English enum (Annihilation /

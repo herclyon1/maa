@@ -303,8 +303,8 @@ def _part_maintenance_main():
 
     M.today = _unread
     lines = P.maintenance_lines(date(2026, 9, 4))
-    check("公告没读到的游戏单独一行，不当成没有维护",
-          [ln for ln in lines if "没读到" in ln], ["⚠️ 终末地 明天的停服维护公告这次没读到：不知道有没有维护，这一班照常排"])
+    check("白名单日报省略未读到的维护公告，不塞「没读到」警告",
+          [ln for ln in lines if "没读到" in ln], [])
     check("读到的维护照旧一行", sum("停服维护：" in ln for ln in lines), 1)
     M.today = _real_today
 
@@ -334,7 +334,7 @@ def _part_maintenance_cache():  # noqa: C901
             self.recs.append((record.levelno, record.getMessage()))
             self.marked = getattr(self, "marked", [])
             if record.levelno >= logging.WARNING:
-                self.marked.append(bool(getattr(record, errwatch.RECOVERED, False)))
+                self.marked.append(False)
 
         def warnings(self):
             return [m for lv, m in self.recs if lv >= logging.WARNING]
@@ -411,13 +411,14 @@ def _part_maintenance_cache():  # noqa: C901
         check("第一次超时、第二次读到", M._get("https://ak.hypergryph.com/news"), "公告")
         check("……一共问了两次", len(calls), 2)
         check("……中间停了一下", slept, [getattr(M, "GET_PAUSE", None)])
-        check("recovered on the retry: one WARNING, marked recovered", logs.marked, [True])
-        check("... in plain words, the URL and the first failure on the second line",
-              (logs.warnings() or [""])[0].splitlines()[0], "停服维护公告的官网第一次没响应，3 秒后再取一次，取到了")
+        check("transient retry succeeded: logged INFO only (not WARNING, not daily report)",
+              (logs.warnings(), any(lv == logging.INFO and m.startswith("停服维护公告的官网第一次没响应")
+                                    for lv, m in logs.recs)),
+              ([], True))
         check("... not pushed", pushed(), [])
         section = errwatch.daily_section(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-        check("... in the daily report, tagged 「自己好了，只进日报」",
-              ("停服维护公告的官网第一次没响应" in section, "自己好了，只进日报" in section), (True, True))
+        check("... not in errkinds / daily report",
+              ("停服维护公告的官网第一次没响应" in section, "只进日报" in section), (False, False))
         logs.recs.clear()
         logs.marked = []
         calls = net(urllib.error.HTTPError("https://x", 404, "nf", {}, None))
@@ -433,8 +434,9 @@ def _part_maintenance_cache():  # noqa: C901
         slept.clear()
         calls = net(urllib.error.HTTPError("https://x", 503, "busy", {}, None), "公告".encode())
         check("网关 503：停一下再试一次，取到了", (M._get("https://x"), len(calls), slept), ("公告", 2, [M.GET_PAUSE]))
-        check("……只进日报（标自己好了），第二行写着回了 503",
-              (logs.marked, "回了 503" in (logs.warnings() or [""])[0]), ([True], True))
+        check("……瞬态 503 重试成功仅记 INFO，第二行写着回了 503",
+              (logs.warnings(), any(lv == logging.INFO and "回了 503" in m for lv, m in logs.recs)),
+              ([], True))
         calls = net(urllib.error.HTTPError("https://x", 503, "busy", {}, None),
                     urllib.error.HTTPError("https://x", 503, "busy", {}, None))
         try:
@@ -692,7 +694,6 @@ def _part_cdn_ip_rotation():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import notify as N
     from ark_relay.features import banners as B
-    from ark_relay.features import errwatch
     from ark_relay.features import maintenance as M
 
     seen_hosts: list[str] = []
@@ -765,7 +766,7 @@ def _part_cdn_ip_rotation():
             self.recs: list[tuple[int, str, bool]] = []
 
         def emit(self, record):
-            self.recs.append((record.levelno, record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+            self.recs.append((record.levelno, record.getMessage(), False))
 
     logs = Logs()
     M.log.addHandler(logs)
@@ -792,10 +793,9 @@ def _part_cdn_ip_rotation():
         got = M._get(url)
         check("recovered via healthy 2nd IP", '"healthy"' in got, True)
         check("rotated from hostname to 2nd IP", targets, ["fake-cdn.invalid", "203.0.113.9"])
-        warns = [(m, rec) for lv, m, rec in logs.recs if lv >= logging.WARNING]
-        check("single recovered WARNING matching #50",
-              (len(warns), warns[0][0].startswith("停服维护公告的官网第一次没响应"), warns[0][1]),
-              (1, True, True))
+        warns = [m for lv, m, _ in logs.recs if lv >= logging.WARNING]
+        infos = [m for lv, m, _ in logs.recs if lv == logging.INFO and m.startswith("停服维护公告的官网第一次没响应")]
+        check("single transient retry logs INFO only (zero WARNING)", (len(warns), len(infos)), (0, 1))
 
         print("[3. maintenance._get rotates across 3 IPs when 2 nodes are broken simultaneously]")
         dns_map[url] = ["203.0.113.1", "203.0.113.2", "203.0.113.9"]

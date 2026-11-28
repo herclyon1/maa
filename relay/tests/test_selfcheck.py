@@ -313,8 +313,11 @@ def _part_mc_phone_banners():  # noqa: C901
     check("#67 11-05 到 11-08 那样（官方在开、日报写没有）：不过，推群",
           (row.get("status"), "烟火邀星河" in str(row.get("evidence")), "当期无新角色卡池" in str(row.get("evidence")),
            len(n.failed("#67"))), (FAIL, True, True, 1))
-    v = judged(tmpdir(), "banners", {"trace": tr, "text": SECTION.format(ef="· 这次没读到（没有森空岛令牌），不是没有卡池"), "now": feb})
-    check("#67 那一游戏按没读到报：不算漏（没读到自己会报）", (status(v, "#67"), "按没读到报" in ev(v, "#67")), (PASS, True))
+    omitted_ef = ("🎴 卡池（时间为北京时间）\n明日方舟\n· 当期无新角色卡池\n· 下期：官方未公告\n鸣潮\n· 当期无新角色卡池\n"
+                  "· 下期：官方未公告")
+    v = judged(tmpdir(), "banners", {"trace": tr, "text": omitted_ef, "now": feb})
+    check("#67 未读到该游戏时日报严格省略整块：不算漏（不写无新角色卡池）",
+          (status(v, "#67"), "未读到已省略" in ev(v, "#67")), (PASS, True))
     check("#67 官方没有在开的：不判", status(judged(tmpdir(), "banners", {"trace": _b.Trace.new(), "text": shown, "now": feb}), "#67"), None)
 
     tr = _b.Trace.new()
@@ -669,9 +672,10 @@ def _part_mc_phone_banners():  # noqa: C901
     w.close()
     row = mc.read(d).get("#39") or {}
     check("三份都送到：过", row.get("status"), PASS)
-    check("依据：次数、走哪条、自己好了的那条只进日报",
-          ("上报状态 3 次，送到 3 次（腾讯云 3）" in str(row.get("evidence")), "只进了日报" in str(row.get("evidence"))),
-          (True, True))
+    check("依据：次数、走哪条、COS 拒收改走信箱那条照常进群（绝不标只进日报）",
+          ("上报状态 3 次，送到 3 次（腾讯云 3）" in str(row.get("evidence")),
+           "都进了群" in str(row.get("evidence")), "只进了日报" not in str(row.get("evidence"))),
+          (True, True, True))
     push("关机前")                                      # the machine stayed on: the next shift starts afresh
     check("下一班重新数", "上报状态 1 次，送到 1 次" in str((mc.read(d).get("#39") or {}).get("evidence")), True)
     d, n = tmpdir(), N()
@@ -752,9 +756,10 @@ def _part_mc_phone_banners():  # noqa: C901
     v = judged(d, "phone_state", {"why": "关机前", "tally": {"since": t0}, "mailbox": box.report()})
     w.close()
     check("补读到了：过", status(v, "#41"), PASS)
-    check("依据：开机那次的原因、补读到几条、只进日报",
-          ("TimeoutError: timed out" in ev(v, "#41"), "补读到 1 条" in ev(v, "#41"), "只进了日报" in ev(v, "#41")),
-          (True, True, True))
+    check("依据：开机那次的原因、补读到几条、告警直推群（绝不标只进日报）",
+          ("TimeoutError: timed out" in ev(v, "#41"), "补读到 1 条" in ev(v, "#41"),
+           "都进了群" in ev(v, "#41"), "只进了日报" not in ev(v, "#41")),
+          (True, True, True, True))
     check("那条指令照样交出去了", got_cmds, [{"action": "skip_shutdown", "on": True}])
     d = tmpdir()
     box = phone.Mailbox("topic-x", "8964", d)
@@ -808,7 +813,8 @@ def _part_mc_phone_banners():  # noqa: C901
     v = judged(d, "phone_state", {"why": "关机前", "tally": {"since": t0}, "mailbox": box.report()})
     w.close()
     check("断了一次自己连上：过", status(v, "#45"), PASS)
-    check("依据：哪一次、什么原因、只进日报", ("10054" in ev(v, "#45"), "只进了日报" in ev(v, "#45")), (True, True))
+    check("依据：哪一次、什么原因、断线告警直推群（绝不标只进日报）",
+          ("10054" in ev(v, "#45"), "都进了群" in ev(v, "#45"), "只进了日报" not in ev(v, "#45")), (True, True, True))
     d = tmpdir()
     w = Watch(d)
     phone.log.warning("手机通道断了，5 秒后重连")         # the 10-06 sweep's line
@@ -858,7 +864,8 @@ def _part_mc_phone_banners():  # noqa: C901
         w.settle()
         v = judged(d, "phone_state", {"why": "关机前", "tally": {"since": t0, "n": 2}, "maintenance": maintenance.stats()})
         check("两次上报只真取了一次、重试取到：过", status(v, "#50"), PASS)
-        check("依据：真去取的次数、只进日报", ("明日方舟 1 次" in ev(v, "#50"), "只进了日报" in ev(v, "#50")), (True, True))
+        check("依据：真去取的次数、瞬态重试不标只进日报",
+              ("明日方舟 1 次" in ev(v, "#50"), "只进了日报" not in ev(v, "#50")), (True, True))
 
         def down_site(now):
             raise TimeoutError("timed out")
@@ -871,7 +878,7 @@ def _part_mc_phone_banners():  # noqa: C901
         v = judged(d, "phone_state", {"why": "关机前", "tally": {"since": t0, "n": 1}, "maintenance": maintenance.stats()},
                    n)
         check("终末地取不到：没过", (status(v, "#50"), "终末地最近一次" in ev(v, "#50")), (FAIL, True))
-        check("那条报错进了群（报警抄件里有）", "没好的 1 次都进了群" in ev(v, "#50"), True)
+        check("那条报错进了群（报警抄件里有）", "报错 1 次都进了群" in ev(v, "#50"), True)
         check("没过推群", len(n.failed("#50")), 1)
     finally:
         maintenance.SOURCES, maintenance._sleep, maintenance.urllib.request.urlopen = saved_m
@@ -894,7 +901,8 @@ def _part_mc_phone_banners():  # noqa: C901
         hb.cos_beat()
         w.settle()
         v = judged(d, "phone_state", {"why": "关机前", "tally": {"since": t0}, "heartbeat": hb.cos_report()})
-        check("一跳没写上、下一跳好了：过", (status(v, "#56"), "写上 1 次" in ev(v, "#56"), "只进了日报" in ev(v, "#56")),
+        check("一跳没写上、下一跳好了：过（瞬态重试记 INFO，绝不标只进日报）",
+              (status(v, "#56"), "写上 1 次" in ev(v, "#56"), "只进了日报" not in ev(v, "#56")),
               (PASS, True, True))
         same = {"since": time.time(), "base": {"heartbeat": hb.cos_report()}}
         check("机器没关、下一班一跳都没写：不判（按上一班末的数算）",
@@ -1952,19 +1960,14 @@ def _part_mc_system():  # noqa: C901
     errkinds(sd, WMI, recovered=False)
     got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
     check("没报群也没记成自己好了 → 没过", (got["#59"].status, "没进群" in got["#59"].evidence), (mc.FAIL, True))
-    held = EVENING[:3] + [logline("10-06 21:25:00", WMI_HELD, level="WARNING", more=[DIAG])] + EVENING[3:]
-    sd, f = write_log(held + BOOT_NOW)
-    errkinds(sd, WMI_HELD)
+    held_info = EVENING[:3] + [logline("10-06 21:25:00", WMI_HELD, level="INFO", more=[DIAG])] + EVENING[3:]
+    sd, f = write_log(held_info + BOOT_NOW)
     got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
-    check("期间已报过群、这一行记成自己好了、不再报 → 过了", got["#59"].status, mc.PASS)
-    sd, f = write_log(held + BOOT_NOW)
-    errkinds(sd, WMI_HELD)
-    (sd / "alerts").mkdir()
-    (sd / "alerts" / "20261006.jsonl").write_text(json.dumps(
-        {"ts": "2026-10-06 21:25:01", "title": "🩺 中继自己报错了",
-         "text": f"中继自己报错了（21:25:00），出在「主程序」。它说：{WMI_HELD}"}, ensure_ascii=False) + "\n", encoding="utf-8")
+    check("期间已报过群、恢复行记为 INFO 闭环 → 不重复刷群且不触发 #59 报警", "#59" not in got, True)
+    held_warn = EVENING[:3] + [logline("10-06 21:25:00", WMI_HELD, level="WARNING", more=[DIAG])] + EVENING[3:]
+    sd, f = write_log(held_warn + BOOT_NOW)
     got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
-    check("记成自己好了却又进了群（一个故障两次）→ 没过", (got["#59"].status, "进了群" in got["#59"].evidence), (mc.FAIL, True))
+    check("若记成 WARNING 却没进群 → 没过", (got["#59"].status, "没进群" in got["#59"].evidence), (mc.FAIL, True))
     old_diag = DIAG.split("; hypothesis:")[0]
     sd, f = write_log(EVENING[:3] + [logline("10-06 21:25:00", WMI, level="WARNING", more=[old_diag])] + EVENING[3:] + BOOT_NOW)
     errkinds(sd, WMI, recovered=False)
@@ -2839,7 +2842,9 @@ once; the daily report gets the two relay lines a person used to run by hand.
     lines = selfcheck.daily_lines("2026-09-17", log)
     check("两行", len(lines), 2)
     check("错误计数 2、第一条 10:48、出在主程序", "报错 2 条" in lines[0] and "10:48" in lines[0] and "主程序" in lines[0])
-    check("原话有术语就不照抄", any(k in lines[0] for k in ("留在", "见中继日志", "已记日志")))
+    check("报错原因直接翻译成人话（不再吞进盲盒「还不认识/见中继日志」）",
+          ("程序启动事件监测中断" in lines[0], "还不认识" not in lines[0], "见中继日志" not in lines[0]),
+          (True, True, True))
     check("开机两次：重开后起来了 24 秒；重开后还是没应答", "24 秒" in lines[1] and "还是没应答" in lines[1])
     lines2 = selfcheck.daily_lines("2026-09-18", log)
     check("没报错就说没报错", lines2[0], "· 中继今天没有报错")

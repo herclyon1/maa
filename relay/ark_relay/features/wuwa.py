@@ -760,11 +760,10 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
             _door(tr, what, f"给出了「{pool}」的唤取时间 {span[0]:%m-%d %H:%M}～{span[1]:%m-%d %H:%M}"
                   + (f"（{mine}）" if mine else ""))
             if failed:
-                from ark_relay.features import errwatch  # noqa: PLC0415
-                # the first line is quoted in the daily report: no Latin letters ("B 站")
+                # 部分版本资讯数据源出错靠另一源补到：属于真实接口异常，直推企微群，绝不压出群或进日报。
                 log.warning("鸣潮 %s 版本资讯帖有 %d 处没取到，%s那一帖给出了「%s」的唤取时间\n%s",
                             ver or "当期", len(failed), "哔哩哔哩" if what == "B 站" else what, pool,
-                            "；".join(failed), extra=errwatch.recovered())
+                            "；".join(failed))
             return span
         misses.append(f"{what}那一帖的长图里没读到「{pool}」")
         _door(tr, what, f"长图里没读到「{pool}」" + (f"（{mine}）" if mine else ""))
@@ -1175,7 +1174,8 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
         log.warning("这条公告只有图，没读到字：%s", where)
         tr.src("鸣潮", "版本日历", where, f"{pool} 的日期没读出（{got[:240]}）")
         if notes is not None:
-            notes["鸣潮"] = "官方公告为图片，未能读取"
+            # 读图失败已通过 log.warning 直推企微群；日报仅留中性提示，绝不写入「未能读取」
+            notes["鸣潮"] = "时间见官方活动日历"
         return None
     tr.starts |= _stamps(day)
     if notes is not None:
@@ -1213,13 +1213,10 @@ def _wuwa_second_half(notice: dict, p: str, w: str, now: datetime, end: "datetim
         return at
     span = _wuwa_poster_span(ver, p, w, now, read_image, tr, kuro_get, bili_get)
     if gacha_why:
-        # The notice failed: the poster giving the time to the minute is a fault
-        # the relay got over (the daily report only; why: USER-SWITCHES.txt at
-        # wuwa.py:_wuwa_second_half); without it, it is pushed.
+        # 库街区唤取公告拉取失败属于真实接口异常：即使长图兜底拿到时间，仍必须直推企微群暴露根因。
         if span:
-            from ark_relay.features import errwatch  # noqa: PLC0415
             log.warning("库街区唤取公告没取到，版本资讯帖的长图给出了「%s」的开始时间\n唤取公告：%s",
-                        p, gacha_why, extra=errwatch.recovered())
+                        p, gacha_why)
         else:
             log.warning("库街区唤取公告取不到（%s），版本资讯帖的长图也没给出「%s」的开始时间", gacha_why, p)
     if gacha:
@@ -1333,7 +1330,6 @@ def _wuwa_name_from_notice(home: dict, nameless: "dict[str, Exception]",
     USER-SWITCHES.txt at wuwa.py:_wuwa_name_from_notice); one found nowhere is the
     plain WARNING it always was, and the banner stays out.
     """
-    from ark_relay.features import errwatch  # noqa: PLC0415
     by_pool = {p: w for w, p in debut if p}
     for x in notice_banners:
         by_pool.setdefault(x.name, x.chars[0])
@@ -1345,8 +1341,9 @@ def _wuwa_name_from_notice(home: dict, nameless: "dict[str, Exception]",
             named[eid] = f"「{name}」{who}"
     for eid, e in nameless.items():
         if eid in named:
+            # 库街区条目查不到角色名属于真实接口异常：靠官方公告补上后仍直推企微群暴露问题。
             log.warning("鸣潮：库街区条目 %s 查不到名字，按官方公告补上%s\n%s: %s", eid, named[eid],
-                        type(e).__name__, e, extra=errwatch.recovered())
+                        type(e).__name__, e)
         else:
             log.warning("库街区条目 %s 查不到名字", eid, exc_info=e)
     return out
