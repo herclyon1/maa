@@ -203,8 +203,13 @@ def _part_texts_wording():
         check(f"说出原因：{want}", (want in body, texts.plain(body)), (True, []))
         check(f"不抄带英文的原话：{want}", any(w in body for w in ("urlopen", "Error", "WinError", "Errno")), False)
     check("同时占用和权限两种说法时，说占用", "没有权限" in texts.relay_error_body("ark.config", cases[3][0], ""), False)
+    # 无「｜」分隔符的混合英文散文不抄半截话，只出封闭中文诊断；带「｜」且左半段纯中文时保留前缀
     body0 = texts.relay_error_body("ark.maintenance", cases[0][0], "")
-    check("保留中文上下文且不抄任何英文原话", ("官方公告取不到" in body0, "域名解析失败" in body0, texts.plain(body0)), (True, True, []))
+    check("无分隔符混合英文不抄半句，直出封闭中文原因",
+          ("官方公告取不到" in body0, "域名解析失败" in body0, texts.plain(body0)), (False, True, []))
+    body1 = texts.relay_error_body("ark.banners", cases[1][0], "")
+    check("带「｜」且左半段为纯中文时保留业务前缀",
+          ("卡池信息这次没取到" in body1, "连接或读写超时" in body1, texts.plain(body1)), (True, True, []))
     unknown = texts.relay_error_body("ark.service", "Traceback: KeyError 'x'", "09:00:01")
     check("去盲盒：KeyError 输出直白中文原因，无盲盒话术",
           ("读取数据时缺少必要内容" in unknown, not hasattr(texts, "RELAY_ERROR_UNREAD"),
@@ -243,644 +248,319 @@ def _part_texts_wording():
     hits = [f.relative_to(ROOT).as_posix() for f in sorted((ROOT / "ark_relay").rglob("*.py")) if old in f.read_text(encoding="utf-8")]
     check("代码里不再有那句半截话（全仓彻底清零）", hits, [])
 
-    print("\n[结构化词法拆解：有限 HTTP 状态码集合 + 进程退出语境隔离 + 零伪文件/乱码]")
-    for bad_http in (0, 1, 104, 126, 127, 128, 199, 255, 299, 599, 600, 999):
-        check(f"非法 HTTP 码 {bad_http} 不在 _VALID_HTTP_CODES", bad_http in texts._VALID_HTTP_CODES, False)
-    for good_http in (200, 400, 401, 403, 404, 429, 500, 502, 503, 504, 520, 524):
-        check(f"合法 HTTP 码 {good_http} 在 _VALID_HTTP_CODES", good_http in texts._VALID_HTTP_CODES, True)
 
-    exit_cases = [
-        ("CalledProcessError: Command '['git', 'pull']' returned non-zero exit status 128.", 128, "git.exe"),
-        ("subprocess.CalledProcessError: Command '['pwsh', '-File', 'check.ps1']' returned non-zero exit status 255.", 255, "pwsh.exe"),
-        ("CalledProcessError: Command '['adb', 'devices']' returned non-zero exit status 127.", 127, "adb.exe"),
-        ("CalledProcessError: Command '['schtasks']' returned non-zero exit status 126.", 126, "schtasks.exe"),
-        ("CalledProcessError: Command '['git', 'status']' returned non-zero exit status 500.", 500, "git.exe"),
-        ("任务执行失败 ｜ exit status 128", 128, ""),
-        ("任务执行失败 ｜ returncode=255", 255, ""),
-        ("CalledProcessError(127, 'adb')", 127, "adb.exe"),
-        # batch2 盲测打穿案例：无 exit 前缀 / 多空格 / Tab / 子程序退出语境
-        ("process ended with status 128", 128, ""),
-        ("child exited with status 255", 255, ""),
-        ("waitpid failed: status=127", 127, ""),
-        ("taskkill failed, status: 128", 128, "taskkill.exe"),
-        ("subprocess.CalledProcessError: Command ['git'] returned non-zero exit  status 128.", 128, "git.exe"),
-        ("PowerShell script failed with EXIT\tSTATUS 255", 255, "pwsh.exe"),
-        ("ssh host failed, status=255", 255, "ssh.exe"),
-        ("process ended with status 500", 500, ""),
+def _part_texts_structured_faults():
+    """源头活异常采集（fault_from_exc）+ errwatch 透传 + ErrorCode 分类器 + 封闭中文模板回归。"""
+    import json
+    import logging
+    import socket
+    import subprocess
+    import urllib.error
+
+    ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(ROOT))
+    from ark_relay.core import texts
+    from ark_relay.features import errwatch
+
+    print("\n[1. 源头活异常采集 fault_from_exc 与 errwatch 队列透传（含旧队列 JSON 兼容）]")
+    class _FakeResp:
+        def __init__(self, code):
+            self.status_code = code
+
+    class _FakeReqHTTP(Exception):
+        def __init__(self, code):
+            super().__init__(f"{code} Bad Gateway")
+            self.response = _FakeResp(code)
+
+    class _FakeAioHTTP(Exception):
+        def __init__(self, status):
+            super().__init__(f"{status}, message='Internal Server Error'")
+            self.status = status
+
+    pe32 = PermissionError(13, "locked", "state.json")
+    pe32.winerror = 32
+    exc_cases = [
+        (urllib.error.HTTPError("https://cos.example.com/a", 503, "Service Unavailable", {}, None), "http_error", "状态码 503"),
+        (_FakeReqHTTP(502), "http_error", "状态码 502"),
+        (_FakeAioHTTP(500), "http_error", "状态码 500"),
+        (pe32, "file_locked", "文件正被其他程序占用"),
+        (PermissionError(13, "denied", "cfg.json"), "permission_denied", "没有权限读写"),
+        (FileNotFoundError(2, "missing", "QueueConfig.json"), "file_not_found", "QueueConfig.json"),
+        (subprocess.CalledProcessError(128, ["git", "pull"]), "process_exit", "退出码 128"),
+        (subprocess.TimeoutExpired(["pwsh"], 30), "timeout", "连接或读写超时"),
+        (urllib.error.URLError(socket.gaierror(11001, "getaddrinfo failed")), "dns_failed", "域名解析失败"),
+        (ConnectionResetError(10054, "reset"), "conn_reset", "中途断开"),
+        (json.JSONDecodeError("Expecting value", "", 0), "bad_json", "数据格式是坏的"),
+        (KeyError("stage"), "key_error", "读取数据时缺少必要内容"),
+        (ValueError("bad"), "value_error", "数据数值或格式不对"),
     ]
-    for raw, code, want_cmd in exit_cases:
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        body = texts.relay_error_body("ark.service", raw, "09:10:00")
-        check(f"退出码 {code} 归类 process_exit 且绝不串判 HTTP：{raw[:38]}",
-              (info.fault_kind, info.exit_code, info.http_code,
-               texts.fault_cause(raw), f"退出码 {code}" in out, "外部命令执行失败" in out,
-               "状态码" in out, (not want_cmd or f"命令 {want_cmd}" in out),
-               texts.plain(out), texts.plain(body)),
-              ("process_exit", code, None,
-               f"外部命令执行失败（退出码 {code}）", True, True,
-               False, True, [], []))
+    for exc, want_code, want_sub in exc_cases:
+        f = texts.fault_from_exc(exc)
+        out = texts.format_fault_reason("拉取配置失败", fault=f)
+        check(f"fault_from_exc({type(exc).__name__}) -> {want_code}",
+              (f["code"], want_sub in out, "拉取配置失败——" in out, texts.plain(out)),
+              (want_code, True, True, []))
+    check("WinError 32 优先于 PermissionError，不说没有权限",
+          "没有权限" in texts.format_fault_reason("写配置失败", fault=texts.fault_from_exc(pe32)), False)
 
-    kill_raw = "关游戏失败 ｜ taskkill /F /IM Endfield.exe returned non-zero exit status 128"
-    kill_out = texts.format_fault_reason(kill_raw)
-    check("FaultInfo 单层括号模板精确输出（命令 + 文件 + 退出码）",
-          (kill_out, texts.plain(kill_out)),
-          ("关游戏失败——外部命令执行失败（命令 taskkill.exe，文件 Endfield.exe，退出码 128），原文已记日志", []))
+    # errwatch._item 直接采集活 exc_info 落入 item["fault"] 并经 render / merge 透传
+    h = errwatch.ErrorKindAlert(None, state_dir=tmpdir("ew-fault-"), known={})
+    try:
+        try:
+            raise _FakeReqHTTP(502)
+        except _FakeReqHTTP:
+            rec_http = logging.LogRecord("ark.banners", logging.ERROR, __file__, 1, "拉取活动失败", None, sys.exc_info())
+        item_http = h._item(rec_http, "sig-http", "2026-11-28 09:05:00")
+        _, body_http = errwatch.render(item_http)
+        check("errwatch._item 源头提取活异常 HTTP 502 并透传 render()",
+              (item_http.get("fault"), "拉取活动失败——对方服务器返回了状态码 502" in body_http, texts.plain(body_http)),
+              ({"code": "http_error", "http": 502}, True, []))
 
+        try:
+            raise subprocess.CalledProcessError(128, ["git", "pull"])
+        except subprocess.CalledProcessError:
+            rec_cmd = logging.LogRecord("ark.service", logging.ERROR, __file__, 1, "同步仓库失败", None, sys.exc_info())
+        item_cmd = h._item(rec_cmd, "sig-cmd", "2026-11-28 09:05:05")
+        _, merged_body = errwatch.merge([item_http, item_cmd])
+        check("errwatch.merge 透传两条结构化 fault 且全过 plain()",
+              ("状态码 502" in merged_body, "退出码 128" in merged_body, texts.plain(merged_body)),
+              (True, True, []))
+
+        # 向后兼容：旧队列 JSON 不含 fault 字段时自动回退文本分类
+        legacy_item = {"title": texts.RELAY_ERROR, "where": "ark.banners",
+                       "line": "拉取失败 ｜ HTTP Error 503: Service Unavailable",
+                       "first": "2026-11-28 09:00:00", "last": "2026-11-28 09:00:00", "n": 1}
+        _, legacy_body = errwatch.render(legacy_item)
+        check("旧队列 JSON 缺省 fault 100% 兼容",
+              ("拉取失败——对方服务器返回了状态码 503" in legacy_body, texts.plain(legacy_body)),
+              (True, []))
+    finally:
+        h.close()
+
+    print("\n[2. 主流 HTTP 客户端报错（requests/pwsh/curl/httpx/aiohttp）与 HTTP < 400 隔离]")
     http_cases = [
-        ("推消息失败 ｜ status=502 Bad Gateway", 502),
-        ("推消息失败 ｜ status_code=502 Bad Gateway", 502),
-        ("拉取公告失败 ｜ status_code=429 Too Many Requests", 429),
-        ("上传失败 ｜ status code 502 Bad Gateway", 502),
-        ("森空岛请求受限 ｜ HTTP 429 Too Many Requests", 429),
-        ("官方接口返回异常 ｜ HTTP/1.1 502 Bad Gateway", 502),
-        ("拉取失败 ｜ HTTP/2 429 Too Many Requests", 429),
-        ("接口返回异常 ｜ status-code=503", 503),
-        ("公告取不到（HTTP Error 503: Service Unavailable）", 503),
-        ("COS 上传失败（HTTP/1.1 502 Bad Gateway）", 502),
-        ("拉取超时 ｜ status_code=524 Cloudflare", 524),
+        ("拉取活动失败 ｜ requests.exceptions.HTTPError: 502 Server Error: Bad Gateway for url: https://cos.example.com/api/v1", 502, True),
+        ("下载更新失败：HTTPError: 403 Client Error: Forbidden for url: https://cos.example.com/manifest.json", 403, False),
+        ("requests.exceptions.HTTPError: 503 Server Error: Service Unavailable for url: https://cos.example.com/api", 503, False),
+        ("拉取失败：HTTPError(504, 'Gateway Timeout')", 504, False),
+        ("pwsh 调接口失败 ｜ System.Net.Http.HttpRequestException: Response status code does not indicate success: 502 (Bad Gateway).", 502, False),
+        ("拉取失败 ｜ Invoke-RestMethod: Response status code does not indicate success: 503 (Service Unavailable).", 503, True),
+        ("curl 下载失败 ｜ curl: (22) The requested URL returned error: 503", 503, False),
+        ("拉取失败 ｜ httpx.HTTPStatusError: Server error '502 Bad Gateway' for url 'https://cos.example.com/api'", 502, True),
+        ("拉取失败 ｜ aiohttp.client_exceptions.ClientResponseError: 500, message='Internal Server Error', url='https://cos.example.com/api'", 500, True),
+        ("pwsh 调接口失败 ｜ status_code=502 Bad Gateway", 502, False),
+        ("git 调接口失败 ｜ status_code=503 Service Unavailable", 503, False),
+        ("ssh 代理返回 ｜ statusCode=504 Gateway Timeout", 504, False),
+        ("git 调接口失败 ｜ status-code=502", 502, False),
+        ("拉取失败 ｜ {\"httpStatus\": 502}", 502, True),
+        ("拉取数据失败 ｜ {\"status_code\": 503}", 503, True),
+        ("拉取失败 ｜ {\"status\": 502}", 502, True),
+        ("拉取超时 ｜ status_code=524 Cloudflare", 524, True),
+        ("拉取失败 ｜ HTTP/2 429 Too Many Requests", 429, True),
     ]
-    for raw, code in http_cases:
-        info = texts._parse_fault(raw)
+    for raw, code, keep_prefix in http_cases:
+        rec = texts.classify_fault(raw)
         out = texts.format_fault_reason(raw)
-        body = texts.relay_error_body("ark.banners", raw, "09:11:00")
-        check(f"真 HTTP 状态码 {code} 准确识别且零伪文件：{raw[:38]}",
-              (info.fault_kind, info.http_code, info.exit_code, info.files,
-               texts.fault_cause(raw), f"对方服务器返回了状态码 {code}" in out,
-               "退出码" in out, "文件 HTTP/" in out, "HTTP/" in out,
-               texts.plain(out), texts.plain(body)),
-              ("http_error", code, None, (),
-               f"对方服务器返回了状态码 {code}", True,
-               False, False, False, [], []))
+        check(f"HTTP {code} 准确分类：{raw[:38]}",
+              (rec.code, rec.http, rec.exit_code, f"对方服务器返回了状态码 {code}" in out,
+               "退出码" in out, "——" in out, texts.plain(out)),
+              (texts.ErrorCode.HTTP_ERROR, code, None, True, False, keep_prefix, []))
 
-    # MIME 类型剥离与文件路径去重
-    mime_raw = "JSONDecodeError: expected application/json got text/html"
-    mime_out = texts.format_fault_reason(mime_raw)
-    check("MIME 类型绝不掉进文件提取器",
-          (texts._parse_fault(mime_raw).files, "收到的数据格式是坏的" in mime_out,
-           "文件 application/" in mime_out, "文件 text/" in mime_out, texts.plain(mime_out)),
-          ((), True, False, False, []))
-
-    dup_raw = r"FileNotFoundError: missing D:\ark\a.json and D:\ark\a.json"
-    dup_out = texts.format_fault_reason(dup_raw)
-    check("重复文件路径按 (kind, normalized_val) 严格去重",
-          (texts._parse_fault(dup_raw).files, dup_out.count(r"D:\ark\a.json"), texts.plain(dup_out)),
-          ((r"D:\ark\a.json",), 1, []))
-
-    # plain() 本身必须拦截 HTTP/1.1、HTTP/2 与 MIME 类型，不让伪路径绕过门禁
-    for raw_proto in ("返回 HTTP/1.1 502", "返回 HTTP/2 429", "类型 application/json",
-                      "类型 text/html", "类型 image/png", "类型 multipart/form-data"):
-        check(f"plain() 拦截协议/MIME：{raw_proto}", bool(texts.plain(raw_proto)), True)
-    check("plain() 照常放行真实相对路径与 .cmd 文件",
-          [texts.plain(x) for x in ("截图在 image/shot.png", "脚本 run.cmd 失败", "目录 resource/tasks")],
-          [[], [], []])
-
-    # 无「｜」分隔符的中文主干切分：零 _=429、零 : : 22.、零尾随 128 残片
-    no_pipe_cases = [
-        ("请求森空岛受限: status_code=429 Too Many Requests",
-         "请求森空岛受限", "状态码 429", ("_=429", "status_code")),
-        ("森空岛签到接口返回 status_code=429 (Too Many Requests)",
-         "森空岛签到数据入口返回", "状态码 429", ("_=429", "接口")),
-        ("拉取 https://cos.example.com/relay/manifest.json 失败：CalledProcessError: Command ['curl', '-fsSL', 'https://cos.example.com/relay/manifest.json'] returned non-zero exit status 22.",
-         "拉取 https://cos.example.com/relay/manifest.json 失败", "退出码 22", (": : ", "：: ", "状态码")),
-        ("subprocess调用失败exit status 128",
-         "调用失败", "退出码 128", (" 128——", "subprocess", "状态码")),
-        ("拉取更新失败exit status 128",
-         "拉取更新失败", "退出码 128", (" 128——", "状态码")),
-    ]
-    for raw, want_head, want_code, forbid in no_pipe_cases:
-        out = texts.format_fault_reason(raw)
-        body = texts.relay_error_body("ark.service", raw, "09:11:30")
-        check(f"无分隔符主干切分干净无乱码：{raw[:34]}",
-              (want_head in out, want_code in out,
-               any(bad in out for bad in forbid), texts.plain(out), texts.plain(body)),
-              (True, True, False, [], []))
-
-    # 同源顺序冲突与上下文提取边界对照（Timeout + exit status 多空格/Tab/subprocess、WinError 128、非法状态码、src=128）
-    for timeout_exit, want_rc in (
-        ("TimeoutError: command timed out, exit status 128", 128),
-        ("TimeoutError: process failed, exit  status 128", 128),
-        ("TimeoutError: process failed, exit\tstatus 128", 128),
-        ("TimeoutError: subprocess failed (status=255)", 255),
-    ):
-        body_te = texts.relay_error_body("ark.service", timeout_exit, "09:12:00")
-        check(f"超时伴随退出码只补退出码不误补 HTTP：{timeout_exit[:36]}",
-              (texts.fault_cause(timeout_exit), f"退出码 {want_rc}" in body_te,
-               "状态码" in body_te, texts.plain(body_te)),
-              ("连接或读写超时", True, False, []))
-
-    win128 = "OSError: [WinError 128] There are no child processes to wait for"
-    body_w128 = texts.relay_error_body("ark.service", win128, "09:12:01")
-    check("WinError 128 走系统错误码不误判 HTTP",
-          (texts.fault_cause(win128), "系统错误码 128" in body_w128,
-           "状态码" in body_w128, "退出码" in body_w128, texts.plain(body_w128)),
-          ("系统调用失败（系统错误码 128）", True, False, False, []))
-
-    check("非法 status=999 / status=001 / status=128（无退出语境）绝不算 HTTP 状态码",
-          (texts.fault_cause("ValueError: invalid status=999"),
-           texts.fault_cause("ValueError: invalid status=001"),
-           texts.fault_cause("ValueError: invalid status=128"),
-           texts._parse_fault("ValueError: invalid status=999").http_code,
-           texts._parse_fault("ValueError: invalid status=128").http_code),
-          ("数据数值或格式不对", "数据数值或格式不对", "数据数值或格式不对", None, None))
-
-    check("含 rc 子串的普通英文词 src=128 不误提退出码",
-          (texts._parse_fault("RuntimeError: src=128 failed").exit_code,
-           "退出码" in texts.relay_error_body("ark.service", "RuntimeError: src=128 failed", "09:12:02")),
-          (None, False))
-
-    # 纯中文日志统一走白话术语与模糊词规范化：relay_error_body / relay_error_line / relay_error_recurred_body 全过 plain()
-    for pure_zh, forbid_words in (
-        ("进程落盘接口失败", ("进程", "落盘", "接口")),
-        ("中继更新出错", ("出错",)),
-        ("这一步可能有问题，不确定是否落盘", ("这一步", "可能", "有问题", "不确定", "落盘")),
-    ):
-        b1 = texts.relay_error_body("ark.service", pure_zh, "09:20:00")
-        b2 = texts.relay_error_line("ark.service", pure_zh, "09:20:00")
-        b3 = texts.relay_error_recurred_body("ark.service", pure_zh, "09:20:00", "修复旧异常")
-        b4 = texts.format_fault_reason(pure_zh)
-        check(f"纯中文日志统一白话收口且 100% 过 plain()：{pure_zh}",
-              (texts.plain(b1), texts.plain(b2), texts.plain(b3), texts.plain(b4),
-               any(w in b1 for w in forbid_words)),
-              ([], [], [], [], False))
-
-    print("\n[词法边界、退出码文法、双反斜杠去重、破损标点与 HTTP 正常码分级回归]")
-    # 1. URL / Windows 路径后紧跟中文标点或冒号：绝不吞异常类名，plain() 门禁绝不漏检
-    for raw, want_file, forbid_tok in (
-        (r"打开 D:\ark\config.json：PermissionError: Access is denied", r"D:\ark\config.json", "PermissionError"),
-        (r"写入 D:\ark\cfg.json；RuntimeError: disk full", r"D:\ark\cfg.json", "RuntimeError"),
-        (r"打开 D:\ark\config.json:PermissionError: Access is denied", r"D:\ark\config.json", "PermissionError"),
-    ):
-        out = texts.format_fault_reason(raw)
-        check(f"路径后紧跟标点不泄异常类名：{raw[:32]}",
-              (bool(texts.plain(raw)), texts._parse_fault(raw).files,
-               forbid_tok in out, out.count(want_file), texts.plain(out)),
-              (True, (want_file,), False, 1, []))
-    for leak_sample in (
-        r"打开 D:\ark\config.json：PermissionError",
-        r"写入 D:\ark\cfg.json；RuntimeError",
-        r"打开 D:\ark\config.json:PermissionError",
-        r"打开 D:\ark\config.json PermissionError",
-        "链接 https://example.com/a.json：KeyError",
-        "链接 (https://example.com/a.json)KeyError",
-        "协议 gRPC/1.0 失败",
-        "协议 TLS/1.3 失败",
-        "协议 RTSP/1.0 失败",
-        "协议 SIP/2.0 失败",
-    ):
-        check(f"plain() 严防路径/URL/通用协议版本漏检：{leak_sample}", bool(texts.plain(leak_sample)), True)
-
-    # 2. 中文标点紧贴 URL + 含查询串的 URL 占位优先于技术边界切分
-    for raw, want_url, want_kind, want_http in (
-        ("拉取官网（https://cos.example.com/manifest.json）失败：HTTP/1.1 503 Service Unavailable",
-         "https://cos.example.com/manifest.json", "http_error", 503),
-        ("拉取https://cos.example.com/manifest.json：HTTP/1.1 503 Service Unavailable",
-         "https://cos.example.com/manifest.json", "http_error", 503),
-        ("拉取https://cos.example.com/a.json，HTTP/1.1 502 Bad Gateway",
-         "https://cos.example.com/a.json", "http_error", 502),
-        ("拉取 https://api.example.com/check?status=503&rc=128 失败：ConnectionRefusedError",
-         "https://api.example.com/check?status=503&rc=128", "conn_reset", None),
-    ):
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"URL 严格 ASCII 边界与先占位后切分：{raw[:36]}",
-              (info.url, info.fault_kind, info.http_code, info.exit_code, want_url in out, texts.plain(out)),
-              (want_url, want_kind, want_http, None, True, []))
-
-    # 3. 含空格 Windows 路径不拦腰拆分，且带扩展名后的空格绝不吞后续正文
-    sp1 = r"FileNotFoundError: C:\Program Files\AUTO-MAS\app.exe"
-    sp2 = r"打开 C:\Program Files (x86)\AUTO-MAS\foo.dll 失败：PermissionError: 'C:\\Program Files (x86)\\AUTO-MAS\\foo.dll'"
-    sp3 = r"FileNotFoundError: missing D:\ark\a.json and logs/b.json"
-    check("含空格 Windows 路径整条保留且过 plain()",
-          (texts._parse_fault(sp1).files, texts.plain(texts.format_fault_reason(sp1)),
-           texts._parse_fault(sp2).files, texts.format_fault_reason(sp2).count(r"C:\Program Files (x86)\AUTO-MAS\foo.dll"),
-           texts.plain(texts.format_fault_reason(sp2)),
-           texts._parse_fault(sp3).files, texts.plain(texts.format_fault_reason(sp3))),
-          ((r"C:\Program Files\AUTO-MAS\app.exe",), [],
-           (r"C:\Program Files (x86)\AUTO-MAS\foo.dll",), 1, [],
-           (r"D:\ark\a.json", "logs/b.json"), []))
-
-    # 4. 退出码中英文拆分：版本号 -rc-1 不误判退出码，exit-status-500 提正数 500，覆盖 exited 句式
-    rc1 = "终末地更新失败 ｜ MaaEnd v2.34.0-rc-1 download failed: HTTP/1.1 503 Service Unavailable"
-    rc2 = "终末地版本校验失败 ｜ MaaEnd v2.34.0-rc-2 ValueError: bad manifest"
-    check("版本号 -rc-1 / -rc-2 绝不误判为负退出码",
-          (texts._parse_fault(rc1).fault_kind, texts._parse_fault(rc1).exit_code, texts._parse_fault(rc1).http_code,
-           texts._parse_fault(rc2).fault_kind, texts._parse_fault(rc2).exit_code,
-           texts.plain(texts.format_fault_reason(rc1)), texts.plain(texts.format_fault_reason(rc2))),
-          ("http_error", None, 503, "value_error", None, [], []))
-    for raw, want_code, want_file in (
-        ("同步脚本失败 exit-status-500", 500, ()),
-        ("同步脚本失败 exit-code-127", 127, ()),
-        ("同步脚本失败 return-code-255", 255, ()),
-        ("helper.exe exited with code 128", 128, ("helper.exe",)),
-        ("process exited 127", 127, ()),
-        ("exit status 0xc0000005", "0xc0000005", ()),
-    ):
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"连字符/短语/十六进制退出码准确提取：{raw}",
-              (info.fault_kind, info.exit_code, info.files, texts.plain(out)),
-              ("process_exit", want_code, want_file, []))
-
-    # 5. 双反斜杠 repr 路径归一化展示与跨主干去重
-    repr1 = r"保存 D:\ark\config.json 失败：PermissionError: [WinError 5] Access is denied: 'D:\\ark\\config.json'"
-    repr2 = r"写入配置失败 ｜ D:\ark\config.json PermissionError: [WinError 5] Access is denied: 'D:\\ark\\config.json'"
-    repr3 = r"保存 d:/ark/config.json 失败：PermissionError: 'D:\\Ark\\Config.json'"
-    out_r1, out_r2, out_r3 = (texts.format_fault_reason(x) for x in (repr1, repr2, repr3))
-    check("双反斜杠 Windows repr 路径折叠展示且与主干严格去重",
-          (r"\\" in out_r1, out_r1.count(r"D:\ark\config.json"),
-           r"\\" in out_r2, out_r2.count(r"D:\ark\config.json"),
-           r"\\" in out_r3, out_r3.lower().count("config.json"),
-           texts.plain(out_r1), texts.plain(out_r2), texts.plain(out_r3)),
-          (False, 1, False, 1, False, 1, [], [], []))
-
-    # 6. 【】块、未闭合开括号、连续模糊词逗号与「接口数据」叠词清理
-    for raw, forbid_frag in (
-        (r"写入失败【WinError 32】文件正被占用 D:\ark\state.json", ("【", "】")),
-        ("读取失败【PermissionError: Access is denied】", ("【", "】")),
-        ("下载失败（TimeoutError: read timed out", ("（——", "（，")),
-        ("写入失败【TimeoutError: read timed out", ("【——", "【")),
-        ("可能，大概，落盘失败", ("，，", "，保存")),
-    ):
-        out = texts.format_fault_reason(raw)
-        body = texts.relay_error_body("ark.service", raw, "09:21:00")
-        check(f"破损括号与模糊词孤立标点清零：{raw[:28]}",
-              (any(f in out for f in forbid_frag), any(f in body for f in forbid_frag),
-               texts.plain(out), texts.plain(body)),
-              (False, False, [], []))
-    check("纯中文连续模糊词清理后不留前导逗号", texts.format_fault_reason("可能，大概，落盘失败"), "保存失败")
-
-    # 7. HTTP 正常码(200/302)不抢占真实异常，JSON 键值状态码正确识别，消除「数据入口数据」叠词
+    # HTTP < 400（200/302）不抢占真实异常；200 与 503 共存时取 503
     h200_json = "解析接口数据失败 ｜ HTTP/1.1 200 OK, Content-Type: text/html, JSONDecodeError: Expecting value"
     h200_key = "解析失败 ｜ HTTP/1.1 200 OK KeyError: 'data'"
     h200_503 = "上游转发失败 ｜ HTTP/1.1 200 OK -> HTTP/1.1 503 Service Unavailable"
-    json_503 = '拉取数据失败 ｜ {"status_code": 503}'
-    json_502 = '推送失败 {"http_status": 502}'
-    out_j = texts.format_fault_reason(h200_json)
-    out_k = texts.format_fault_reason(h200_key)
-    out_m = texts.format_fault_reason(h200_503)
-    out_j503 = texts.format_fault_reason(json_503)
-    out_j502 = texts.format_fault_reason(json_502)
-    check("HTTP 200 不盖真实解析异常且不渲染状态码 200，消除数据入口数据叠词",
-          (texts._parse_fault(h200_json).fault_kind, "收到的数据格式是坏的" in out_j,
-           "状态码 200" in out_j, "数据入口数据" in out_j, "解析返回数据失败" in out_j, texts.plain(out_j),
-           texts._parse_fault(h200_key).fault_kind, "读取数据时缺少必要内容" in out_k,
-           "状态码 200" in out_k, texts.plain(out_k)),
-          ("json_bad", True, False, False, True, [],
-           "key_error", True, False, []))
-    check("HTTP 200 与 503 并存优先保留 503，JSON 带引号状态码准确识别",
-          (texts._parse_fault(h200_503).http_code, "状态码 503" in out_m, texts.plain(out_m),
-           texts._parse_fault(json_503).http_code, "状态码 503" in out_j503, texts.plain(out_j503),
-           texts._parse_fault(json_502).http_code, "状态码 502" in out_j502, texts.plain(out_j502)),
-          (503, True, [], 503, True, [], 502, True, []))
+    out_j, out_k, out_m = (texts.format_fault_reason(x) for x in (h200_json, h200_key, h200_503))
+    check("HTTP 200 不抢占 JSONDecodeError/KeyError，200+503 优先 503",
+          (texts.classify_fault(h200_json).code, "状态码 200" in out_j, "解析返回数据失败——" in out_j, texts.plain(out_j),
+           texts.classify_fault(h200_key).code, "状态码 200" in out_k, texts.plain(out_k),
+           texts.classify_fault(h200_503).http, "状态码 503" in out_m, texts.plain(out_m)),
+          (texts.ErrorCode.BAD_JSON, False, True, [], texts.ErrorCode.KEY_ERROR, False, [], 503, True, []))
+
+    print("\n[3. 非零退出码与系统码：隔离 0/0x0/DATE/TIME/FLOAT/SEMVER/byte 0xff]")
+    exit_cases = [
+        ("CalledProcessError: Command '['git', 'pull']' returned non-zero exit status 128.", 128),
+        ("CalledProcessError(127, 'adb')", 127),
+        ("任务执行失败 ｜ exit status 128", 128),
+        ("任务执行失败 ｜ returncode=255", 255),
+        ("脚本失败 退出码-1073741819 RuntimeError: crash", -1073741819),
+        ("脚本失败 返回码-1 RuntimeError: crash", -1),
+        ("同步脚本失败 exit-status-500", 500),
+        ("同步脚本失败 exit-code-127", 127),
+        ("同步失败 ｜ exit_status-127", 127),
+        ("helper.exe exited with code 128", 128),
+        ("process exited 127", 127),
+        ("exit status 0xc0000005", "0xc0000005"),
+        ("waitpid failed: status=127", 127),
+        ("process ended with status 500", 500),
+        ("ssh host failed, status=255", 255),
+        ("PowerShell script failed with EXIT\tSTATUS 255", 255),
+    ]
+    for raw, code in exit_cases:
+        rec = texts.classify_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"退出码 {code} 归 PROCESS_EXIT：{raw[:36]}",
+              (rec.code, rec.exit_code, rec.http, f"退出码 {code}" in out, "状态码" in out, texts.plain(out)),
+              (texts.ErrorCode.PROCESS_EXIT, code, None, True, False, []))
+
+    non_exit_cases = [
+        ("任务记录 MaaEnd exited 2026-11-28 ValueError: parse failed", texts.ErrorCode.VALUE_ERROR),
+        ("同步状态失败 ｜ exited 09:30:00 ValueError: bad", texts.ErrorCode.VALUE_ERROR),
+        ("脚本失败 rc=1.5 ValueError: bad", texts.ErrorCode.VALUE_ERROR),
+        ("终末地版本校验失败 ｜ MaaEnd v2.34.0-rc-2 ValueError: bad manifest", texts.ErrorCode.VALUE_ERROR),
+        ("RuntimeError: src=128 failed", texts.ErrorCode.RUNTIME_ERROR),
+        ("exit status 0 ValueError: bad", texts.ErrorCode.VALUE_ERROR),
+        ("运行结束 exit_code=0x0 ValueError: bad payload", texts.ErrorCode.VALUE_ERROR),
+        ("pwsh 运行完成 ｜ exit_code=0x00000000 JSONDecodeError: Expecting value", texts.ErrorCode.BAD_JSON),
+        ("ValueError: invalid status=999", texts.ErrorCode.VALUE_ERROR),
+        ("ValueError: invalid status=128", texts.ErrorCode.VALUE_ERROR),
+    ]
+    for raw, want_code in non_exit_cases:
+        rec = texts.classify_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"不误判退出码/0x0：{raw[:36]}",
+              (rec.code, rec.exit_code, rec.hex_code, "退出码" in out, "错误码 0x0" in out, texts.plain(out)),
+              (want_code, None, "", False, False, []))
+
+    te_out = texts.format_fault_reason("TimeoutError: command timed out, exit status 128")
+    w128_out = texts.format_fault_reason("OSError: [WinError 128] There are no child processes to wait for")
+    ff_out = texts.format_fault_reason("拉取页面失败 ｜ HTTP/1.1 302 Found UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff")
+    check("超时伴退出码 / WinError 128 / byte 0xff 精准收口",
+          ("连接或读写超时" in te_out, "退出码 128" in te_out, "状态码" in te_out, texts.plain(te_out),
+           "系统调用失败（系统错误码 128）" in w128_out, "状态码" in w128_out, texts.plain(w128_out),
+           "拉取页面失败——收到的数据格式是坏的" in ff_out, "0xff" in ff_out, texts.plain(ff_out)),
+          (True, True, False, [], True, False, [], True, False, []))
+    check("纯中文模糊词与术语规整不留孤立逗号",
+          (texts.format_fault_reason("可能，大概，落盘失败"),
+           texts.format_fault_reason("中继更新出错"),
+           texts.plain(texts.format_fault_reason("这一步可能有问题，不确定是否落盘"))),
+          ("保存失败", "中继更新失败", []))
 
 
-def _part_texts_lexer():
-    """单遍确定性词法分析器、正向路径白名单、栈式括号配平与 fail-closed plain() 守卫单测与回归。"""
+def _part_texts_plain_strict():
+    """极简严格 plain() 门禁与 v4 报告五类真实生产场景全覆盖回归。"""
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
     from ark_relay.core import texts
 
-    def _non_ws_pairs(s: str) -> list[tuple[str, str]]:
-        toks = texts._lex_text(s)
-        # 校验词元完全无重叠且首尾严丝合缝拼接还原原串
-        rebuilt = "".join(t.raw for t in toks)
-        spans_ok = all(toks[i].end == toks[i + 1].start for i in range(len(toks) - 1)) and (
-            not toks or (toks[0].start == 0 and toks[-1].end == len(s))
-        )
-        check(f"词元无重叠完整还原：{s[:32]}", (rebuilt == s, spans_ok), (True, True))
-        return [(t.kind, t.raw) for t in toks if t.kind != "WS"]
-
-    print("\n[1. 单遍词法分析器 Token 切分单测]")
-    check("URL 硬截停在 :PermissionError 前",
-          _non_ws_pairs("拉取 https://cos.example.com/a.json:PermissionError"),
-          [("ZH", "拉取"), ("URL", "https://cos.example.com/a.json"), ("PUNCT", ":"), ("IDENT", "PermissionError")])
-    check("URL 硬截停在 ,HTTP/1.1 前且识别 IPv6",
-          _non_ws_pairs("http://[::1]:36163/api,HTTP/1.1 503"),
-          [("URL", "http://[::1]:36163/api"), ("PUNCT", ","), ("IDENT", "HTTP"), ("PUNCT", "/"), ("FLOAT", "1.1"), ("INT", "503")])
-    check("UNC 路径与 Windows 6 词目录完整识别",
-          _non_ws_pairs(r"\\server\share\readme C:\Users\Public\One Two Three Four Five Six\a.log"),
-          [("UNC_PATH", r"\\server\share\readme"), ("WIN_PATH", r"C:\Users\Public\One Two Three Four Five Six\a.log")])
-    check("Windows 路径遇 .xml 后空格立刻截停不吞 ValueError 与 a/b.txt",
-          _non_ws_pairs(r"C:\Program Files\My App\sub dir\foo.xml ValueError failed at a/b.txt"),
-          [("WIN_PATH", r"C:\Program Files\My App\sub dir\foo.xml"),
-           ("IDENT", "ValueError"), ("IDENT", "failed"), ("IDENT", "at"), ("REL_PATH", "a/b.txt")])
-    check("Unix 前缀路径纳入 REL_PATH，协议与斜杠词绝不误判为路径",
-          _non_ws_pairs("./run ../cfg/a ~/app /Users/herclyon/x ValueError/KeyError QUIC/v1"),
-          [("REL_PATH", "./run"), ("REL_PATH", "../cfg/a"), ("REL_PATH", "~/app"), ("REL_PATH", "/Users/herclyon/x"),
-           ("IDENT", "ValueError"), ("PUNCT", "/"), ("IDENT", "KeyError"), ("IDENT", "QUIC"), ("PUNCT", "/"), ("IDENT", "v1")])
-    check("原子字面量 DATE/TIME/SEMVER/HEX/FLOAT/INT 精确分型",
-          _non_ws_pairs("2026-11-28 09:30:00 v2.34.0-rc-1 0xc0000005 1.5 -128"),
-          [("DATE", "2026-11-28"), ("TIME", "09:30:00"), ("SEMVER", "v2.34.0-rc-1"),
-           ("HEX", "0xc0000005"), ("FLOAT", "1.5"), ("INT", "-128")])
-
-    print("\n[2. 硬伤 1 回归：URL 紧贴 : , ; ! 异常类名或 HTTP 头]")
-    for raw, want_url, want_kind, want_http, forbid in (
-        ("拉取 https://cos.example.com/a.json:PermissionError",
-         "https://cos.example.com/a.json", "permission", None, ("PermissionError",)),
-        ("拉取 https://cos.example.com/a.json:PermissionError: Access is denied",
-         "https://cos.example.com/a.json", "permission", None, ("PermissionError",)),
-        ("拉取 https://cos.example.com/a.json,HTTP/1.1 503 Service Unavailable",
-         "https://cos.example.com/a.json", "http_error", 503, ("HTTP/1.1",)),
-        ("拉取 https://cos.example.com/a.json;RuntimeError: bad body",
-         "https://cos.example.com/a.json", "runtime_error", None, ("RuntimeError",)),
-        ("拉取 https://cos.example.com/a.json!KeyError: 'items'",
-         "https://cos.example.com/a.json", "key_error", None, ("KeyError", "!——")),
+    print("\n[1. 场景 1：腾讯 COS 预签名 URL / B站 REST 查询 URL / IPv6 / 维基括号 完整放行 + 异常硬停]")
+    cos_url = "https://bucket-123.cos.ap-shanghai.myqcloud.com/a.json?q-header-list=host;x-cos-date&q-sign-algorithm=sha1"
+    bili_url = "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx&fields=title,pubdate"
+    cos_raw = f"拉取 {cos_url} 失败 ｜ TimeoutError"
+    cos_out = texts.format_fault_reason(cos_raw)
+    check("腾讯 COS 预签名 URL 完整保留不腰斩、零 ; & 乱码",
+          (cos_url in cos_out, "; &" in cos_out, "连接或读写超时" in cos_out, texts.plain(cos_out)),
+          (True, False, True, []))
+    for ok_url_msg in (
+        f"查看 {bili_url} 失败",
+        "拉取 https://api.example.com/v1/items?fields=id,name&limit=10 失败",
+        "请求 https://api.example.com/v1/a;jsessionid=abc123 失败",
+        "拉取 https://proxy.example.com/fetch?url=https://cos.example.com/a.json&t=1 失败",
+        "拉取 https://cos.example.com/logs?since=2026-11-28T09:00:00+08:00 失败",
+        "查看 https://en.wikipedia.org/wiki/Python_(programming_language)",
+        "查看 https://prts.wiki/w/Arknights_(game)",
+        "查看 https://wiki.example.com/w/File:Logo.png",
+        "访问 http://[::]:8080/api 失败",
+        "访问 http://[::1]:36163/api 失败",
     ):
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"URL 硬截停不泄漏：{raw[:40]}",
-              (bool(texts.plain(raw)), info.url, info.fault_kind, info.http_code,
-               any(bad in out for bad in forbid), want_url in out, texts.plain(out)),
-              (True, want_url, want_kind, want_http, False, True, []))
-
-    print("\n[3. 硬伤 2 回归：plain() 严格正向路径白名单拦截全部斜杠词/协议/MIME]")
-    for raw in (
-        "程序抛出 ValueError/KeyError",
-        r"打开 D:\ark\a.log：ValueError/KeyError",
-        "连接 QUIC/v1 失败",
-        "协议 HTTP/2.0-draft 失败",
-        "握手 TLS/SSL 失败",
-        "程序返回 foo/bar 异常",
-        "gRPC/1.0 报错",
-        "类型 application/json 失败",
-        "协议 HTTP/1.1 失败",
-        r"打开 foo\bar 失败",
+        check(f"合法 URL 纯中文句原样放行：{ok_url_msg[:42]}",
+              (texts.plain(ok_url_msg), texts.format_fault_reason(ok_url_msg)), ([], ok_url_msg))
+    for bad_url_msg, want_code in (
+        ("拉取 https://cos.example.com/a.json:PermissionError", texts.ErrorCode.PERMISSION_DENIED),
+        ("拉取 https://cos.example.com/api/v1:ReadTimeout", texts.ErrorCode.TIMEOUT),
+        ("拉取 https://cos.example.com/api/v1:status=503", texts.ErrorCode.HTTP_ERROR),
+        ("拉取 https://cos.example.com/a.json,HTTP/1.1 503 Service Unavailable", texts.ErrorCode.HTTP_ERROR),
+        ("拉取 https://cos.example.com/a.json;RuntimeError: bad", texts.ErrorCode.RUNTIME_ERROR),
+        ("拉取 https://cos.example.com/a.json!KeyError: 'items'", texts.ErrorCode.KEY_ERROR),
+        ("拉取 https://cos.example.com/a.json,[KeyError]", texts.ErrorCode.KEY_ERROR),
+        ("拉取 https://cos.example.com/a.json(TimeoutError)", texts.ErrorCode.TIMEOUT),
+        ("拉取 https://cos.example.com/api_(ConnectionReset)", texts.ErrorCode.CONN_RESET),
     ):
-        out = texts.format_fault_reason(raw)
-        body = texts.relay_error_body("ark.service", raw, "09:21:00")
-        check(f"plain() 拦截且渲染零泄漏：{raw}",
-              (bool(texts.plain(raw)), texts.plain(out), texts.plain(body), out == raw),
-              (True, [], [], False))
+        out = texts.format_fault_reason(bad_url_msg)
+        check(f"URL 尾随异常硬停拦截：{bad_url_msg[:40]}",
+              (bool(texts.plain(bad_url_msg)), texts.classify_fault(bad_url_msg).code, texts.plain(out)),
+              (True, want_code, []))
 
-    print("\n[4. 硬伤 3 回归：Windows 含空格路径无扩展名白名单与 5 词上限]")
-    w1 = r"写入 C:\Program Files\My App\sub dir\foo.xml ValueError failed at a/b.txt"
-    w2 = r"打开 C:\Program Files\My App\sub\foo.tmp KeyError at x/y.log"
-    w3 = r"读取 C:\Users\Public\One Two Three Four Five Six\a.log 失败：FileNotFoundError"
-    w4 = r"读取 C:\Users\Public\One Two Three Four Five Six Seven Eight Nine Ten\a.log 失败：PermissionError"
-    check("任意扩展名后空格即截停不吞异常类名",
-          (bool(texts.plain(w1)), texts._parse_fault(w1).files, texts._parse_fault(w1).fault_kind,
-           "ValueError" in texts.format_fault_reason(w1), texts.plain(texts.format_fault_reason(w1)),
-           bool(texts.plain(w2)), texts._parse_fault(w2).files, texts._parse_fault(w2).fault_kind,
-           "KeyError" in texts.format_fault_reason(w2), texts.plain(texts.format_fault_reason(w2))),
-          (True, (r"C:\Program Files\My App\sub dir\foo.xml", "a/b.txt"), "value_error", False, [],
-           True, (r"C:\Program Files\My App\sub\foo.tmp", "x/y.log"), "key_error", False, []))
-    check("6 词与 10 词含空格 Windows 目录完整保留不腰斩",
-          (texts._parse_fault(w3).files, r"One Two Three Four Five Six\a.log" in texts.format_fault_reason(w3),
-           texts.plain(texts.format_fault_reason(w3)),
-           texts._parse_fault(w4).files,
-           texts.format_fault_reason(w4).count(r"One Two Three Four Five Six Seven Eight Nine Ten\a.log"),
-           texts.plain(texts.format_fault_reason(w4))),
-          ((r"C:\Users\Public\One Two Three Four Five Six\a.log",), True, [],
-           (r"C:\Users\Public\One Two Three Four Five Six Seven Eight Nine Ten\a.log",), 1, []))
-
-    print("\n[5. 硬伤 4 回归：UNC 网络路径完整保留前导 \\\\ 且不留乱码]")
-    for raw, want_unc in (
-        (r"FileNotFoundError: \\server\share\a.log", r"\\server\share\a.log"),
-        (r"读取配置失败 ｜ \\server\share\a.log PermissionError: Access is denied", r"\\server\share\a.log"),
-        (r"同步 \\server\share\readme 失败：OSError: [WinError 53] network path not found", r"\\server\share\readme"),
-        (r"读取 \\server\share\readme 失败：PermissionError: Access is denied", r"\\server\share\readme"),
+    print("\n[2. 场景 2：Homebrew Python 与 Unix 系统路径整条放行，绝不凭空造 python.exe]")
+    for unix_ok in (
+        "检查 /opt/homebrew/Cellar/python@3.15/3.15.2/bin/python3 失败",
+        "读取 /etc/ssl/certs/ca-bundle.crt 失败",
+        "读取 /var/log/http/access.log 失败",
+        "读取 /usr/lib/python3.15/http/client.py 失败",
+        "读取 ./run 与 ../cfg/a 与 ~/app 失败",
+        "读取 releases/3.15.2/manifest.json 失败",
+        "读取 logs/error/2026-11-28.log 失败",
     ):
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"UNC 路径完整保留：{raw[:36]}",
-              (info.files, out.count(want_unc), " \\\\ " in out, texts.plain(out)),
-              ((want_unc,), 1, False, []))
+        out = texts.format_fault_reason(unix_ok)
+        check(f"Unix/合规相对路径整条放行：{unix_ok[:40]}",
+              (texts.plain(unix_ok), out, "python.exe" in out), ([], unix_ok, False))
+    tb_py = ('拉取失败\n  File "/opt/homebrew/Cellar/python@3.15/3.15.2/Frameworks/Python.framework/Versions/3.15/lib/python3.15/http/client.py", '
+             'line 429, in _read_status\nhttp.client.RemoteDisconnected: Remote end closed connection')
+    tb_out = texts.format_fault_reason(tb_py)
+    log_err = texts.format_fault_reason("读取 logs/error/2026-11-28.log 失败：PermissionError")
+    check("Python 标准库堆栈不凭空捏造 python.exe，相对路径保留全路径不碎成 11-28.log",
+          ("中途断开" in tb_out, "python.exe" in tb_out, texts.plain(tb_out),
+           "logs/error/2026-11-28.log" in log_err, "文件 11-28.log" in log_err, texts.plain(log_err)),
+          (True, False, [], True, False, []))
 
-    print("\n[6. 硬伤 5 回归：日期/时刻/浮点数/预发布版本号绝不误判为退出码]")
-    for raw, want_kind in (
-        ("任务记录 MaaEnd exited 2026-11-28 ValueError: parse failed", "value_error"),
-        ("同步状态失败 ｜ exited 09:30:00 ValueError: bad", "value_error"),
-        ("脚本失败 rc=1.5 ValueError: bad", "value_error"),
-        ("任务记录 MaaEnd exited 11-28 ValueError: parse failed", "value_error"),
+    print("\n[3. 场景 3：原生英文异常与未知空格词 100% 被 plain() 拦截，零裸推穿透]")
+    for leak, want_code in (
+        (r"打开 C:\ark\readme ConnectionReset logs\a.log", texts.ErrorCode.CONN_RESET),
+        (r"打开 C:\ark\readme ConnectionRefused logs\a.log", texts.ErrorCode.CONN_RESET),
+        (r"打开 C:\ark\readme ConnectionAborted logs\a.log", texts.ErrorCode.CONN_RESET),
+        (r"打开 C:\ark\readme AccessDenied logs\a.log", texts.ErrorCode.PERMISSION_DENIED),
+        (r"打开 C:\ark\pkg BadZipFile logs\a.log", texts.ErrorCode.BAD_JSON),
+        (r"读取 C:\ark\data StopIteration logs\a.log", texts.ErrorCode.RUNTIME_ERROR),
+        (r"拉取 C:\ark\cache TooManyRedirects logs\a.log", texts.ErrorCode.NET_ERROR),
+        (r"写入 C:\ark\target FileExists logs\a.log", texts.ErrorCode.OS_ERROR),
+        (r"打开 C:\ark\readme locked logs\a.log", texts.ErrorCode.UNKNOWN),
+        (r"打开 C:\ark\dir(ReadTimeout)", texts.ErrorCode.TIMEOUT),
+        ("抛出 ConnectionReset/state.json", texts.ErrorCode.CONN_RESET),
+        ("抛出 AccessDenied/config.json", texts.ErrorCode.PERMISSION_DENIED),
+        ("抛出 BadZipFile/a.zip", texts.ErrorCode.BAD_JSON),
+        ("抛出 StopIteration/data.json", texts.ErrorCode.RUNTIME_ERROR),
+        ("抛出 PermissionError/state.json", texts.ErrorCode.PERMISSION_DENIED),
+        ("返回 HTTP/1.1/a.json", texts.ErrorCode.UNKNOWN),
+        ("返回 gRPC/1.0/a.json", texts.ErrorCode.UNKNOWN),
+        ("返回 TLS/1.3/a.json", texts.ErrorCode.UNKNOWN),
+        ("返回 QUIC/v1/a.json", texts.ErrorCode.UNKNOWN),
+        ("返回 2.0/a.json", texts.ErrorCode.UNKNOWN),
+        ("程序抛出 ValueError/KeyError", texts.ErrorCode.KEY_ERROR),
+        ("类型 application/json 失败", texts.ErrorCode.UNKNOWN),
     ):
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"非退出码不吞真实异常：{raw[:36]}",
-              (info.fault_kind, info.exit_code, "退出码" in out, texts.plain(out)),
-              (want_kind, None, False, []))
-    check("主干完整保留 2026-11-28 日期与 v1.0.0-alpha-1 / v2.0.0-rc.3 / v2.0.0-rc3 预发布版本号",
-          ("2026-11-28" in texts.format_fault_reason("任务记录 MaaEnd exited 2026-11-28 ValueError: parse failed"),
-           "v1.0.0-alpha-1" in texts.format_fault_reason("拉取 v1.0.0-alpha-1 失败：TimeoutError"),
-           "v2.0.0-rc.3" in texts.format_fault_reason("拉取 v2.0.0-rc.3 失败：TimeoutError"),
-           "v2.0.0-rc3" in texts.format_fault_reason("拉取 v2.0.0-rc3 失败：TimeoutError"),
-           texts.plain("升级 v1.0.0-alpha-1 到 v2.0.0-rc.3 与 v2.0.0-rc3")),
-          (True, True, True, True, []))
+        body = texts.relay_error_body("ark.service", leak, "09:00:00")
+        check(f"穿透拦截零裸推：{leak[:42]}",
+              (bool(texts.plain(leak)), "它说：" in body, texts.classify_fault(leak).code, texts.plain(body)),
+              (True, False, want_code, []))
 
-    print("\n[7. 硬伤 6 与次要观察项回归：原子 HEX / 无 Traceback 堆栈帧 / 栈式括号配平 / 驼峰 JSON / byte 0xff]")
-    hex_out = texts.format_fault_reason("程序崩溃 0xc0000005：RuntimeError: fatal")
-    check("HEX 整块剥离不留残渣 0 且保留错误码",
-          ("程序崩溃 0" in hex_out, "错误码 0xc0000005" in hex_out, texts.plain(hex_out)),
-          (False, True, []))
-    sf1 = '读取配置失败\n  File "D:\\ark\\main.py", line 42, in run\nKeyError: \'token\''
-    sf2 = '请求 https://cos.example.com/api/v1/manifest.json：\n  File "C:\\Program Files\\AUTO-MAS\\sync.py", line 88, in fetch\nTimeoutError: read timed out'
-    out_sf1, out_sf2 = texts.format_fault_reason(sf1), texts.format_fault_reason(sf2)
-    check("无 Traceback 头的堆栈帧截断不泄行号残片且路径归入文件细节",
-          (", 42" in out_sf1, r"文件 D:\ark\main.py" in out_sf1, texts.plain(out_sf1),
-           ", 88" in out_sf2, r"文件 C:\Program Files\AUTO-MAS\sync.py" in out_sf2,
-           "https://cos.example.com/api/v1/manifest.json" in out_sf2, texts.plain(out_sf2)),
-          (False, True, [], False, True, True, []))
-    check("显式栈括号配平：多层未闭、英文 [、多余闭括号与空开括号",
-          (texts._balance_brackets("读取（旧配置）数据）"),
-           texts._balance_brackets("下载失败（第1步（第2步"),
-           texts._balance_brackets("下载失败[第1步"),
-           texts._balance_brackets("下载失败（"),
-           texts._balance_brackets("写入失败【"),
-           texts._balance_brackets("下载失败（第1步（")),
-          ("读取（旧配置）数据", "下载失败（第1步（第2步））", "下载失败[第1步]",
-           "下载失败", "写入失败", "下载失败（第1步）"))
-    for raw, want_prefix in (
-        ("下载失败（第1步（第2步：TimeoutError: read timed out", "下载失败（第1步（第2步））——"),
-        ("下载失败[第1步: TimeoutError: read timed out", "下载失败[第1步]——"),
-        ("读取（旧配置）数据）PermissionError: Access is denied", "读取（旧配置）数据——"),
+    print("\n[4. 场景 5 & 原子格式：引号/正斜杠/中文空格 Windows/UNC 路径 + ISO 时间 + SEMVER]")
+    for ok_win in (
+        r"打开 'C:\Program Files\Node.js Runtime\node.exe' 失败",
+        r"启动 'C:/Program Files/My App/run.exe' 失败",
+        r"启动 C:/Program Files/AUTO-MAS/run.exe 失败",
+        r"启动 C:\Program Files (x86)\AUTO-MAS\AUTO-MAS.exe 失败",
+        r"打开 C:\Users\Default User\AppData\a.log 失败",
+        r"磁盘 C:\ 空间不足",
+        r"读取 C:/ 失败",
+        r"打开 D:\游戏\终末地\config.json 失败",
+        r"读取 D:\我的 游戏\配置\state.json 失败",
+        r"读取 D:\游戏\鸣潮 2.0\config.json 失败",
+        r"读取 \\fileserver\共享 文件夹\日志\err.log 失败",
+        "任务于 2026-11-28T20:45:00+08:00 失败",
+        "任务于 2026-11-28T20:45:00.123Z 失败",
+        "升级 v2.28.0-beta.1 到 v3.15.2-RC1 与 v2.34.0-rc-1",
+        "程序崩溃 0xc0000005",
     ):
-        out = texts.format_fault_reason(raw)
-        check(f"端到端括号配平输出干净：{raw[:24]}", (out.startswith(want_prefix), texts.plain(out)), (True, []))
-
-    check("驼峰 JSON 状态码、混用连字符退出码与 byte 0xff 隔离",
-          (texts._parse_fault('拉取失败 ｜ {"httpStatus": 502}').http_code,
-           texts._parse_fault("同步失败 ｜ exit_status-127").exit_code,
-           texts._parse_fault("拉取页面失败 ｜ HTTP/1.1 302 Found UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff").hex_code,
-           "错误码 0xff" in texts.format_fault_reason("拉取页面失败 ｜ HTTP/1.1 302 Found UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff")),
-          (502, 127, "", False))
-
-    # Fail-closed 终极守卫：极端乱码与未识别英文组合 100% 通过 plain() 且绝不吞错返回空串
-    for extreme in ("编码 UTF-8/GBK 失败", "((([[[【【（（TimeoutError", "RuntimeError", "x", "可能，大概，落盘失败（"):
-        out = texts.format_fault_reason(extreme)
-        check(f"fail-closed 守卫零放行：{extreme!r}", (bool(out), texts.plain(out)), (True, []))
-
-
-def _part_texts_lexer_boundaries():
-    """五类通用词法文法收紧回归：URL 边界、Windows/UNC 双向边界、ISO DATETIME、HTTP/退出码归类与主干残渣清零。"""
-    ROOT = Path(__file__).resolve().parents[1]
-    sys.path.insert(0, str(ROOT))
-    from ark_relay.core import texts
-
-    print("\n[1. URL 通用结构边界：越过 host 禁 [] / 裸 () / 紧跟字母与括号的 ,;! / :Ident]")
-    url_cases = [
-        ("拉取 https://cos.example.com/api/v1:ReadTimeout", "https://cos.example.com/api/v1", "timeout", None, "ReadTimeout"),
-        ("拉取 https://cos.example.com/api/v1:ConnectTimeout", "https://cos.example.com/api/v1", "timeout", None, "ConnectTimeout"),
-        ("拉取 https://cos.example.com/api/v1:RemoteDisconnected", "https://cos.example.com/api/v1", "conn_reset", None, "RemoteDisconnected"),
-        ("拉取 https://cos.example.com/api/v1:IncompleteRead", "https://cos.example.com/api/v1", "conn_reset", None, "IncompleteRead"),
-        ("拉取 https://cos.example.com/api/v1:BrokenPipe", "https://cos.example.com/api/v1", "conn_reset", None, "BrokenPipe"),
-        ("拉取 https://cos.example.com/api/v1:Error", "https://cos.example.com/api/v1", "", None, ":Error"),
-        ("拉取 https://cos.example.com/api/v1:UnknownCustomExc", "https://cos.example.com/api/v1", "", None, "UnknownCustomExc"),
-        ("拉取 https://cos.example.com/a.json?x=1&y=2:ReadTimeout", "https://cos.example.com/a.json?x=1&y=2", "timeout", None, "ReadTimeout"),
-        ("拉取 https://cos.example.com/a.json#frag:ReadTimeout", "https://cos.example.com/a.json#frag", "timeout", None, "ReadTimeout"),
-        ("拉取 https://cos.example.com/a.json?k=v:RemoteDisconnected", "https://cos.example.com/a.json?k=v", "conn_reset", None, "RemoteDisconnected"),
-        ("拉取 https://cos.example.com/api/v1:status=503", "https://cos.example.com/api/v1", "http_error", 503, "status=503"),
-        ("拉取 https://cos.example.com/a.json(TimeoutError)", "https://cos.example.com/a.json", "timeout", None, "TimeoutError"),
-        ("拉取 https://cos.example.com/a.json[PermissionError]", "https://cos.example.com/a.json", "permission", None, "PermissionError"),
-        ("拉取 https://cos.example.com/a.json,[KeyError]", "https://cos.example.com/a.json", "key_error", None, "KeyError"),
-        ("拉取 https://cos.example.com/a.json;[TimeoutError]", "https://cos.example.com/a.json", "timeout", None, "TimeoutError"),
-        ("拉取 https://cos.example.com/a.json(HTTP/1.1)", "https://cos.example.com/a.json", "", None, "HTTP/1.1"),
-        ("拉取 https://cos.example.com/a_(TimeoutError)", "https://cos.example.com/a_", "timeout", None, "TimeoutError"),
-    ]
-    for raw, want_url, want_kind, want_http, forbid in url_cases:
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        body = texts.relay_error_body("ark.service", raw, "09:30:00")
-        check(f"URL 通用结构硬停：{raw[:42]}",
-              (bool(texts.plain(raw)), info.url, info.fault_kind, info.http_code,
-               forbid in out, want_url in out, texts.plain(out), texts.plain(body)),
-              (True, want_url, want_kind, want_http, False, True, [], []))
-    check("维基百科式 _(词)、/w/File:Logo.png 与纯中文 IPv6 未指定地址 http://[::]:8080/api 完整放行",
-          (texts.plain("查看 https://en.wikipedia.org/wiki/Python_(programming_language)"),
-           texts.plain("查看 https://wiki.example.com/w/File:Logo.png"),
-           texts.format_fault_reason("访问 http://[::]:8080/api 失败"),
-           texts.plain(texts.format_fault_reason("访问 http://[::]:8080/api 失败"))),
-          ([], [], "访问 http://[::]:8080/api 失败", []))
-
-    print("\n[2. Windows/UNC 双向文法：不吞英文/异常括号 + 完整保盘符根/中文目录/空格共享名/版本号点号目录]")
-    win_stop_cases = [
-        (r"打开 C:\ark\readme ReadTimeout at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "timeout", ("ReadTimeout", " at ")),
-        (r"打开 C:\ark\readme failed at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "", ("failed", " at ")),
-        (r"打开 C:\ark\readme Error at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "", ("Error", " at ")),
-        (r"打开 C:\ark\foo.properties failed at logs\a.log", (r"C:\ark\foo.properties", r"logs\a.log"), "", ("failed", " at ")),
-        (r"打开 C:\ark\dir(ReadTimeout)", (r"C:\ark\dir",), "timeout", ("ReadTimeout",)),
-        (r"打开 C:\ark\dir(Error)", (r"C:\ark\dir",), "", ("Error",)),
-        (r"读取 \\fileserver\share\dir(ReadTimeout)", (r"\\fileserver\share\dir",), "timeout", ("ReadTimeout",)),
-        (r"读取 \\fileserver\share\dir(Error)", (r"\\fileserver\share\dir",), "", ("Error",)),
-        (r"copy C:\ark\src to logs\dst.log", (r"C:\ark\src", r"logs\dst.log"), "", ("copy", " to ")),
-        (r"打开 C:\ark\readme got ValueError at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "value_error", ("got", "ValueError")),
-    ]
-    for raw, want_files, want_kind, forbids in win_stop_cases:
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"Windows/UNC 绝不吞英文异常：{raw[:40]}",
-              (bool(texts.plain(raw)), info.files, info.fault_kind,
-               any(f in out for f in forbids), out.count(want_files[0]), texts.plain(out)),
-              (True, want_files, want_kind, False, 1, []))
-
-    check("合法盘符根、中文目录、UNC 空格共享名与含纯数字版本号空格目录完整保留",
-          (texts.format_fault_reason(r"磁盘 C:\ 空间不足"),
-           texts.plain(r"磁盘 C:\ 空间不足"),
-           texts._parse_fault(r"读取 C:/ 失败：PermissionError").files,
-           r"读取 C:/ 失败" in texts.format_fault_reason(r"读取 C:/ 失败：PermissionError"),
-           texts._parse_fault("OSError: [Errno 28] No space left on device: 'C:\\\\'").files,
-           texts._parse_fault(r"打开 D:\游戏\终末地\config.json 失败：PermissionError").files,
-           r"D:\游戏\终末地\config.json" in texts.format_fault_reason(r"打开 D:\游戏\终末地\config.json 失败：PermissionError"),
-           texts._parse_fault(r"读取 \\fileserver\share\日志\err.log 失败：FileNotFoundError").files,
-           r"\\fileserver\share\日志\err.log" in texts.format_fault_reason(r"读取 \\fileserver\share\日志\err.log 失败：FileNotFoundError"),
-           texts._parse_fault(r"读取 \\fileserver\shared docs\logs\readme 失败：PermissionError").files,
-           r"\\fileserver\shared docs\logs\readme" in texts.format_fault_reason(r"读取 \\fileserver\shared docs\logs\readme 失败：PermissionError"),
-           texts._parse_fault(r"打开 C:\Program Files\Python3.15 Tools\python.exe").files,
-           texts.plain(r"打开 C:\Program Files\Python3.15 Tools\python.exe"),
-           texts.plain(r"打开 C:\Users\Default User\AppData\a.log")),
-          (r"磁盘 C:\ 空间不足",
-           [],
-           ("C:/",),
-           True,
-           ("C:\\",),
-           (r"D:\游戏\终末地\config.json",),
-           True,
-           (r"\\fileserver\share\日志\err.log",),
-           True,
-           (r"\\fileserver\shared docs\logs\readme",),
-           True,
-           (r"C:\Program Files\Python3.15 Tools\python.exe",),
-           [],
-           []))
-
-    print("\n[3. ISO 8601 完整 DATETIME 原子词元：不删小时数、不删 Z、不误判退出码]")
-    for raw, want_dt in (
-        ("任务记录 2026-11-28T20:45:00+08:00 exited ValueError: bad", "2026-11-28T20:45:00+08:00"),
-        ("同步失败 2026-11-28T20:45:00Z：TimeoutError", "2026-11-28T20:45:00Z"),
-        ("任务失败 2026-11-28T20:45:00.123+08:00：TimeoutError", "2026-11-28T20:45:00.123+08:00"),
-        ("任务记录 2026-11-28t09:30+0900：TimeoutError", "2026-11-28t09:30+0900"),
-    ):
-        toks = [(t.kind, t.raw) for t in texts._lex_text(raw) if t.kind == "DATETIME"]
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"ISO DATETIME 完整保留：{want_dt}",
-              (toks, info.exit_code, want_dt in out, texts.plain(out)),
-              ([("DATETIME", want_dt)], None, True, []))
-    check("纯中文含 ISO 8601 时间戳直通放行",
-          (texts.plain("任务于 2026-11-28T20:45:00+08:00 失败"),
-           texts.format_fault_reason("任务于 2026-11-28T20:45:00+08:00 失败")),
-          ([], "任务于 2026-11-28T20:45:00+08:00 失败"))
-
-    print("\n[4. status_code/statusCode 永归 HTTP + 中文无空格负退出码 + 退出码 0 不盖真错]")
-    for raw, want_http in (
-        ("pwsh 调接口失败 ｜ status_code=502 Bad Gateway", 502),
-        ("git 调接口失败 ｜ status_code=503 Service Unavailable", 503),
-        ("ssh 代理返回 ｜ statusCode=504 Gateway Timeout", 504),
-        ("git 调接口失败 ｜ status-code=502", 502),
-        ("pwsh 调接口失败 ｜ http_status=503", 503),
-        ("ssh 代理返回 ｜ httpStatus=504", 504),
-    ):
-        info = texts._parse_fault(raw)
-        out = texts.format_fault_reason(raw)
-        check(f"外部命令语境下显式 HTTP 键绝不误判退出码：{raw[:34]}",
-              (info.fault_kind, info.http_code, info.exit_code, f"状态码 {want_http}" in out,
-               "退出码" in out, texts.plain(out)),
-              ("http_error", want_http, None, True, False, []))
-    check("中文退出码/返回码无空格负整数精确提取，且退出码 0 不盖 ValueError",
-          (texts._parse_fault("脚本失败 退出码-1073741819").exit_code,
-           texts._parse_fault("脚本失败 退出码-1073741819").fault_kind,
-           texts._parse_fault("脚本失败 返回码-1").exit_code,
-           texts._parse_fault("脚本失败 返回码-1").fault_kind,
-           "退出码 -1073741819" in texts.format_fault_reason("脚本失败 退出码-1073741819 RuntimeError: crash"),
-           texts._parse_fault("exit status 0 ValueError: bad").fault_kind,
-           "退出码 0" in texts.format_fault_reason("exit status 0 ValueError: bad")),
-          (-1073741819, "process_exit", -1, "process_exit", True, "value_error", False))
-
-    print("\n[5. 主干残渣符号清零 + _scan_rel_path 异常/协议/版本号目录拒绝 + 大写 SEMVER + <URL>]")
-    for raw, must_have, must_not in (
-        (r"抛出 Error\SubError", ("抛出",), ("\\",)),
-        ("抛出 Foo/TimeoutError", ("抛出", "连接或读写超时"), ("/",)),
-        (r"抛出 Foo\KeyError", ("抛出", "缺少必要内容"), ("\\",)),
-        ("下载 url=https://cos.example.com/a.json 失败：TimeoutError",
-         ("下载 https://cos.example.com/a.json 失败",), ("=https://",)),
-        (r"读取 file=D:\ark\a.json 失败：PermissionError",
-         (r"读取 D:\ark\a.json 失败",), ("=D:",)),
-        ("拉取 <https://cos.example.com/a.json> 失败：TimeoutError",
-         ("拉取 https://cos.example.com/a.json 失败",), ("<", ">")),
-        ("调用 _private_func 失败", ("调用", "失败"), ("_",)),
-        ("拉取 v3.15.2-RC1 失败：TimeoutError", ("v3.15.2-RC1",), ("v3.15.2- ",)),
-        ("拉取 v2.0.0-ALPHA.1 失败：TimeoutError", ("v2.0.0-ALPHA.1",), ("v2.0.0- ",)),
-        ("程序崩溃 0xZZZ", ("程序崩溃",), ("程序崩溃 0",)),
-        ("使用 v2/HTTP 失败", ("使用 v2 失败",), ("v2/",)),
-    ):
-        out = texts.format_fault_reason(raw)
-        check(f"主干无残渣符号：{raw[:36]}",
-              (all(m in out for m in must_have), any(b in out for b in must_not), texts.plain(out)),
-              (True, False, []))
-
-    for fake_rel in (
-        "抛出 PermissionError/state.json",
-        "返回 HTTP/1.1/a.json",
-        "返回 gRPC/1.0/a.json",
-        "返回 TLS/1.3/a.json",
-        "返回 QUIC/v1/a.json",
-        "返回 WS/a.json",
-        "返回 MQTT/a.json",
-        "返回 2.0/a.json",
-        r"抛出 ValueError\cfg.json",
-    ):
-        out = texts.format_fault_reason(fake_rel)
-        check(f"_scan_rel_path 拒绝异常/协议/版本前缀：{fake_rel}",
-              (bool(texts.plain(fake_rel)), out == fake_rel, texts.plain(out)),
+        check(f"合法路径/时间/版本号放行：{ok_win[:40]}", texts.plain(ok_win), [])
+    node_unquoted = texts.format_fault_reason(r"打开 C:\Program Files\Node.js Runtime\node.exe 失败：PermissionError")
+    check("无引号 Node.js Runtime 不劈成顿号假路径也不抠半截 Files\\Node.js",
+          ("Node.js、" in node_unquoted, r"Files\Node.js" in node_unquoted,
+           "没有权限读写" in node_unquoted, texts.plain(node_unquoted)),
+          (False, False, True, []))
+    for expr in ("调用 ptr->value 失败", "执行 cmdA && cmdB 失败", "校验 verA != verB 失败", "程序崩溃 0xZZZ"):
+        out = texts.format_fault_reason(expr)
+        check(f"含英文运算符/非法十六进制无残渣：{expr}",
+              (bool(texts.plain(expr)), any(op in out for op in ("->", "&&", "!=", "0xZZZ")), texts.plain(out)),
               (True, False, []))
 
 
@@ -7071,4 +6751,4 @@ def _part_flush_unsent_persist():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_texts_lexer, _part_texts_lexer_boundaries, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation, _part_yesterday_report_midnight_wait, _part_flush_unsent_persist]))
+    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_texts_structured_faults, _part_texts_plain_strict, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation, _part_yesterday_report_midnight_wait, _part_flush_unsent_persist]))

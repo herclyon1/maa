@@ -1,921 +1,129 @@
 """Every piece of copy pushed to the user, in this one module and nowhere else.
 
 Three rules, set by the user:
-1. **Plain language only**: the only English allowed is product names and
-   「Boss」; task class names, exception names and raw log text never reach a
-   notification.
-2. **Nothing vague**: 「出错」「异常」「有问题」「这一步」「未知」 must not stand
-   alone as a verdict - if it can be translated, write the specific thing; if it
-   cannot, say so outright with 「中继还不认识，原文已记日志」.
-3. **Same kind, same phrasing**: the three weeklies read alike, and so do the
-   update notifications for the four programs.
-
-`tests/test_texts_gate.py` enforces this: every notifier.send title in the code
-must come from here, and every sentence here - along with the Chinese lookup
-tables elsewhere - has to pass `plain()`.
+1. **Plain language only**: only product names and 「Boss」 are allowed English;
+   exception names and raw logs never reach a notification.
+2. **Nothing vague**: faults are classified into `ErrorCode` and rendered with
+   closed plain-Chinese templates instead of raw English or blind boxes.
+3. **Same kind, same phrasing**: weeklies and update notifications read alike.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 import re
 from urllib.parse import urlsplit
 
 from ark_relay.core.config import GAME_ZH
 
-# English that is allowed: product names, common in-game terms, and commands a
-# person has to copy verbatim.
+# 允许留在通知里的英文：产品名、游戏内常用词与需要原样照抄的命令名。
 ALLOWED_WORDS = {
     "MAA", "MaaEnd", "OK-WW", "AUTO-MAS", "MXU", "Boss", "Annihilation", "F2",
     "PIN", "net", "stop", "start", "ark-relay", "deploy-relay.sh", "scripts/mac/deploy-relay.sh",
-    "MuMu", "APK", "v",
-    "DirectX",      # the Endfield launcher's own label 「DirectX 11 启动」 (ENDFIELD_NO_MAAEND_START)
+    "MuMu", "APK", "v", "DirectX",
 }
-# Hedges are vagueness too: a sentence either states what was measured or says
-# outright what could not be read - it never guesses.
-VAGUE = ("未知错误", "这一步", "有问题", "出错",
-         "多半", "可能", "大概", "大约", "应该是", "似乎", "疑似", "也许", "或许",
-         "估计", "差不多", "左右", "好像", "不确定", "貌似", "大致", "约 ", "约一", "不一定")
-
-
-# ==============================================================================
-# 单遍确定性字符状态机词法分析器（Single-Pass Lexer）
-#
-# 设计原则（替代旧版互相打架的混合正则）：
-# 1. 从左到右单遍扫描文本，按严格优先级一次性切出互不重叠的强类型 Token：
-#    URL > UNC_PATH > WIN_PATH > REL_PATH > DATETIME > DATE > TIME > HEX > SEMVER > FLOAT/INT > IDENT > ZH > WS/PUNCT；
-# 2. URL 走字符状态机 + urllib.parse.urlsplit 校验：[] 仅限 authority 里的 IPv6 主机，
-#    越过 host 后遇 []、普通 (、紧跟字母/_/(/[ 的 ,/;/! 或 :ASCII字母 一律在符号前硬截停，
-#    仅放行 ://、维基式路径 _(词) 与 /w/File:xxx.ext，不靠枚举异常词表；
-# 3. UNC 网络路径（\\host\share\...）与 Windows 盘符路径（含盘符根 C:\、中文目录与含空格共享名）
-#    共用同一套安全目录推进器：括号仅放行 (x86)/(64-bit)/(数字) 白名单，跨空格前瞻全段检验
-#    禁止跨越英文介词/动词/异常词或带字母扩展名的文件，纯数字版本点号（Python3.15）不当扩展名；
-# 4. 相对/Unix 路径（REL_PATH）走严格正向白名单并拒绝含异常词/协议名/纯版本号的目录段，
-#    从源头杜绝 ValueError/KeyError、PermissionError/state.json、HTTP/1.1/a.json 穿透门禁；
-# 5. ISO 8601 时间戳/日期/时刻/大小写预发布版本号/十六进制/浮点数均为独立原子 Token，
-#    数学上永不拆坏小时数、永不误判退出码或留下残渣 0；IDENT 涵盖前导/尾随下划线标识符。
-# ==============================================================================
-
-@dataclass(frozen=True)
-class Token:
-    """词法分析器切出的单个不可重叠词元。"""
-
-    kind: str
-    raw: str
-    start: int
-    end: int
-
-
-class _LexSpec:
-    """词法分析器内部规格表（封装为类命名空间，不混入对外文案常量集合）。"""
-
-    # 允许作为真实文件路径后缀的扩展名（小写，不含点；刻意排除 .ops / .rst 等非项目后缀）。
-    FILE_EXTS = frozenset({
-        "py", "rs", "cs", "js", "ts", "jsonl", "json", "log", "txt", "md",
-        "yaml", "yml", "toml", "ini", "cfg", "conf", "exe", "dll", "dmp",
-        "bat", "cmd", "ps1", "sh", "zip", "gz", "zst", "db", "sqlite",
-        "png", "jpg", "jpeg", "webp", "csv", "xml", "html", "swift",
-        "lock", "flag", "bak", "tmp", "pth", "whl", "env", "dat",
-    })
-    # 允许作为无扩展名路径的真实 Unix 根目录前缀。
-    UNIX_ROOTS = (
-        "/Users/", "/opt/", "/etc/", "/var/", "/tmp/", "/home/", "/usr/", "/bin/",
-    )
-    # 通知文案与机器核对里固定出现的已知相对目录名/前缀（不含扩展名）。
-    ALLOWED_REL_DIRS = frozenset({
-        "resource/tasks",
-        "scripts/mac/deploy-relay.sh",
-    })
-    ALLOWED_REL_PREFIXES = (
-        "shots/",
-        "state/shots/",
-    )
-    # RFC 3986 网址 path/query/fragment 允许的 ASCII 字符（刻意不含方括号 []，[] 仅限 authority IPv6 主机）。
-    URL_CHARS = frozenset(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-        "-._~:/?#@!$&*+,;=%()"
-    )
-    # Windows/UNC 目录与文件名单段内允许的常规 ASCII 字符（含共享名常用 $，不含 <>:"|?*、引号、逗号、分号、感叹号）。
-    WIN_SEG_CHARS = frozenset(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.+~@#%-$"
-    )
-    # 相对/Unix 路径允许的 ASCII 字符（含路径分隔符 / 与 \，不含冒号、逗号、分号、引号、括号）。
-    REL_PATH_CHARS = frozenset(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_.+~@#%-/\\"
-    )
-    # 十六进制数字字符集合。
-    HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
-    # 常见网络协议名（小写）：在相对路径目录段、URL 括号消歧义和 Windows 空格前瞻中均拒绝当作普通目录名。
-    PROTO_WORDS = frozenset({
-        "http", "https", "grpc", "tls", "ssl", "quic", "rtsp", "sip", "ws", "wss", "mqtt",
-    })
-    # 明确的异常/堆栈/系统边界词（小写，含非 *Error 结尾的常见 Python/网络异常类名）。
-    EXC_EXACT_WORDS = frozenset({
-        "traceback", "winerror", "errno", "subprocess", "waitpid", "exited", "returned",
-        "returncode", "calledprocesserror", "systemexit", "keyboardinterrupt",
-        "badstatusline", "incompleteread", "brokenpipe", "remotedisconnected",
-        "readtimeout", "connecttimeout", "timeoutexpired", "eof", "oom",
-    })
-    # 异常/错误类常见词尾（小写，不设长度下限，覆盖 5 字母 Error 本身；fault 单独排除 default）。
-    EXC_SUFFIXES = (
-        "error", "exception", "failure", "warning", "timeout",
-        "timeoutexpired", "disconnected", "incompleteread", "brokenpipe", "badstatusline",
-    )
-    # Windows/UNC 跨空格前瞻归入目录名时一律硬截停的常见英文介词/动词/报错连接词（小写）。
-    WIN_SPACE_STOP_WORDS = frozenset({
-        "at", "in", "on", "to", "from", "for", "of", "by", "with", "without",
-        "into", "onto", "over", "under", "between", "through", "about", "against",
-        "while", "during", "when", "after", "before", "because", "since", "until",
-        "and", "or", "but", "nor", "if", "then", "else", "as", "than", "vs",
-        "is", "was", "were", "are", "be", "been", "being",
-        "has", "had", "have", "did", "does", "do",
-        "not", "no", "cannot", "cant", "could", "couldnt", "would", "should", "must", "may", "might",
-        "failed", "fail", "failing", "fails", "error", "errors",
-        "crashed", "crash", "exited", "exit", "returned", "return",
-        "raised", "raise", "threw", "throw", "thrown",
-        "denied", "deny", "timeout", "timed", "refused", "refuse", "reset",
-        "aborted", "abort", "broken", "closed", "close", "disconnected", "disconnect",
-        "rejected", "reject", "blocked", "corrupt", "corrupted",
-        "invalid", "illegal", "unexpected", "unknown", "unhandled", "unable",
-        "missing", "got", "expected", "found",
-        "killed", "died", "terminated", "stopped", "stuck", "hung", "bad", "fatal", "panic",
-        "status", "status_code", "statuscode", "rc",
-    })
-    # Windows/UNC 目录名内仅放行的极简纯标签括号白名单（如 (x86)、(64-bit)、(1)），彻底封死 (ReadTimeout)/(Error)。
-    WIN_PAREN_TAG_RE = re.compile(
-        r"^(?:x86|x64|amd64|arm64|ia64|win32|win64|32-?bit|64-?bit|\d+)$",
-        re.I,
-    )
-    # 相对路径目录段里必须拒绝的纯版本号片段（如 1.1、2.0，拦截 HTTP/1.1/a.json、2.0/a.json）。
-    PURE_VER_SEG_RE = re.compile(r"^\d+\.\d+(?:\.\d+)*$")
-    # 段尾文件扩展名判定：须包含至少 1 个 ASCII 字母且不限长度（覆盖 .properties/.xml/.tmp，排除纯数字版本号如 Python3.15）。
-    ANY_EXT_RE = re.compile(r"\.[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*$")
-    # 预发布版本号后缀（兼容大小写，如 -beta.1、-RC1、-ALPHA.1、-rc-1、-rc3，排除 -RuntimeError 等异常类名）。
-    PRERELEASE_RE = re.compile(
-        r"^(?:-(?:(?:alpha|beta|rc|pre|dev|preview|nightly|canary|snapshot|post|patch|hotfix|rel|release|build)"
-        r"(?:[.-]?\d+)*|[abr]\d+(?:[.-]\d+)*|\d+(?:\.\d+)*))+",
-        re.I,
-    )
-    # ISO 8601 时间戳在 YYYY-MM-DD[Tt] 之后的时刻主体与可选时区偏移正则。
-    ISO_TIME_TAIL_RE = re.compile(
-        r"(?P<core>(?P<h>\d{2}):(?P<m>\d{2})(?::(?P<s>\d{2})(?:\.\d+)?)?)"
-    )
-    ISO_TZ_OFF_RE = re.compile(r"[+-](?P<h>\d{2}):?(?P<m>\d{2})")
-    # Windows 含空格目录向后探路时遇到即判“不再属于当前 Windows 路径”的字符。
-    WIN_LOOKAHEAD_FORBID = frozenset('<>:"|?*\'`;,!/\n\r\t[]')
-    # 常见命令行可执行名称（统一映射为 .exe 标准展示名，保持既有优先级顺序）。
-    CMD_SPECS = (
-        (re.compile(r"^(?:pwsh|powershell)(?:\.exe)?$", re.I), "pwsh.exe"),
-        (re.compile(r"^schtasks(?:\.exe)?$", re.I), "schtasks.exe"),
-        (re.compile(r"^taskkill(?:\.exe)?$", re.I), "taskkill.exe"),
-        (re.compile(r"^tasklist(?:\.exe)?$", re.I), "tasklist.exe"),
-        (re.compile(r"^wevtutil(?:\.exe)?$", re.I), "wevtutil.exe"),
-        (re.compile(r"^shutdown(?:\.exe)?$", re.I), "shutdown.exe"),
-        (re.compile(r"^adb(?:\.exe)?$", re.I), "adb.exe"),
-        (re.compile(r"^pip(?:\.exe)?$", re.I), "pip.exe"),
-        (re.compile(r"^git(?:\.exe)?$", re.I), "git.exe"),
-        (re.compile(r"^ssh(?:\.exe)?$", re.I), "ssh.exe"),
-        (re.compile(r"^curl(?:\.exe)?$", re.I), "curl.exe"),
-        (re.compile(r"^pythonw?(?:\.exe)?$", re.I), "python.exe"),
-    )
-    # 退出语境下的外部命令名与触发词。
-    PROC_CTX_WORDS = frozenset({
-        "calledprocesserror", "subprocess", "waitpid",
-        "taskkill", "tasklist", "pwsh", "schtasks", "wevtutil", "shutdown", "adb", "git", "ssh",
-    })
-    PROC_CTX_SUBJECTS = frozenset({"process", "child"})
-    PROC_CTX_VERBS = frozenset({"ended", "exited", "terminated", "failed", "died", "crashed", "killed", "returned"})
-    # 十六进制字节值前置词（如 UnicodeDecodeError 里的 byte 0xff，不算系统错误码）。
-    BYTE_HEX_PREFIXES = frozenset({"byte", "bytes", "char", "character", "octet", "position", "offset"})
-    # 显式退出码单词键（统一小写并折叠 _ 与 - 后比对）。
-    EXIT_KEY_SINGLE = frozenset({
-        "exitstatus", "exitstatuscode", "exitcode", "returncode", "rc",
-    })
-    # 永远归属 HTTP 状态码的显式键（覆盖 status_code / status-code / statusCode / http_status / http-status / httpStatus）。
-    HTTP_EXPLICIT_KEYS = frozenset({
-        "httpstatus", "httpstatuscode", "statuscode",
-    })
-
-
-def _is_ascii_alnum(ch: str) -> bool:
-    """判断单个字符是否为 ASCII 字母或数字。"""
-    return ch.isascii() and ch.isalnum()
-
-
-def _is_ascii_ident_char(ch: str) -> bool:
-    """判断单个字符是否为 ASCII 字母、数字或下划线。"""
-    return ch.isascii() and (ch.isalnum() or ch == "_")
-
-
-def _is_ascii_alpha(ch: str) -> bool:
-    """判断单个字符是否为 ASCII 字母。"""
-    return ch.isascii() and ch.isalpha()
-
-
-def _is_cjk_path_char(ch: str) -> bool:
-    """判断单个字符是否为允许出现在 Windows/UNC 路径段中的常用汉字（严格排除一切中文标点）。"""
-    return ("\u4e00" <= ch <= "\u9fff") or ("\u3400" <= ch <= "\u4dbf") or ("\uf900" <= ch <= "\ufaff")
-
-
-def _is_exc_or_proto_word(word: str) -> bool:
-    """判断英文词是否为异常/错误类名或协议边界词（如 Error、ReadTimeout、PermissionError、HTTP、Traceback）。"""
-    low = word.lower()
-    if not low:
-        return False
-    if low in _LexSpec.PROTO_WORDS or low in _LexSpec.EXC_EXACT_WORDS:
-        return True
-    if low.endswith(_LexSpec.EXC_SUFFIXES):
-        return True
-    # 兼容 Fault / SegFault / PageFault，同时排除真实目录名 Default。
-    return low.endswith("fault") and not low.endswith("default")
-
-
-def _is_win_space_stop_word(word: str) -> bool:
-    """判断 Windows/UNC 空格前瞻中的单个词是否为英文介词/动词/报错连接词或异常/协议词。"""
-    clean = word.strip(".-")
-    if not clean:
-        return True
-    return _is_exc_or_proto_word(clean) or clean.lower() in _LexSpec.WIN_SPACE_STOP_WORDS
-
-
-def _scan_url_authority(text: str, start: int) -> tuple[int, bool]:
-    """扫描 URL 的 authority 部分（含可选 userinfo@、IPv6 [...] 主机与 :port）。
-
-    返回 (authority 结束位置, 是否允许继续扫描 path/query/fragment)。
-    遇到非端口冒号（如 https://example.com:PermissionError）会立刻停止，不吞冒号与异常名。
-    """
-    n = len(text)
-    j = start
-    # 检查 authority 范围内是否存在 userinfo@（在首个 / ? # 空白、分隔标点、括号或非ASCII 之前）。
-    at_pos = -1
-    k = j
-    while k < n and text[k] not in "/?# \t\r\n,;!([]<>'\"" and ord(text[k]) < 128:
-        if text[k] == "@":
-            at_pos = k
-            break
-        k += 1
-    if at_pos > j:
-        j = at_pos + 1
-
-    host_start = j
-    if j < n and text[j] == "[":
-        # IPv6 字面量主机，例如 [::1]、[::] 或 [2001:db8::1]（[] 仅此处合法）。
-        j += 1
-        while j < n and text[j] in "0123456789abcdefABCDEF:.%":
-            j += 1
-        if j >= n or text[j] != "]":
-            return start, False
-        j += 1
-    else:
-        while j < n:
-            c = text[j]
-            if c.isascii() and (c.isalnum() or c in "-._~%"):
-                j += 1
-            else:
-                break
-
-    if j == host_start:
-        return start, False
-
-    # 可选 :port（仅接受纯数字端口；遇到 :ReadTimeout 等非端口冒号立刻截停）。
-    if j < n and text[j] == ":":
-        p = j + 1
-        while p < n and text[p].isascii() and text[p].isdigit():
-            p += 1
-        if p > j + 1 and (p >= n or not _is_ascii_ident_char(text[p])):
-            j = p
-        else:
-            return j, False
-    return j, True
-
-
-def _url_wiki_paren_end(text: str, open_pos: int) -> int:
-    """校验 URL 路径中 `_(...)` 是否为维基百科类消歧义尾缀（不含 /=: 及异常/协议词）；不合则返回 -1。"""
-    n = len(text)
-    k = open_pos + 1
-    while k < n and text[k] != ")":
-        c = text[k]
-        if c.isspace() or ord(c) >= 128 or c not in _LexSpec.URL_CHARS or c in "/=:,;!(":
-            return -1
-        k += 1
-    if k <= open_pos + 1 or k >= n or text[k] != ")":
-        return -1
-    inner = text[open_pos + 1:k]
-    words = [w for w in re.split(r"[_.\-]+", inner) if w]
-    if not words or any(_is_exc_or_proto_word(w) for w in words):
-        return -1
-    return k
-
-
-def _is_url_wiki_colon_file(text: str, path_start: int, colon_pos: int) -> bool:
-    """判断 URL path 里的 `:` 是否属于极少数维基文件命名空间（如 /w/File:Logo.png）；其余 `:Ident` 一律硬停。"""
-    n = len(text)
-    seg_before = text[path_start:colon_pos].rsplit("/", 1)[-1]
-    if seg_before.lower() not in ("file", "image", "media"):
-        return False
-    k = colon_pos + 1
-    while k < n and text[k] not in "/?#:=,;!([] \t\r\n" and ord(text[k]) < 128 and text[k] in _LexSpec.URL_CHARS:
-        k += 1
-    if k <= colon_pos + 1 or (k < n and text[k] in ":=(["):
-        return False
-    after = text[colon_pos + 1:k]
-    if not _has_known_file_ext(after):
-        return False
-    stem = after.rsplit(".", 1)[0]
-    return not any(_is_exc_or_proto_word(w) for w in re.split(r"[_.\-]+", stem) if w)
-
-
-def _scan_url(text: str, i: int) -> int:
-    """在位置 i 尝试扫描 RFC 3986 ASCII URL，并用通用结构文法边界与 urllib.parse.urlsplit 校验合法性。"""
-    n = len(text)
-    if i > 0 and _is_ascii_ident_char(text[i - 1]):
-        return i
-    head = text[i:i + 8].lower()
-    if head.startswith("https://"):
-        auth_start = i + 8
-    elif head.startswith("http://"):
-        auth_start = i + 7
-    else:
-        return i
-
-    j, allow_tail = _scan_url_authority(text, auth_start)
-    if j == auth_start:
-        return i
-
-    if allow_tail and j < n and text[j] in "/?#":
-        path_start = j
-        in_query_or_frag = text[j] in "?#"
-        while j < n:
-            c = text[j]
-            # 硬截停 1：越过 authority 后禁止任何空白、非 ASCII、方括号 [] 与非 URL 字符。
-            if c.isspace() or ord(c) >= 128 or c not in _LexSpec.URL_CHARS:
-                break
-            if c in "?#":
-                in_query_or_frag = True
-            # 硬截停 2：, / ; / ! 后紧跟 ASCII 字母、_、( 或 [（如 ,HTTP/1.1、,[KeyError]、;[TimeoutError]、!KeyError）。
-            if c in ",;!" and j + 1 < n and (_is_ascii_alpha(text[j + 1]) or text[j + 1] in "_(["):
-                break
-            # 硬截停 3：越过 host 后凡 : 后紧跟 ASCII 字母或 _，一律在 : 前硬停（仅放行 :// 与 /w/File:xxx.ext）。
-            if c == ":" and j + 1 < n and (_is_ascii_alpha(text[j + 1]) or text[j + 1] == "_"):
-                if in_query_or_frag or not _is_url_wiki_colon_file(text, path_start, j):
-                    break
-            # 硬截停 4：禁止裸 URL 拼 (...)，仅放行路径中的维基式 _(词) 且不含 /=: 及异常/协议词；裸 ) 立即停。
-            if c == "(":
-                if not in_query_or_frag and j > path_start and text[j - 1] == "_":
-                    close = _url_wiki_paren_end(text, j)
-                    if close > j:
-                        j = close + 1
-                        continue
-                break
-            if c == ")":
-                break
-            j += 1
-
-    while j > i and text[j - 1] in ".,;:!?":
-        j -= 1
-    if j <= auth_start:
-        return i
-
-    cand = text[i:j]
-    try:
-        parsed = urlsplit(cand)
-        _ = parsed.port
-    except ValueError:
-        return i
-    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
-        return i
-    return j
-
-
-def _ahead_has_win_backslash(text: str, pos: int) -> bool:
-    """检查从 pos 起在遇到非法字符/非ASCII前能否先遇反斜杠 \\，且中间每个词均非英文连接词/异常词/带字母扩展名文件。"""
-    n = len(text)
-    k = pos
-    if k >= n or text[k] == " ":
-        return False
-    while k < n:
-        c = text[k]
-        if c == "\\":
-            return True
-        if ord(c) >= 128 or c in _LexSpec.WIN_LOOKAHEAD_FORBID:
-            return False
-        if c == " ":
-            if k + 1 < n and text[k + 1] == " ":
-                return False
-            k += 1
-            continue
-        if c == "(":
-            close = text.find(")", k + 1)
-            if close <= k + 1:
-                return False
-            inner = text[k + 1:close]
-            if "\\" in inner or "/" in inner or not _LexSpec.WIN_PAREN_TAG_RE.fullmatch(inner):
-                return False
-            k = close + 1
-            continue
-        if c == ")":
-            return False
-        w_start = k
-        while k < n and text[k] not in " \\()" and ord(text[k]) < 128 and text[k] not in _LexSpec.WIN_LOOKAHEAD_FORBID:
-            k += 1
-        word = text[w_start:k]
-        if not word or _is_win_space_stop_word(word):
-            return False
-        if k < n and text[k] != "\\" and _LexSpec.ANY_EXT_RE.search(word):
-            return False
-    return False
-
-
-def _cjk_run_has_backslash_ahead(text: str, pos: int) -> bool:
-    """判断从 pos 起的连续路径段（含汉字/常规路径字符）在遇空白或标点前是否紧接目录反斜杠 \\。"""
-    n = len(text)
-    k = pos
-    while k < n and (_is_cjk_path_char(text[k]) or text[k] in _LexSpec.WIN_SEG_CHARS):
-        k += 1
-    return k < n and text[k] == "\\"
-
-
-def _scan_win_segments(text: str, start: int, allow_slash: bool) -> int:
-    """沿 Windows/UNC 目录段推进：支持汉字目录/文件、严格标签括号白名单与安全跨空格目录前瞻。"""
-    n = len(text)
-    j = start
-    seg_start = start
-    last_good = start
-    while j < n:
-        c = text[j]
-        if c == "\\":
-            while j < n and text[j] == "\\":
-                j += 1
-            seg_start = j
-            continue
-        if c == "/" and allow_slash:
-            if j + 1 < n and text[j + 1] == "/":
-                break
-            j += 1
-            seg_start = j
-            continue
-        if c == " ":
-            # 仅当前段不含带字母文件扩展名、且前瞻到下一个 \ 的全部词均为安全目录词时，才将空格归入目录名。
-            cur_seg = text[seg_start:j]
-            if (
-                cur_seg
-                and not _LexSpec.ANY_EXT_RE.search(cur_seg)
-                and _ahead_has_win_backslash(text, j + 1)
-            ):
-                j += 1
-                continue
-            break
-        if c == "(":
-            # 括号仅放行极简目录标签白名单（如 (x86)、(64-bit)、(1)），彻底封死 (ReadTimeout)/(Error)。
-            if _LexSpec.ANY_EXT_RE.search(text[seg_start:j]):
-                break
-            close = text.find(")", j + 1)
-            if close <= j + 1:
-                break
-            inner = text[j + 1:close]
-            if "\\" in inner or "/" in inner or not _LexSpec.WIN_PAREN_TAG_RE.fullmatch(inner):
-                break
-            j = close + 1
-            last_good = j
-            continue
-        if _is_cjk_path_char(c):
-            # 若当前段已带 ASCII 文件扩展名（如 config.json失败）且后无 \，立刻停在汉字前不吞中文正文。
-            if _LexSpec.ANY_EXT_RE.search(text[seg_start:j]) and not _cjk_run_has_backslash_ahead(text, j):
-                break
-            j += 1
-            last_good = j
-            continue
-        if c in _LexSpec.WIN_SEG_CHARS:
-            j += 1
-            last_good = j
-            continue
-        break
-
-    while last_good > start and text[last_good - 1] in ".,;:!?":
-        last_good -= 1
-    return last_good
-
-
-def _scan_unc_path(text: str, i: int) -> int:
-    """在位置 i 尝试扫描 UNC 网络路径（支持含空格共享名与中文目录，如 \\\\fileserver\\shared docs\\logs\\readme）。"""
-    n = len(text)
-    if not text.startswith("\\\\", i):
-        return i
-    if i > 0 and (_is_ascii_ident_char(text[i - 1]) or text[i - 1] in "\\:"):
-        return i
-    j = i
-    while j < n and text[j] == "\\":
-        j += 1
-    if j - i < 2 or j >= n or not _is_ascii_alnum(text[j]):
-        return i
-    # 扫描主机名 <host>
-    host_start = j
-    while j < n and (text[j].isascii() and (text[j].isalnum() or text[j] in "_.-")):
-        j += 1
-    if j == host_start or j >= n or text[j] != "\\":
-        return i
-    while j < n and text[j] == "\\":
-        j += 1
-    # 共享名与后续目录复用 _scan_win_segments，天然支持含空格共享名、c$ 与中文目录。
-    if j >= n or not (_is_ascii_ident_char(text[j]) or text[j] == "$" or _is_cjk_path_char(text[j])):
-        return i
-    end = _scan_win_segments(text, j, allow_slash=False)
-    if end <= j:
-        return i
-    return end
-
-
-def _scan_win_path(text: str, i: int) -> int:
-    """在位置 i 尝试扫描 Windows 盘符路径（支持 C:\\、D:\\、C:/ 盘符根路径、中文目录与安全含空格目录）。"""
-    n = len(text)
-    if i + 2 >= n or not _is_ascii_alpha(text[i]) or text[i + 1] != ":" or text[i + 2] not in "\\/":
-        return i
-    if i > 0 and (_is_ascii_ident_char(text[i - 1]) or text[i - 1] in "/\\"):
-        return i
-    j = i + 2
-    if text[j] == "/":
-        if j + 1 < n and text[j + 1] == "/":
-            return i
-        j += 1
-    else:
-        while j < n and text[j] == "\\":
-            j += 1
-    end = _scan_win_segments(text, j, allow_slash=True)
-    # 盘符根路径（如 C:\、D:\、C:/、'C:\\'）后遇空白/标点/引号/结尾时合法产出完整盘符根路径。
-    return end if end > j else j
-
-
-def _has_known_file_ext(cand: str) -> bool:
-    """判断候选相对路径是否以已知真实文件扩展名结尾（且扩展名前有合法文件名主干）。"""
-    # 取最后一段文件名（兼容 / 与 \ 分隔符）。
-    base = cand.replace("\\", "/").rsplit("/", 1)[-1]
-    if base.lower() == ".env":
-        return True
-    dot = base.rfind(".")
-    if dot <= 0:
-        return False
-    stem, ext = base[:dot], base[dot + 1:].lower()
-    if ext not in _LexSpec.FILE_EXTS:
-        return False
-    # 主干末尾必须是字母、数字、下划线或连字符，杜绝 foo..py。
-    return bool(stem) and (stem[-1].isascii() and (stem[-1].isalnum() or stem[-1] in "_-"))
-
-
-def _scan_rel_path(text: str, i: int) -> int:
-    """严格正向白名单扫描相对/Unix 路径（拒绝异常词/协议名/纯版本号目录段，杜绝 PermissionError/state.json 穿透）。"""
-    n = len(text)
-    if i > 0 and (_is_ascii_ident_char(text[i - 1]) or text[i - 1] in "/\\"):
-        return i
-    ch = text[i]
-    if ch not in _LexSpec.REL_PATH_CHARS:
-        return i
-
-    # 情形 1：显式相对/家目录/Unix 根目录前缀（./ ../ ~/ 或 /Users/ 等）。
-    has_explicit_root = (
-        text.startswith("./", i)
-        or text.startswith("../", i)
-        or text.startswith("~/", i)
-        or any(text.startswith(root, i) for root in _LexSpec.UNIX_ROOTS)
-    )
-    if ch == "/" and not has_explicit_root:
-        return i
-
-    j = i
-    while j < n and text[j] in _LexSpec.REL_PATH_CHARS:
-        # 避免跨入 //（URL 或注释）。
-        if text[j] == "/" and j + 1 < n and text[j + 1] == "/":
-            break
-        j += 1
-    while j > i and text[j - 1] in ".,;:!?":
-        j -= 1
-    cand = text[i:j]
-    if not cand:
-        return i
-
-    # 目录段硬校验：凡任意目录段是异常词、协议名或纯版本号（如 PermissionError/state.json、HTTP/1.1/a.json），一律拒绝。
-    parts = cand.replace("\\", "/").split("/")
-    dir_parts = [p for p in parts[:-1] if p and p not in (".", "..", "~")]
-    if any(_is_exc_or_proto_word(seg) or _LexSpec.PURE_VER_SEG_RE.fullmatch(seg) for seg in dir_parts):
-        return i
-
-    # 情形 1 落地：显式前缀后须至少包含一个有效路径字符。
-    if has_explicit_root:
-        prefix_len = 2 if cand.startswith(("./", "~/")) else 3 if cand.startswith("../") else next(
-            len(r) for r in _LexSpec.UNIX_ROOTS if cand.startswith(r)
-        )
-        if len(cand) > prefix_len:
-            return j
-        return i
-
-    # 情形 2：文案固定目录白名单（如 resource/tasks）与中继截图相对目录前缀（如 shots/2026-10-08/MaaEnd-10-32-23）。
-    if cand in _LexSpec.ALLOWED_REL_DIRS:
-        return j
-    for rel_pre in _LexSpec.ALLOWED_REL_PREFIXES:
-        if cand.startswith(rel_pre) and len(cand) > len(rel_pre):
-            return j
-
-    # 情形 3：以已知真实文件扩展名结尾的相对路径或独立文件名（如 a/b.txt、debug\maafw.log、state.json）。
-    if not cand.startswith(("/", "\\")) and _has_known_file_ext(cand):
-        return j
-    return i
-
-
-def _scan_date(text: str, i: int) -> int:
-    """在位置 i 尝试扫描 YYYY-MM-DD 或 YYYY/MM/DD 日期原子词元。"""
-    n = len(text)
-    if i + 10 > n:
-        return i
-    if i > 0 and (_is_ascii_ident_char(text[i - 1]) or text[i - 1] in "-/"):
-        return i
-    sep = text[i + 4]
-    if sep not in "-/" or text[i + 7] != sep:
-        return i
-    y, m, d = text[i:i + 4], text[i + 5:i + 7], text[i + 8:i + 10]
-    if not (y.isascii() and y.isdigit() and m.isascii() and m.isdigit() and d.isascii() and d.isdigit()):
-        return i
-    if not (1 <= int(m) <= 12 and 1 <= int(d) <= 31):
-        return i
-    end = i + 10
-    if end < n and ((text[end].isascii() and text[end].isdigit()) or text[end] == sep):
-        return i
-    return end
-
-
-def _scan_datetime(text: str, i: int) -> int:
-    """在位置 i 尝试扫描完整 ISO 8601 时间戳（YYYY-MM-DD[Tt]HH:MM(:SS(.fff)?)?(Z|[+-]HH:?MM)?）。"""
-    n = len(text)
-    date_end = _scan_date(text, i)
-    if date_end <= i or text[i + 4] != "-":
-        return i
-    if date_end >= n or text[date_end] not in "Tt":
-        return i
-    m = _LexSpec.ISO_TIME_TAIL_RE.match(text, date_end + 1)
-    if not m:
-        return i
-    hh, mm = int(m.group("h")), int(m.group("m"))
-    if not (0 <= hh <= 23 and 0 <= mm <= 59):
-        return i
-    if m.group("s") is not None and not (0 <= int(m.group("s")) <= 59):
-        return i
-    end = m.end("core")
-    tz_start = end
-    if tz_start < n and text[tz_start] in "Zz":
-        if tz_start + 1 >= n or not _is_ascii_ident_char(text[tz_start + 1]):
-            end = tz_start + 1
-    elif m_tz := _LexSpec.ISO_TZ_OFF_RE.match(text, tz_start):
-        tzh, tzm = int(m_tz.group("h")), int(m_tz.group("m"))
-        if 0 <= tzh <= 23 and 0 <= tzm <= 59:
-            tz_end = m_tz.end()
-            if tz_end >= n or not _is_ascii_ident_char(text[tz_end]):
-                end = tz_end
-    if end < n and _is_ascii_ident_char(text[end]):
-        return i
-    return end
-
-
-def _scan_time(text: str, i: int) -> int:
-    """在位置 i 尝试扫描 HH:MM 或 HH:MM:SS 时刻原子词元。"""
-    n = len(text)
-    if i + 5 > n or text[i + 2] != ":":
-        return i
-    if i > 0 and (_is_ascii_ident_char(text[i - 1]) or text[i - 1] == ":"):
-        return i
-    hh, mm = text[i:i + 2], text[i + 3:i + 5]
-    if not (hh.isascii() and hh.isdigit() and mm.isascii() and mm.isdigit()):
-        return i
-    if not (0 <= int(hh) <= 23 and 0 <= int(mm) <= 59):
-        return i
-    end = i + 5
-    if end + 3 <= n and text[end] == ":":
-        ss = text[end + 1:end + 3]
-        if ss.isascii() and ss.isdigit() and 0 <= int(ss) <= 59:
-            end += 3
-    if end < n and (_is_ascii_ident_char(text[end]) or text[end] == ":"):
-        return i
-    return end
-
-
-def _scan_hex(text: str, i: int) -> int:
-    """在位置 i 尝试扫描 0x[0-9a-fA-F]+ 十六进制原子词元（如 0xc0000005）。"""
-    n = len(text)
-    if i + 3 > n or text[i] != "0" or text[i + 1] not in "xX":
-        return i
-    if i > 0 and _is_ascii_ident_char(text[i - 1]):
-        return i
-    j = i + 2
-    while j < n and text[j] in _LexSpec.HEX_DIGITS:
-        j += 1
-    if j == i + 2 or (j < n and _is_ascii_ident_char(text[j])):
-        return i
-    return j
-
-
-def _scan_semver(text: str, i: int) -> int:
-    """在位置 i 尝试扫描版本号原子词元（兼容大小写预发布尾缀如 v3.15.2-RC1、v2.0.0-ALPHA.1、v2.34.0-rc-1）。"""
-    n = len(text)
-    # 紧跟在 / 后的（如 QUIC/v1、HTTP/2.0-draft）绝不当版本号放行。
-    if i > 0 and (_is_ascii_ident_char(text[i - 1]) or text[i - 1] in "/."):
-        return i
-    j = i
-    has_v = text[j] == "v"
-    if has_v:
-        j += 1
-    if j >= n or not (text[j].isascii() and text[j].isdigit()):
-        return i
-    while j < n and text[j].isascii() and text[j].isdigit():
-        j += 1
-    dots = 0
-    while j + 1 < n and text[j] == "." and text[j + 1].isascii() and text[j + 1].isdigit():
-        dots += 1
-        j += 1
-        while j < n and text[j].isascii() and text[j].isdigit():
-            j += 1
-    # 尝试匹配合法预发布尾缀（大小写不敏感，如 -RC1、-ALPHA.1、-rc-1、-beta.1）。
-    has_pre = False
-    if j < n and text[j] == "-":
-        if m := _LexSpec.PRERELEASE_RE.match(text[j:]):
-            cand_end = j + m.end()
-            if cand_end >= n or not _is_ascii_ident_char(text[cand_end]):
-                j = cand_end
-                has_pre = True
-    # 无前导 v 时，必须至少包含一个点号且至少三段（1.2.3）或带合法预发布尾缀（2.0-rc.1），
-    # 避免把普通小数 1.5 或关卡/短日期 11-28、12-17 误标为 SEMVER。
-    if not has_v and (dots < 1 or (dots < 2 and not has_pre)):
-        return i
-    if j < n and _is_ascii_ident_char(text[j]):
-        return i
-    return j
-
-
-def _scan_number(text: str, i: int) -> tuple[str, int]:
-    """在位置 i 扫描独立整数 INT 或浮点数 FLOAT（若数字后紧贴字母则返回 OTHER，防误判退出码）。"""
-    n = len(text)
-    j = i
-    if text[j] == "-":
-        # 仅当负号位于一元语境（开头、空白、常见键值/括号标点或紧接中文汉字如「退出码-1073741819」）才归入负数，
-        # 从而 exit-status-500 切为 IDENT + '-' + 正整数 500，而 returncode=-1 与 退出码-1 均切为负整数。
-        if j + 1 >= n or not (text[j + 1].isascii() and text[j + 1].isdigit()):
-            return "", i
-        if i > 0 and not (
-            text[i - 1].isspace()
-            or text[i - 1] in "=:：([,{（【，"
-            or "\u4e00" <= text[i - 1] <= "\u9fff"
-        ):
-            return "", i
-        j += 1
-    if j >= n or not (text[j].isascii() and text[j].isdigit()):
-        return "", i
-    while j < n and text[j].isascii() and text[j].isdigit():
-        j += 1
-    if j + 1 < n and text[j] == "." and text[j + 1].isascii() and text[j + 1].isdigit():
-        while j + 1 < n and text[j] == "." and text[j + 1].isascii() and text[j + 1].isdigit():
-            j += 1
-            while j < n and text[j].isascii() and text[j].isdigit():
-                j += 1
-        if j < n and _is_ascii_ident_char(text[j]):
-            return "OTHER", j
-        return "FLOAT", j
-    if j < n and _is_ascii_ident_char(text[j]):
-        return "OTHER", j
-    return "INT", j
-
-
-def _scan_ident(text: str, i: int) -> int:
-    """在位置 i 扫描 ASCII 标识符（支持前后下划线如 _private_func 与连字符如 OK-WW，须含至少 1 个 ASCII 字母）。"""
-    n = len(text)
-    if not (_is_ascii_alpha(text[i]) or text[i] == "_"):
-        return i
-    j = i + 1
-    while j < n and _is_ascii_ident_char(text[j]):
-        j += 1
-    while j + 1 < n and text[j] == "-" and _is_ascii_alpha(text[j + 1]):
-        j += 2
-        while j < n and _is_ascii_ident_char(text[j]):
-            j += 1
-    if not any(_is_ascii_alpha(c) for c in text[i:j]):
-        return i
-    return j
-
-
-def _lex_text(text: str) -> list[Token]:
-    """单遍确定性字符状态机词法分析器：一次性将文本切分为互不重叠的强类型 Token 序列。"""
-    tokens: list[Token] = []
-    n = len(text)
-    i = 0
-    while i < n:
-        ch = text[i]
-        # 1. 空白字符（保留换行以便上层识别行首堆栈帧）。
-        if ch.isspace():
-            j = i + 1
-            while j < n and text[j].isspace():
-                j += 1
-            tokens.append(Token("WS", text[i:j], i, j))
-            i = j
-            continue
-        # 2. 汉字连续片段。
-        if "\u4e00" <= ch <= "\u9fff":
-            j = i + 1
-            while j < n and "\u4e00" <= text[j] <= "\u9fff":
-                j += 1
-            tokens.append(Token("ZH", text[i:j], i, j))
-            i = j
-            continue
-        # 3. URL（http:// / https://）。
-        if ch in "hH" and (end := _scan_url(text, i)) > i:
-            tokens.append(Token("URL", text[i:end], i, end))
-            i = end
-            continue
-        # 4. UNC 网络路径（\\host\share\...）。
-        if ch == "\\" and (end := _scan_unc_path(text, i)) > i:
-            tokens.append(Token("UNC_PATH", text[i:end], i, end))
-            i = end
-            continue
-        # 5. Windows 盘符路径（C:\...、C:\ 或 d:/...）。
-        if _is_ascii_alpha(ch) and (end := _scan_win_path(text, i)) > i:
-            tokens.append(Token("WIN_PATH", text[i:end], i, end))
-            i = end
-            continue
-        # 6. 严格正向白名单相对/Unix 路径。
-        if ch in _LexSpec.REL_PATH_CHARS and (end := _scan_rel_path(text, i)) > i:
-            tokens.append(Token("REL_PATH", text[i:end], i, end))
-            i = end
-            continue
-        # 7. 原子字面量：DATETIME / DATE / TIME / HEX / SEMVER / FLOAT / INT。
-        if ch.isascii() and ch.isdigit():
-            for kind, scanner in (
-                ("DATETIME", _scan_datetime),
-                ("DATE", _scan_date),
-                ("TIME", _scan_time),
-                ("HEX", _scan_hex),
-                ("SEMVER", _scan_semver),
-            ):
-                if (end := scanner(text, i)) > i:
-                    tokens.append(Token(kind, text[i:end], i, end))
-                    i = end
-                    break
-            else:
-                num_kind, end = _scan_number(text, i)
-                if end > i:
-                    tokens.append(Token(num_kind, text[i:end], i, end))
-                    i = end
-                else:
-                    tokens.append(Token("PUNCT", ch, i, i + 1))
-                    i += 1
-            continue
-        if ch == "v" and (end := _scan_semver(text, i)) > i:
-            tokens.append(Token("SEMVER", text[i:end], i, end))
-            i = end
-            continue
-        if ch == "-":
-            num_kind, end = _scan_number(text, i)
-            if end > i:
-                tokens.append(Token(num_kind, text[i:end], i, end))
-                i = end
-                continue
-        # 8. ASCII 标识符（支持前后下划线如 _private_func，用于 plain() 英文拦截、异常识别、退出码/HTTP 键值提取）。
-        if (_is_ascii_alpha(ch) or ch == "_") and (end := _scan_ident(text, i)) > i:
-            tokens.append(Token("IDENT", text[i:end], i, end))
-            i = end
-            continue
-        # 9. 其他标点或符号。
-        tokens.append(Token("PUNCT", ch, i, i + 1))
-        i += 1
-    return tokens
-
-
-# Engineering words that mean nothing to the reader. A sentence has to say what
-# happens in the game or on the phone, not what the code did.
+VAGUE = ("未知错误", "这一步", "有问题", "出错", "多半", "可能", "大概", "大约", "应该是", "似乎",
+         "疑似", "也许", "或许", "估计", "差不多", "左右", "好像", "不确定", "貌似", "大致", "约 ", "约一", "不一定")
 JARGON = ("落盘", "回读", "兜底", "字段", "判据", "判定点", "监听", "句柄", "进程", "线程",
           "缓存", "重放", "拉起", "收窄", "节点", "实例", "退避", "调度器", "死键", "标记文件",
           "时间窗", "任务链", "冲掉", "结构化", "白名单", "凭空造", "原子", "幂等", "接口")
+_THEIR_TERMS = ("结束进程", "周本领奖：回读", "MaaEnd 进程超时", "进程未退出", "调度器 \\| 未通过配置检查")
+
+
+class _PlainSpec:
+    """极简严格人话门禁（plain）的规则与扫描器，封在类内不混入对外文案常量扫描。"""
+
+    EXTS = "py|rs|cs|js|ts|jsonl|json|log|txt|md|yaml|yml|toml|ini|cfg|conf|exe|dll|dmp|bat|cmd|ps1|sh|zip|gz|zst|db|sqlite|png|jpg|jpeg|webp|csv|xml|html|swift|lock|flag|bak|tmp|pth|whl|env|dat|crt|pem"
+    PROTO_HEADS = frozenset({"http", "https", "grpc", "tls", "ssl", "quic", "rtsp", "sip", "ws", "wss", "mqtt", "ftp", "ssh", "tcp", "udp"})
+    EXC_RE = re.compile(r"^(?:Error|Exception|Warning|Timeout|WinError|Errno|Traceback|[A-Z][a-z0-9]+(?:Error|Exception|Warning|Timeout|Interrupt|Failed|Failure|Refused|Reset|Aborted|Disconnected|Denied|Closed|Expired|Iteration|Redirects|Pipe|Read|Exists|Locked)|(?:Bad|Cannot|NoSuch|ResponseNot|TooMany|Connection|Permission|Access|File|System|Http|Ssl)[A-Z][A-Za-z0-9]+)$")
+    CAMEL_TWO_RE, IDENT_RE = re.compile(r"^[A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*$"), re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    URL_AUTH_RE, URL_CHARS = re.compile(r"https?://(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._~%-]+)(?::\d+)?", re.I), frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#@!$&*+,;=%()")
+    WIKI_PAREN_RE, WIKI_NS_RE, PROTO_SLASH_RE = re.compile(r"^[a-z0-9_]+$"), re.compile(r"/(?:File|Category|Special)$"), re.compile(r"(?:https?|grpc|tls|ssl|quic|rtsp|sip|ws|wss|mqtt)/", re.I)
+    # 引号内 Windows/UNC、显式 Unix 根路径、无引号 Windows/UNC（仅放行明确系统目录空格与纯中文目录空格）
+    QUOTED_WIN_RE = re.compile(r"""(?P<q>['"])((?:[A-Za-z]:[\\/]|\\\\[^\\/\s'"]+[\\/])[^\r\n'"]*?)(?P=q)""")
+    UNIX_PATH_RE = re.compile(r"""(?:^|(?<=[\s'"（(\[【：:，,、=\u4e00-\u9fff]))(?:/(?:opt|etc|var|usr|Users|home|tmp|bin)/|\./|\.\./|~/)[A-Za-z0-9_./@+~%-]+""")
+    _DIR = r"(?:(?:Program Files \(x86\)|Program Files \(x64\)|Program Files|Default User|Common Files|Application Data)|(?:[\u4e00-\u9fff][\u4e00-\u9fff0-9._-]*(?: (?:[\u4e00-\u9fff][\u4e00-\u9fff0-9._-]*|\d+(?:\.\d+)*))*)|[A-Za-z0-9_.+~@#%$-]+)"
+    _END = rf"(?:[\u4e00-\u9fff][\u4e00-\u9fff0-9._-]*\.(?:{EXTS})|[A-Za-z0-9_.+~@#%$-]+)"
+    WIN_UNC_RE = re.compile(rf"(?:(?<![A-Za-z0-9_])[A-Za-z]:[\\/](?:{_DIR}[\\/])*{_END}?|(?<![\\A-Za-z0-9_])\\\\[A-Za-z0-9_.-]+[\\/](?:(?:{_DIR}[\\/])+{_END}?|{_END}))", re.I)
+    REL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/:.\\-])([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+)(?![A-Za-z0-9_])")
+    EXT_END_RE, NUM_SEG_RE = re.compile(rf"(?:\.(?:{EXTS}))+$", re.I), re.compile(r"^v?\d+(?:\.\d+)*$", re.I)
+    FILE_RE = re.compile(rf"(?<![A-Za-z0-9_/:.\\-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?(?:\.(?:{EXTS}))+(?![A-Za-z0-9_])", re.I)
+    SEMVER_RE, WORD_RE = re.compile(r"(?<![A-Za-z0-9_-])v\d+(?:\.\d+)*(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?(?![A-Za-z0-9_])"), re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
+    DIRECT_RES = (UNIX_PATH_RE, WIN_UNC_RE, re.compile(r"(?<![A-Za-z0-9_/:.\\-])(?:scripts/mac/deploy-relay\.sh|resource/tasks|(?:state/)?shots/[A-Za-z0-9_./-]+|\d{4}-\d{2}-\d{2}/(?:ark|arknights|endfield|wuwa)/[A-Za-z0-9_.-]+)(?![A-Za-z0-9_])"), FILE_RE, re.compile(r"(?<![A-Za-z0-9])\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:?\d{2})?(?![A-Za-z0-9])"), re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])"))
+
+    @classmethod
+    def scan_url(cls, text: str, start: int) -> int:
+        """扫描合法 RFC 3986 URL：保 COS/REST 查询串 ; , 与 IPv6，遇异常/协议/非法括号硬停。"""
+        if (start > 0 and text[start - 1].isascii() and text[start - 1].isalnum()) or not (m := cls.URL_AUTH_RE.match(text, start)):
+            return start
+        i, n, auth_end = m.end(), len(text), m.end()
+        while i < n and text[i] in cls.URL_CHARS:
+            ch = text[i]
+            if ch == "(":
+                close = text.find(")", i + 1) if i > auth_end and text[i - 1] == "_" else -1
+                if close > i + 1 and cls.WIKI_PAREN_RE.match(text[i + 1 : close]):
+                    i = close + 1
+                    continue
+                break
+            if ch == ")" or (ch == ":" and not text.startswith("://", i) and i + 1 < n and text[i + 1].isascii() and text[i + 1].isalpha() and not cls.WIKI_NS_RE.search(text, auth_end, i)):
+                break
+            if ch == ":" and text.startswith("://", i):
+                i += 3
+                continue
+            if ch in ",;!":
+                rest = text[i + 1 :]
+                wm = cls.IDENT_RE.match(rest)
+                if not rest or rest[0] in "([)]\"'<> " or not rest[0].isascii() or cls.PROTO_SLASH_RE.match(rest) or (wm and (cls.EXC_RE.match(wm.group(0)) or (cls.CAMEL_TWO_RE.match(wm.group(0)) and not rest[wm.end() :].startswith(("=", "&"))))):
+                    break
+            i += 1
+        while i > auth_end and text[i - 1] in ".,;:!?":
+            i -= 1
+        return i if urlsplit(text[start:i]).netloc else start
+
+    @classmethod
+    def mask_urls(cls, text: str, repl) -> str:
+        out, pos = [], 0
+        for m in re.finditer(r"https?://", text, re.I):
+            if m.start() >= pos and (end := cls.scan_url(text, m.start())) > m.start():
+                out.extend((text[pos : m.start()], repl(text[m.start() : end])))
+                pos = end
+        return "".join((*out, text[pos:]))
+
+    @classmethod
+    def valid_rel(cls, cand: str) -> bool:
+        segs = re.split(r"[\\/]", cand)
+        return len(segs) >= 2 and bool(cls.EXT_END_RE.search(segs[-1])) and not (segs[0].lower() in cls.PROTO_HEADS or cls.NUM_SEG_RE.match(segs[0]) or cls.EXC_RE.match(segs[0]))
+
+    @classmethod
+    def mask_safe(cls, text: str, hold: list[str] | None = None, *, mask_hex: bool = True) -> str:
+        """遮蔽合法 URL、显式/引号/相对路径、ISO 时间、版本号与十六进制码。"""
+        def _put(val: str) -> str:
+            if hold is None:
+                return " "
+            hold.append(val)
+            return f"\x00{len(hold) - 1}\x00"
+
+        def _qwin(m: re.Match) -> str:
+            rest = m.group(2)[2:] if len(m.group(2)) >= 2 and m.group(2)[1] == ":" else m.group(2)
+            return _put(m.group(0)) if ":" not in rest and not any(cls.EXC_RE.match(w) for w in cls.IDENT_RE.findall(rest)) else m.group(0)
+
+        s = cls.QUOTED_WIN_RE.sub(_qwin, cls.mask_urls(text, _put))
+        for pat in cls.DIRECT_RES[:3]:
+            s = pat.sub(lambda m: _put(m.group(0).rstrip(".,;:")), s)
+        s = cls.REL_PATH_RE.sub(lambda m: _put(m.group(0)) if cls.valid_rel(m.group(0)) else m.group(0), s)
+        for pat in (cls.DIRECT_RES[3:] if mask_hex else cls.DIRECT_RES[3:5]):
+            s = pat.sub(lambda m: _put(m.group(0)), s)
+        return cls.SEMVER_RE.sub(lambda m: _put(m.group(0)) if not any(cls.EXC_RE.match(x) for x in m.group(0).split("-")[1:]) else m.group(0), s)
 
 
 def plain(text: str) -> list[str]:
-    """基于单遍词法分析器的正向白名单人话检查：返回空列表表示全部合规。"""
-    problems: list[str] = []
-    # 仅跳过合法 URL / 路径 / 十六进制 / 日期 / 时间 / 版本号与显式允许词，其余英文一律拦截。
-    for tok in _lex_text(text):
-        if tok.kind == "IDENT" and tok.raw not in ALLOWED_WORDS:
-            problems.append(f"英文「{tok.raw}」")
-    for v in VAGUE:
-        if v in text:
-            problems.append(f"模糊词「{v}」")
-    # Names the programs themselves use are not our jargon: 「结束进程」 is a MaaEnd task.
+    """极简严格人话门禁：检查未允许英文、模糊词与工程术语；返回空列表表示合格。"""
+    problems = [f"英文「{w}」" for w in _PlainSpec.WORD_RE.findall(_PlainSpec.mask_safe(text)) if w not in ALLOWED_WORDS]
+    problems.extend(f"模糊词「{v}」" for v in VAGUE if v in text)
     scrubbed = text
     for term in _THEIR_TERMS:
         scrubbed = scrubbed.replace(term, " ")
-    for j in JARGON:
-        if j in scrubbed:
-            problems.append(f"术语「{j}」")
-    return problems
-
-
-# Quoted verbatim from logs, matched but never said to a person: upstream's
-# 「结束进程」, the overlay's weekly read-back lines (outcome.WEEKLY_CLAIM_*), and
-# AUTO-MAS's result text that ledger_report.plain_words rewrites before the report,
-# AUTO-MAS's line for ending a MaaEnd that did not exit (collector._automas_ended_maaend),
-# and the tag of AUTO-MAS's config-check refusal line (runwatch._CONFIG_SKIP; the message
-# says config_skip_why instead).
-_THEIR_TERMS = ("结束进程", "周本领奖：回读", "MaaEnd 进程超时", "进程未退出", "调度器 \\| 未通过配置检查")
+    return problems + [f"术语「{j}」" for j in JARGON if j in scrubbed]
 
 
 # ---------------- titles ----------------
@@ -1904,25 +1112,16 @@ OKWW_BATTLE_PASS_CLOSED = "战令（先约电台）这期已结束、下期还�
 RELAY_ERROR_TAIL = "已交给我们这边去修。"
 
 
-def relay_error_body(where: str, what: str, at: str = "") -> str:
-    """`where` is the logger name, `what` the first line of the WARNING / ERROR record,
-    `at` when it was logged (errwatch.span).
-
-    The record's own words are quoted only when they read as plain language;
-    a line full of class names or English is said by the cause it names (_said),
-    never a bare 「出错」.
-    """
-    part = relay_part(where)
-    when = f"（{at}）" if at else ""
-    return f"中继自己报错了{when}，出在「{part}」。{_said(what)}\n" + RELAY_ERROR_TAIL
+def relay_error_body(where: str, what: str, at: str = "", fault: dict | None = None) -> str:
+    """单条中继报错推群正文：`fault` 为源头活异常提取的结构化字典，缺省时兼容旧文本分类。"""
+    return f"中继自己报错了{'（' + at + '）' if at else ''}，出在「{relay_part(where)}」。{_said(what, fault=fault)}\n" + RELAY_ERROR_TAIL
 
 
-def relay_error_line(where: str, what: str, at: str, fixed_in: str = "", fixed_what: str = "") -> str:
-    """One record in a merged push (errwatch.merge): when, where, what it said."""
-    again = ""
-    if fixed_in:
-        again = f"，v{fixed_in} 修过的又出现了" + (f"（当时修的是：{fixed_what}）" if fixed_what else "")
-    return f"· {at}，出在「{relay_part(where)}」{again}。{_said(what)}"
+def relay_error_line(where: str, what: str, at: str, fixed_in: str = "", fixed_what: str = "",
+                     fault: dict | None = None) -> str:
+    """合包推送里的单条报错行：发生时间、模块名、复发标记与白话原因。"""
+    again = (f"，v{fixed_in} 修过的又出现了" + (f"（当时修的是：{fixed_what}）" if fixed_what else "")) if fixed_in else ""
+    return f"· {at}，出在「{relay_part(where)}」{again}。{_said(what, fault=fault)}"
 
 
 def relay_errors_merged(title: str, n: int) -> str:
@@ -1957,1135 +1156,240 @@ EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上
 
 
 # ==============================================================================
-# 故障词法拆解与白话渲染管线（替代旧版堆叠正则）
-#
-# 核心原则：
-# 1. 合法 HTTP 状态码用有限集合 _VALID_HTTP_CODES 显式穷举，126/127/128/255 等退出码
-#    在数学上绝不可能落进 HTTP 状态码分支；
-# 2. 先剥离 URL、协议头（HTTP/1.1 等）与 MIME 类型（application/json 等），再按真实磁盘
-#    路径或真实扩展名提取文件，按 (类型, 归一化值) 严格去重；
-# 3. 先按「｜」或首个技术诊断起点把原始日志切为「中文业务主干」与「技术诊断片段」，
-#    彻底杜绝挖词留下的 _=429、: : 22.、尾随 128 等乱码残片；
-# 4. 纯中文路径（_said）与含英文路径（format_fault_reason）统一过白话术语/模糊词规范化，
-#    保证最终推群内容 100% 通过 plain() 门禁。
+# 源头结构化故障分类（ErrorCode）与封闭中文模板渲染
+# 1. errwatch 源头直接读活异常对象属性（fault_from_exc），零文本猜测；
+# 2. 旧队列/纯文本走简洁分类器（classify_fault），严格隔离 HTTP >= 400 与非零退出码；
+# 3. 绝不做混合英文散文拆词缝合：仅「｜」左半段经轻度规整后 100% 过 plain() 才保留前缀。
 # ==============================================================================
 
-# 显式有限合法 HTTP 状态码集合（常见 RFC 响应码 + Cloudflare 52x）：
-# 非法码（如 001/126/127/128/255/999）永远不会进入 HTTP 分支。
-_VALID_HTTP_CODES = frozenset({
-    100, 101,
-    200, 201, 202, 204,
-    301, 302, 304, 307, 308,
-    400, 401, 403, 404, 405, 408, 409, 410, 413, 415, 418, 422, 429, 451,
-    500, 502, 503, 504, 520, 521, 522, 524,
-})
+class ErrorCode(str, Enum):
+    """标准故障分类代码：源头采集与文本分类共用同一套有限枚举。"""
+    FILE_LOCKED = "file_locked"              # 文件被占用（WinError 32，高于无权限）
+    PERMISSION_DENIED = "permission_denied"  # 无权限读写（PermissionError / Errno 13 / WinError 5）
+    FILE_NOT_FOUND = "file_not_found"        # 找不到文件（FileNotFoundError / Errno 2 / WinError 2/3）
+    HTTP_ERROR = "http_error"                # 服务器返回 RFC 合法错误状态码（>= 400）
+    TIMEOUT = "timeout"                      # 连接或读写超时
+    DNS_FAILED = "dns_failed"                # 域名解析失败
+    CONN_RESET = "conn_reset"                # 对方拒连或中途断连
+    SSL_ERROR = "ssl_error"                  # 加密连接或证书校验失败
+    NET_ERROR = "net_error"                  # 网络请求未发出或未收到回答
+    BAD_JSON = "bad_json"                    # 数据格式损坏、编码失败或压缩包损坏
+    PROCESS_EXIT = "process_exit"            # 外部命令返回非零退出码
+    KEY_ERROR = "key_error"                  # 读取数据缺少必要内容或属性缺失
+    VALUE_ERROR = "value_error"              # 数据数值、类型或格式不对
+    OS_ERROR = "os_error"                    # 本地文件或系统调用失败
+    RUNTIME_ERROR = "runtime_error"          # 程序运行步骤执行失败
+    UNKNOWN = "unknown"                      # 未归入上述类别的运行异常
 
 
 @dataclass(frozen=True)
-class FaultInfo:
-    """单条报错日志经词法拆解后的故障描述，用于统一模板拼装白话中文。"""
-
-    head_zh: str = ""
-    fault_kind: str = ""
+class FaultRecord:
+    """结构化故障记录：供封闭中文模板确定性渲染。"""
+    code: ErrorCode = ErrorCode.UNKNOWN
+    http: int | None = None
     exit_code: int | str | None = None
-    http_code: int | None = None
-    win_error: int | None = None
-    files: tuple[str, ...] = ()
-    cmds: tuple[str, ...] = ()
-    url: str = ""
+    winerror: int | None = None
+    errno: int | None = None
     hex_code: str = ""
+    file_ref: str = ""
 
 
-# 各故障类别对应的白话中文主因文案（不含括号细节，由 _render_fault 统一拼成单层括号）。
-_FAULT_TEMPLATES = {
-    "dns": "域名解析失败，机器当时连不上网络",
-    "timeout": "连接或读写超时",
-    "conn_reset": "对方拒绝连接，或者连上后中途断开了",
-    "file_in_use": "文件正被其他程序占用",
-    "permission": "没有权限读写要用的文件，或者文件正被其他程序占用",
-    "process_exit": "外部命令执行失败",
-    "http_error": "对方服务器返回了状态码",
-    "not_found": "找不到要用的文件",
-    "json_bad": "收到的数据格式是坏的",
-    "encoding": "文本编码读取失败",
-    "ssl": "加密连接没建立起来",
-    "url_error": "网络请求没发出去，或者没收到回答",
-    "import_error": "运行环境缺少必需组件",
-    "db_error": "本地数据库正被占用或损坏",
-    "key_error": "读取数据时缺少必要内容",
-    "attr_error": "程序对象缺少预期能力",
-    "type_error": "程序处理的数据类型不对",
-    "index_error": "读取列表时越界",
-    "value_error": "数据数值或格式不对",
-    "zero_div": "程序计算时出现除以零",
-    "win_error": "系统调用失败",
-    "com_error": "系统组件调用失败",
-    "os_error": "本地文件或系统操作失败",
-    "runtime_error": "程序运行步骤执行失败",
+_FAULT_TEMPLATES: dict[ErrorCode, str] = {
+    ErrorCode.FILE_LOCKED: "文件正被其他程序占用", ErrorCode.PERMISSION_DENIED: "没有权限读写要用的文件，或者文件正被其他程序占用",
+    ErrorCode.FILE_NOT_FOUND: "找不到要用的文件", ErrorCode.HTTP_ERROR: "对方服务器返回了错误状态码",
+    ErrorCode.TIMEOUT: "连接或读写超时", ErrorCode.DNS_FAILED: "域名解析失败，机器当时连不上网络",
+    ErrorCode.CONN_RESET: "对方拒绝连接，或者连上后中途断开了", ErrorCode.SSL_ERROR: "加密连接没建立起来",
+    ErrorCode.NET_ERROR: "网络请求没发出去，或者没收到回答", ErrorCode.BAD_JSON: "收到的数据格式是坏的",
+    ErrorCode.PROCESS_EXIT: "外部命令执行失败", ErrorCode.KEY_ERROR: "读取数据时缺少必要内容",
+    ErrorCode.VALUE_ERROR: "数据数值或格式不对", ErrorCode.OS_ERROR: "本地文件或系统操作失败",
+    ErrorCode.RUNTIME_ERROR: "程序运行步骤执行失败", ErrorCode.UNKNOWN: "程序发生运行异常",
 }
-
-# 高优先级精确故障规则（优先于外部命令退出码和 HTTP 状态码，例如「超时并伴随退出码 128」仍先说超时）。
-_FAULT_RULES_PRE = (
-    ("dns", re.compile(
-        r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution"
-        r"|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError",
-        re.I,
-    )),
-    ("timeout", re.compile(
-        r"timed out|TimeoutError|TimeoutExpired|ReadTimeout|ConnectTimeout|WinError 10060\b",
-        re.I,
-    )),
-    ("conn_reset", re.compile(
-        r"Connection ?Refused|Connection ?Reset|Connection ?Aborted|RemoteDisconnected|IncompleteRead"
-        r"|EOF occurred|BrokenPipe|WinError 1005[34]\b|WinError 10061\b",
-        re.I,
-    )),
-    ("file_in_use", re.compile(r"WinError 32\b|being used by another process", re.I)),
-    ("permission", re.compile(
-        r"PermissionError|WinError 5\b|Access is denied|Permission denied",
-        re.I,
-    )),
-)
-
-# 常规异常分类规则（排在外部命令退出码与 HTTP 错误码 >= 400 之后，避免 URLError/RuntimeError 盖过具体状态码）。
-_FAULT_RULES_POST = (
-    ("not_found", re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I)),
-    ("json_bad", re.compile(
-        r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data",
-        re.I,
-    )),
-    ("encoding", re.compile(r"UnicodeDecodeError|UnicodeEncodeError", re.I)),
-    ("ssl", re.compile(r"SSLError|CERTIFICATE_VERIFY_FAILED|\bSSL:", re.I)),
-    ("url_error", re.compile(
-        r"URLError|urlopen error|ConnectionError|WinError 1006[45]\b|Network is unreachable",
-        re.I,
-    )),
-    ("import_error", re.compile(r"ModuleNotFoundError|ImportError", re.I)),
-    ("db_error", re.compile(r"database is locked|OperationalError|DatabaseError", re.I)),
-    ("key_error", re.compile(r"\bKeyError\b")),
-    ("attr_error", re.compile(r"\bAttributeError\b")),
-    ("type_error", re.compile(r"\bTypeError\b")),
-    ("index_error", re.compile(r"\bIndexError\b")),
-    ("value_error", re.compile(r"\bValueError\b")),
-    ("zero_div", re.compile(r"\bZeroDivisionError\b")),
-)
-
-# 宽泛基类异常规则（排在 WinError 之后，避免 OSError/RuntimeError 盖过具体的 [WinError N]）。
-_FAULT_RULES_FALLBACK = (
-    ("com_error", re.compile(r"com_error|pywintypes\.error|WMI", re.I)),
-    ("os_error", re.compile(r"\b(?:OSError|IOError)\b")),
-    ("runtime_error", re.compile(r"\bRuntimeError\b")),
-)
-
-# 整行开头即为纯技术异常头时，说明前面没有中文业务主干，避免把本地化报错尾误当主干。
-_LEADING_EXC_RE = re.compile(
-    r"^(?:Traceback\b|File\s+['\"][^'\"\n]+['\"]\s*,\s*line\s+\d+"
-    r"|[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Failure)\b\s*[:(]"
-    r"|HTTP(?:/\d|\s+Error)\b|\[?(?:WinError|Errno)\b|<urlopen\b)",
-    re.I,
-)
-
-# Python 堆栈帧边界（无论有没有 Traceback 头，行首或换行后的 File "...", line N 都属于技术诊断区）。
-_STACK_FRAME_CUT_RE = re.compile(
-    r"(?:^|\r?\n)\s*(?:Traceback\b|File\s+['\"][^'\"\n]+['\"]\s*,\s*line\s+\d+)",
-    re.I,
-)
-
-# 中文业务主干之后出现的首个技术诊断边界：从该处直接切开，绝不对英文技术尾做零碎挖词。
-_TECH_BOUNDARY_RE = re.compile(
-    r"(?<![A-Za-z0-9_])(?:Traceback\b"
-    r"|File\s+['\"][^'\"\n]+['\"]\s*,\s*line\s+\d+"
-    r"|(?!Default\b)(?:[A-Za-z_][A-Za-z0-9_.]*)?(?:Error|Exception|Failure|Timeout|TimeoutExpired|Disconnected|IncompleteRead|BrokenPipe|BadStatusLine|Fault)\b"
-    r"|HTTP(?:/\d+(?:\.\d+)?|\s*Error|\s+[1-5]\d{2})(?![0-9A-Za-z_])"
-    r"|(?:http[\s_-]+)?status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+-?\d+"
-    r"|(?:httpStatus|statusCode)(?![A-Za-z0-9_])[\s=:：]+-?\d+"
-    r"|(?:returned\s+non-zero\s+exit|exit(?:[\s_-]+status|[\s_-]+code)|return[\s_-]?code)(?![A-Za-z0-9_])"
-    r"|exited(?:\s+with(?:\s+(?:non-zero\s+)?(?:exit\s+)?(?:status|code))?)?(?:\s*[:=：]\s*|\s+)(?:0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_.:-])"
-    r"|(?:waitpid|process\s+(?:ended|exited|terminated|failed)"
-    r"|child\s+(?:process\s+)?(?:ended|exited|terminated|failed))(?![A-Za-z0-9_])"
-    r"|Command\s+\["
-    r"|subprocess(?:\.[A-Za-z_]+|\s+)"
-    r"|(?:taskkill|tasklist|pwsh|powershell|schtasks|wevtutil|shutdown|adb|git|ssh|curl)(?:\.exe)?\s+[/-])"
-    r"|(?<![A-Za-z0-9_-])rc(?:\s*[:=：]\s*|\s+)(?:0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_.:-])"
-    r"|(?:退出码|返回码)\s*[:=：]?\s*(?:0x[0-9a-fA-F]+|-?\d+)(?![0-9A-Za-z_.:-])"
-    r"|\[?\s*(?:WinError|Errno)\s+\d+"
-    r"|<urlopen\b"
-    r"|\{\s*['\"][A-Za-z_]"
-    r"|[:：]\s*(?:taskkill|tasklist|pwsh|powershell|schtasks|wevtutil|shutdown|adb|git|ssh|curl)\b"
-    r"|[:：]\s*[A-Za-z_][A-Za-z0-9_.-]*\s+[A-Za-z]"
-    r"|(?:failed|crashed|denied|refused|aborted|rejected|timed\s+out)\s+(?:at|in|on|to|for|with|while|during|when|by|from)\b",
-    re.I,
-)
-
-# 清洗中文主干内部残留的英文键值与成对括号块（全半角圆括号、中文方括号【】、英文方括号[]）。
-_KV_ASCII_RE = re.compile(r"(?<![A-Za-z0-9_\x00])[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*[^\s\x00，。；！？（）()【】\[\]]+")
-_PAREN_BLOCK_RE = re.compile(r"（[^（）]*）|\([^()]*\)|【[^【】]*】|\[[^\[\]]*\]")
-
-# 日志原话里的常见工程词转白话对照表（覆盖 JARGON 全部词条，按长词优先排列）。
-_JARGON_PLAIN_MAP = (
-    ("调度器", "调度程序"),
-    ("标记文件", "状态记录"),
-    ("时间窗", "时段"),
-    ("任务链", "整套任务"),
-    ("判定点", "核对项"),
-    ("结构化", "按格式"),
-    ("白名单", "允许清单"),
-    ("凭空造", "自行编造"),
-    ("落盘", "保存"),
-    ("回读", "重读"),
-    ("兜底", "备用方式"),
-    ("字段", "内容项"),
-    ("判据", "依据"),
-    ("监听", "监测"),
-    ("句柄", "连接号"),
-    ("进程", "程序"),
-    ("线程", "后台任务"),
-    ("缓存", "本地记录"),
-    ("重放", "重跑"),
-    ("拉起", "启动"),
-    ("收窄", "缩小范围"),
-    ("节点", "步骤"),
-    ("实例", "运行项"),
-    ("退避", "延后重试"),
-    ("死键", "无效项"),
-    ("冲掉", "盖掉"),
-    ("原子", "完整"),
-    ("幂等", "防重复"),
-    ("接口", "数据入口"),
-)
-
-# 术语替换为白话后可能产生的相邻叠词收口（如「接口数据」替换后出现的「数据入口数据」→「返回数据」）。
-_PLAIN_DEDUP_MAP = (
-    ("数据入口数据", "返回数据"),
-    ("数据数据入口", "数据入口"),
-    ("保存保存", "保存"),
-    ("程序程序", "程序"),
-)
-
-# 日志原话里的模糊词规整对照表（覆盖 VAGUE 全部词条；保留否定含义，确保输出通过 plain()）。
-_VAGUE_PLAIN_MAP = (
-    ("未知错误", "未识别的错误"),
-    ("这一步", "该环节"),
-    ("有问题", "存在异常"),
-    ("出错", "发生运行异常"),
-    ("不确定", "未能确认"),
-    ("不一定", "未必"),
-    ("应该是", ""),
-    ("差不多", ""),
-    ("多半", ""),
-    ("可能", ""),
-    ("大概", ""),
-    ("大约", ""),
-    ("似乎", ""),
-    ("疑似", ""),
-    ("也许", ""),
-    ("或许", ""),
-    ("估计", ""),
-    ("左右", ""),
-    ("好像", ""),
-    ("貌似", ""),
-    ("大致", ""),
-    ("约 ", ""),
-    ("约一", "一"),
-)
-
-# 中文业务主干里表示“本身已经说出失败/异常结果”的常见谓词，用于判断未知故障是否需补「发生运行异常」。
-_HEAD_FAIL_VERBS = (
-    "失败", "没", "无法", "不能", "不到", "不对", "超时", "断开", "拒绝",
-    "异常", "崩", "错", "停", "卡", "缺", "坏", "丢", "拒", "满", "冲突", "无效", "受限",
+_ZH_PLAIN_MAP = (
+    ("调度器", "调度程序"), ("标记文件", "状态记录"), ("时间窗", "时段"), ("任务链", "整套任务"), ("判定点", "核对项"), ("结构化", "按格式"), ("白名单", "允许清单"), ("凭空造", "自行编造"),
+    ("落盘", "保存"), ("回读", "重读"), ("兜底", "备用方式"), ("字段", "内容项"), ("判据", "依据"), ("监听", "监测"), ("句柄", "连接号"), ("进程", "程序"), ("线程", "后台任务"), ("缓存", "本地记录"),
+    ("重放", "重跑"), ("拉起", "启动"), ("收窄", "缩小范围"), ("节点", "步骤"), ("实例", "运行项"), ("退避", "延后重试"), ("死键", "无效项"), ("冲掉", "盖掉"), ("原子", "完整"), ("幂等", "防重复"),
+    ("接口", "数据入口"), ("数据入口数据", "返回数据"), ("数据数据入口", "数据入口"), ("保存保存", "保存"),
+    ("未知错误", "未识别故障"), ("这一步", "该环节"), ("有问题", "不正常"), ("出错", "失败"), ("不确定", "未能确认"), ("不一定", "未必"), ("约一", "一"),
+    ("应该是", ""), ("差不多", ""), ("多半", ""), ("可能", ""), ("大概", ""), ("大约", ""), ("似乎", ""), ("疑似", ""), ("也许", ""), ("或许", ""), ("估计", ""), ("左右", ""), ("好像", ""), ("貌似", ""), ("大致", ""), ("约 ", ""),
 )
 
 
-def _display_path(path: str) -> str:
-    """将路径整理为干净展示形式：完整保留 UNC 前导 \\\\，仅折叠正文内部连续反斜杠。"""
-    s = path.strip()
-    if s.startswith("\\\\"):
-        return "\\\\" + re.sub(r"\\{2,}", r"\\", s.lstrip("\\"))
-    return re.sub(r"\\{2,}", r"\\", s)
+class _FaultSpec:
+    """故障分类器内部常量、正则与辅助方法（封在类内不混入对外文案常量扫描）。"""
 
+    VALID_HTTP = frozenset({*range(400, 419), 421, 422, 423, 424, 425, 426, 428, 429, 431, 451, 499, *range(500, 509), 510, 511, *range(520, 528), 529, 530})
+    FILE_CODES = frozenset({ErrorCode.FILE_LOCKED, ErrorCode.PERMISSION_DENIED, ErrorCode.FILE_NOT_FOUND, ErrorCode.OS_ERROR})
+    MRO_PRE = ((ErrorCode.DNS_FAILED, {"gaierror", "NameResolutionError"}), (ErrorCode.TIMEOUT, {"TimeoutError", "TimeoutExpired", "ReadTimeout", "ConnectTimeout", "WriteTimeout", "PoolTimeout"}), (ErrorCode.CONN_RESET, {"ConnectionResetError", "ConnectionRefusedError", "ConnectionAbortedError", "BrokenPipeError", "RemoteDisconnected", "IncompleteRead"}))
+    MRO_POST = ((ErrorCode.PERMISSION_DENIED, {"PermissionError"}), (ErrorCode.FILE_NOT_FOUND, {"FileNotFoundError"}), (ErrorCode.BAD_JSON, {"JSONDecodeError", "UnicodeDecodeError", "UnicodeEncodeError", "BadZipFile"}), (ErrorCode.NET_ERROR, {"URLError", "ConnectionError", "ProxyError", "TooManyRedirects", "RequestException"}))
+    MRO_TAIL = ((ErrorCode.KEY_ERROR, {"KeyError", "AttributeError"}), (ErrorCode.VALUE_ERROR, {"ValueError", "TypeError", "IndexError"}), (ErrorCode.OS_ERROR, {"OSError"}), (ErrorCode.RUNTIME_ERROR, {"RuntimeError", "StopIteration", "AssertionError"}))
+    DATE_TIME_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b|(?<!\d)\d{2}-\d{2}(?!\d)|\b\d{1,2}:\d{2}(?::\d{2})?\b")
+    HTTP_RES = (re.compile(r"\bHTTP/\d(?:\.\d)?\s+(\d{3})\b|\bHTTP\s+(\d{3})\b|\bHTTP\s*Error\s*[:(]?\s*(\d{3})\b|\bHTTPStatusError\b[^\r\n]{0,60}?\b(\d{3})\b|\bClientResponseError\b[^\r\n]{0,40}?\b(\d{3})\b", re.I), re.compile(r"""\bstatus code does not indicate success\s*[:=]\s*(\d{3})\b|\breturned error\s*:\s*(\d{3})\b|(?<![A-Za-z0-9_-])["']?(?:status[_-]code|statusCode|http[_-]status|httpStatus)["']?\s*[:=]\s*(\d{3})\b|(?<![A-Za-z0-9_-])status\s+code\s*[:=]?\s*(\d{3})\b""", re.I))
+    HTTP_BARE_RE, PROC_CTX_RE = re.compile(r"""(?<![A-Za-z0-9_-])["']?status["']?\s*[:=]\s*(\d{3})\b""", re.I), re.compile(r"\b(?:process|child|subprocess|waitpid|exited|exit|ended|taskkill|pwsh|powershell|git|ssh|adb|schtasks|CalledProcessError)\b", re.I)
+    EXIT_RES = (re.compile(r"(?:退出码|返回码)\s*[:：=]?\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)|\b(?:CalledProcessError\s*\(|returned non-zero exit\s+status\s+)(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I), re.compile(r"(?<![A-Za-z0-9_-])(?:exit[\s_]+status|exit[\s_]+code|return[\s_]+code|returncode|rc)\s*[:=\s]\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)|(?<![A-Za-z0-9_-])(?:exit[-_]status|exit[-_]code|return[-_]code)-(\d+)(?!\.\d)|(?<![A-Za-z0-9_-])exited(?:\s+with(?:\s+(?:code|status))?)?\s*[:=]?\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I))
+    EXIT_BARE_RE = re.compile(r"(?<![A-Za-z0-9_-])status(?!\s*[_-]?code)\s*[:=\s]\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I)
+    WINERR_RE, ERRNO_RE, NTSTATUS_RE = re.compile(r"\bWinError\s+(\d+)\b", re.I), re.compile(r"\bErrno\s+(\d+)\b", re.I), re.compile(r"(?<![A-Za-z0-9])(0x[0-9a-fA-F]{8})(?![A-Za-z0-9])")
+    QUOTED_FILE_RE, FILE_LIKE_RE = re.compile(r"""(?P<q>['"])([^\r\n'"]{2,200})(?P=q)"""), re.compile(rf"[\\/]|(?:\.(?:{_PlainSpec.EXTS}))$", re.I)
+    RULES_PRE = ((ErrorCode.FILE_LOCKED, re.compile(r"being used by another process", re.I)), (ErrorCode.DNS_FAILED, re.compile(r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError", re.I)), (ErrorCode.TIMEOUT, re.compile(r"timed out|TimeoutError|TimeoutExpired|ReadTimeout|ConnectTimeout|WriteTimeout|PoolTimeout|ServerTimeoutError", re.I)), (ErrorCode.CONN_RESET, re.compile(r"Connection ?Refused|Connection ?Reset|Connection ?Aborted|RemoteDisconnected|IncompleteRead|EOF occurred|BrokenPipe", re.I)), (ErrorCode.SSL_ERROR, re.compile(r"SSLError|SSLCertVerificationError|CERTIFICATE_VERIFY_FAILED|\bSSL:", re.I)))
+    RULES_POST = ((ErrorCode.PERMISSION_DENIED, re.compile(r"PermissionError|PermissionDenied|Access ?is ?denied|AccessDenied|Permission denied", re.I)), (ErrorCode.FILE_NOT_FOUND, re.compile(r"FileNotFoundError|No such file or directory", re.I)), (ErrorCode.BAD_JSON, re.compile(r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data|UnicodeDecodeError|UnicodeEncodeError|BadZipFile", re.I)), (ErrorCode.NET_ERROR, re.compile(r"URLError|urlopen error|ConnectionError|ProxyError|TooManyRedirects|Network is unreachable|RequestException", re.I)))
+    RULES_TAIL = ((ErrorCode.KEY_ERROR, re.compile(r"\b(?:KeyError|AttributeError)\b")), (ErrorCode.VALUE_ERROR, re.compile(r"\b(?:ValueError|TypeError|IndexError)\b")), (ErrorCode.OS_ERROR, re.compile(r"\b(?:OSError|IOError|FileExistsError|FileExists)\b")), (ErrorCode.RUNTIME_ERROR, re.compile(r"\b(?:RuntimeError|StopIteration|AssertionError)\b")))
 
-def _path_norm_key(path: str) -> str:
-    """生成路径去重与比对用的统一归一化键：保留 UNC 前导语义，统一斜杠并转小写。"""
-    s = path.strip()
-    if s.startswith("\\\\"):
-        return "\\\\" + re.sub(r"[\\/]+", r"\\", s.lstrip("\\")).lower()
-    return re.sub(r"[\\/]+", r"\\", s).lower()
+    @staticmethod
+    def pos_int(val) -> int | None:
+        return val if isinstance(val, int) and not isinstance(val, bool) and val > 0 else None
 
+    @classmethod
+    def norm_file(cls, cand: str) -> str:
+        s = str(cand or "").strip().strip("'\"`").rstrip(".,;:")
+        if not s or not cls.FILE_LIKE_RE.search(s):
+            return ""
+        s = ("\\\\" + re.sub(r"\\{2,}", r"\\", s[2:])) if s.startswith("\\\\") else re.sub(r"\\{2,}", r"\\", s)
+        return s if not plain(s) else (f"'{s}'" if not plain(f"'{s}'") else "")
 
-def _parse_code_val(code_s: str) -> int | str:
-    """将提取出的退出码字符串转为十进制整数或规范小写十六进制错误码字符串。"""
-    return code_s.lower() if code_s.lower().startswith("0x") else int(code_s)
+    @classmethod
+    def os_code(cls, w: int | None, e: int | None, *, pre: bool) -> ErrorCode | None:
+        if pre:
+            return ErrorCode.FILE_LOCKED if w == 32 else ErrorCode.DNS_FAILED if e == 11001 else ErrorCode.TIMEOUT if w == 10060 else ErrorCode.CONN_RESET if w in (10053, 10054, 10061) else None
+        return ErrorCode.PERMISSION_DENIED if (w == 5 or e == 13) else ErrorCode.FILE_NOT_FOUND if (w in (2, 3) or e == 2) else ErrorCode.NET_ERROR if w in (10064, 10065) else None
 
+    @classmethod
+    def pack(cls, code: ErrorCode, **kw) -> dict:
+        return {"code": code.value, **{k: kw[k] for k in ("http", "exit", "winerror", "errno", "hex") if kw.get(k) not in (None, "")}, **({"file": kw["file"]} if kw.get("file") and code in cls.FILE_CODES else {})}
 
-def _is_bare_cmd_token(tok: str) -> bool:
-    """判断单个词元是不是不含目录的常见外部命令名（如 pwsh.exe），避免过早遮蔽导致命令边界失效。"""
-    return "\\" not in tok and "/" not in tok and any(pat.fullmatch(tok) for pat, _ in _LexSpec.CMD_SPECS)
+    @classmethod
+    def extract_file(cls, raw: str, code: ErrorCode) -> str:
+        if code not in cls.FILE_CODES:
+            return ""
+        no_url = _PlainSpec.mask_urls(raw, lambda _: " ")
+        if ref := next((r for m in cls.QUOTED_FILE_RE.finditer(no_url) if (r := cls.norm_file(m.group(2)))), ""):
+            return ref
+        for pat in (_PlainSpec.UNIX_PATH_RE, _PlainSpec.WIN_UNC_RE):
+            for m in pat.finditer(no_url):
+                if pat is _PlainSpec.WIN_UNC_RE and re.match(r" [A-Za-z0-9_.-]+[\\/]", no_url[m.end() :]):
+                    return ""
+                if ref := cls.norm_file(m.group(0)):
+                    return ref
+        return next((r for pat in (_PlainSpec.REL_PATH_RE, _PlainSpec.FILE_RE) for m in pat.finditer(no_url) if (pat is not _PlainSpec.REL_PATH_RE or _PlainSpec.valid_rel(m.group(0).rstrip(".,;:"))) and (r := cls.norm_file(m.group(0)))), "")
 
-
-def _has_disallowed_english(text: str) -> bool:
-    """判断文本中是否含有未放行的英文词（直接复用单遍词法分析器门禁）。"""
-    return any(p.startswith("英文") for p in plain(text))
-
-
-def _balance_brackets(text: str) -> str:
-    """显式栈式括号配平（覆盖 () / （） / 【】 / []）。
-
-    规则：
-    1. 遇无对应开括号的多余闭括号（如「读取（旧配置）数据）」）直接丢弃；
-    2. 遇外层匹配闭括号时，先对夹在中间的未闭内层括号收口，再闭合外层；
-    3. 扫描结束对栈中剩余未闭开括号按 LIFO 顺序处理：内部无实质可读内容（汉字/字母/数字/占位符）
-       则连同开括号一起剥离（如「下载失败（」「写入失败【」），有实质内容则清理尾标点后补齐对应闭括号；
-    4. 清除只剩空白与标点的空括号。
-    """
-    pairs = {"(": ")", "（": "）", "【": "】", "[": "]"}
-    closers = set(pairs.values())
-    has_substance = re.compile(r"[\u4e00-\u9fffA-Za-z0-9\x00]")
-    out: list[str] = []
-    stack: list[tuple[str, int]] = []
-
-    for ch in text:
-        if ch in pairs:
-            stack.append((ch, len(out)))
-            out.append(ch)
-        elif ch in closers:
-            if stack and pairs[stack[-1][0]] == ch:
-                stack.pop()
-                out.append(ch)
-            elif any(pairs[op] == ch for op, _ in stack):
-                while stack and pairs[stack[-1][0]] != ch:
-                    inner_op, inner_pos = stack.pop()
-                    if has_substance.search("".join(out[inner_pos + 1:])):
-                        out.append(pairs[inner_op])
-                    else:
-                        del out[inner_pos:]
-                if stack and pairs[stack[-1][0]] == ch:
-                    stack.pop()
-                    out.append(ch)
-            # 无对应开括号的多余闭括号：直接丢弃。
-        else:
-            out.append(ch)
-
-    while stack:
-        op, pos = stack.pop()
-        if has_substance.search("".join(out[pos + 1:])):
-            while len(out) > pos + 1 and out[-1] in "：:,，；;、｜|-—_ \t":
-                out.pop()
-            if len(out) > pos + 1 and has_substance.search("".join(out[pos + 1:])):
-                out.append(pairs[op])
-            else:
-                del out[pos:]
-        else:
-            del out[pos:]
-
-    s = "".join(out)
-    for _ in range(3):
-        nxt = re.sub(
-            r"（\s*[，,、；;：:\-—]*\s*）|\(\s*[，,、；;：:\-—]*\s*\)"
-            r"|【\s*[，,、；;：:\-—]*\s*】|\[\s*[，,、；;：:\-—]*\s*\]",
-            "",
-            s,
-        )
-        if nxt == s:
-            break
-        s = nxt
-    return s
-
-
-def _normalize_plain_zh(text: str, strip_vague: bool = False) -> str:
-    """将中文文本里的工程术语与模糊词统一替换为直白人话，并清理删词后残留的孤立/重复标点与空括号。
-
-    - 保护 _THEIR_TERMS（如上游原话「结束进程」「MaaEnd 进程超时」），避免改坏官方任务名；
-    - strip_vague=False 用于纯中文日志（如「中继更新出错」→「中继更新发生运行异常」）；
-    - strip_vague=True 用于含英文故障的中文主干（剥离「出错」等泛词，由右侧主因模板给出准确说法）。
-    """
-    s = str(text or "").strip()
-    if not s:
-        return ""
-    held: list[str] = []
-    for term in _THEIR_TERMS:
-        if term in s:
-            token = f"\x01{len(held)}\x01"
-            held.append(term)
-            s = s.replace(term, token)
-    for _ in range(3):
-        before = s
-        for old, new in _JARGON_PLAIN_MAP:
-            if old in s:
-                s = s.replace(old, new)
-        for old, new in _PLAIN_DEDUP_MAP:
-            if old in s:
-                s = s.replace(old, new)
-        for old, new in _VAGUE_PLAIN_MAP:
-            if old in s:
-                s = s.replace(old, "" if strip_vague else new)
-        if s == before:
-            break
-    for i, term in enumerate(held):
-        s = s.replace(f"\x01{i}\x01", term)
-
-    # 清理删除模糊词后留下的空括号、孤立前导/尾随逗号顿号及连续重复逗号（如「，，保存失败」→「保存失败」）。
-    for _ in range(3):
-        before = s
-        s = re.sub(r"\s+([，,、；;：:。！？）)】\]])", r"\1", s)
-        s = re.sub(r"([（(【\[])\s+", r"\1", s)
-        s = re.sub(
-            r"（\s*[，,、；;：:\-—]*\s*）|\(\s*[，,、；;：:\-—]*\s*\)"
-            r"|【\s*[，,、；;：:\-—]*\s*】|\[\s*[，,、；;：:\-—]*\s*\]",
-            "",
-            s,
-        )
-        s = re.sub(r"([（(【\[])[，,、；;]+", r"\1", s)
-        s = re.sub(r"[，,、；;]+([）)】\]])", r"\1", s)
-        s = re.sub(r"([：:])[，,、；;]+", r"\1", s)
-        s = re.sub(r"([，,、；;])[，,、；;]+", r"\1", s)
-        s = re.sub(r"^[，,、；;\s]+", "", s)
-        s = re.sub(r"[，,、\s]+$", "", s)
-        if s == before:
-            break
-    s = re.sub(r"\s{2,}", " ", s).strip()
-    return s
-
-
-def _norm_key(raw: str) -> str:
-    """将标识符统一小写并去除下划线与连字符，便于等价匹配 exit_status / exit-status / httpStatus。"""
-    return raw.lower().replace("_", "").replace("-", "")
-
-
-def _is_standalone_code(sig: list[Token], idx: int) -> bool:
-    """判断非空白词元序列 sig[idx] 是否为独立整数或十六进制错误码（排除 11-28 / 9:30 等复合数字）。"""
-    tok = sig[idx]
-    if tok.kind not in ("INT", "HEX"):
-        return False
-    if tok.kind == "INT" and idx + 2 < len(sig):
-        nxt, nxt2 = sig[idx + 1], sig[idx + 2]
-        if (
-            nxt.kind == "PUNCT"
-            and nxt.raw in ("-", ":", ".")
-            and nxt.start == tok.end
-            and nxt2.kind == "INT"
-            and nxt2.start == nxt.end
-        ):
-            return False
-    return True
-
-
-def _has_process_exit_ctx(sig: list[Token]) -> bool:
-    """基于词元流判断本句是否处于外部命令/子程序退出语境，避免把裸 status=128/500 错判成 HTTP。"""
-    m = len(sig)
-    for i, tok in enumerate(sig):
-        if tok.kind == "REL_PATH":
-            base = tok.raw.replace("\\", "/").rsplit("/", 1)[-1].lower()
-            if base.endswith(".exe") and base[:-4] in _LexSpec.PROC_CTX_WORDS:
-                return True
-            continue
-        if tok.kind != "IDENT":
-            continue
-        low = tok.raw.lower()
-        if low in _LexSpec.PROC_CTX_WORDS or any(pat.fullmatch(low) for pat, _ in _LexSpec.CMD_SPECS[:1]):
-            return True
-        if low in _LexSpec.PROC_CTX_SUBJECTS:
-            k = i + 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "process":
-                k += 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() in _LexSpec.PROC_CTX_VERBS:
-                return True
-        if low in ("exited", "ended", "terminated"):
-            k = i + 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "with":
-                k += 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "non-zero":
-                k += 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "status":
-                return True
-        if low == "non-zero":
-            k = i + 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "exit":
-                k += 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "status":
-                return True
-    return False
-
-
-def _match_exit_phrase(sig: list[Token], idx: int) -> tuple[Token, int] | None:
-    """匹配中文「退出码/返回码」、CalledProcessError(N) 与 exited [with ...] <code> 短语。"""
-    m = len(sig)
-    tok = sig[idx]
-    if tok.kind == "ZH" and tok.raw.endswith(("退出码", "返回码")):
-        k = idx + 1
-        if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-            k += 1
-        return (sig[k], k) if k < m and _is_standalone_code(sig, k) else None
-    if tok.kind != "IDENT":
-        return None
-
-    low = tok.raw.lower()
-    if low == "calledprocesserror":
-        k = idx + 1
-        while k < m and sig[k].kind == "PUNCT" and sig[k].raw in ("(", "=", ":", "："):
-            k += 1
-        return (sig[k], k) if k < m and _is_standalone_code(sig, k) else None
-
-    if low != "exited":
-        return None
-    if idx > 0 and sig[idx - 1].kind == "PUNCT" and sig[idx - 1].raw == "-" and sig[idx - 1].end == tok.start:
-        return None
-    k = idx + 1
-    if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "with":
-        k += 1
-        for opt in ("non-zero", "exit"):
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == opt:
-                k += 1
-        if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() in ("status", "code"):
-            k += 1
-    if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-        k += 1
-    return (sig[k], k) if k < m and _is_standalone_code(sig, k) else None
-
-
-def _match_exit_kv(sig: list[Token], idx: int) -> tuple[Token, int] | None:
-    """匹配退出码键值表达（exit_status / exit-status / exit_code / returncode / rc / exit status / return code）。"""
-    m = len(sig)
-    tok = sig[idx]
-    if tok.kind != "IDENT":
-        return None
-    # 左侧紧贴连字符的（如 -rc-1、foo-rc=1）不作为独立退出码键。
-    if idx > 0 and sig[idx - 1].kind == "PUNCT" and sig[idx - 1].raw == "-" and sig[idx - 1].end == tok.start:
-        return None
-
-    low = tok.raw.lower()
-    nk = _norm_key(tok.raw)
-    key_end = -1
-    is_rc = False
-    if nk in _LexSpec.EXIT_KEY_SINGLE:
-        key_end = idx
-        is_rc = (low == "rc")
-    elif low == "exit" and idx + 1 < m and sig[idx + 1].kind == "IDENT" and sig[idx + 1].raw.lower() in ("status", "code"):
-        key_end = idx + 1
-        if sig[key_end].raw.lower() == "status" and key_end + 1 < m and sig[key_end + 1].kind == "IDENT" and sig[key_end + 1].raw.lower() == "code":
-            key_end += 1
-    elif low == "return" and idx + 1 < m and sig[idx + 1].kind == "IDENT" and sig[idx + 1].raw.lower() == "code":
-        key_end = idx + 1
-    if key_end < 0:
-        return None
-
-    k = key_end + 1
-    if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-        k += 1
-        return (sig[k], k) if k < m and _is_standalone_code(sig, k) else None
-    if not is_rc and k < m and sig[k].kind == "PUNCT" and sig[k].raw == "-":
-        k += 1
-        if k < m and sig[k].kind == "INT" and not sig[k].raw.startswith("-") and _is_standalone_code(sig, k):
-            return sig[k], k
-        return None
-    if k < m and sig[k].start > sig[key_end].end and _is_standalone_code(sig, k):
-        return sig[k], k
-    return None
-
-
-def _match_explicit_exit(sig: list[Token], idx: int) -> tuple[Token, int] | None:
-    """在词元位置 idx 尝试匹配显式退出码表达，命中返回 (码词元, 结束下标)。
-
-    DATE / TIME / FLOAT / SEMVER 天然不是 INT/HEX，数学上绝不会误吃日期、时刻、小数或 -rc-1 版本号。
-    """
-    return _match_exit_phrase(sig, idx) or _match_exit_kv(sig, idx)
-
-
-def _read_http_code_at(sig: list[Token], idx: int, used_exit_idx: set[int]) -> int | None:
-    """在词元位置 idx 读取合法 3 位 HTTP 状态码（兼容可选引号包裹，如 JSON 值）。"""
-    m = len(sig)
-    k = idx
-    if k < m and sig[k].kind == "PUNCT" and sig[k].raw in ("'", '"'):
-        k += 1
-    if k >= m or k in used_exit_idx:
-        return None
-    tok = sig[k]
-    if tok.kind != "INT" or len(tok.raw) != 3 or not tok.raw.isdigit() or not _is_standalone_code(sig, k):
-        return None
-    val = int(tok.raw)
-    return val if val in _VALID_HTTP_CODES else None
-
-
-def _is_quoted_token(sig: list[Token], idx: int) -> bool:
-    """判断非空白词元 sig[idx] 是否被一对相同单/双引号直接包裹（如 JSON 键 \"status_code\"）。"""
-    return (
-        idx > 0
-        and sig[idx - 1].kind == "PUNCT"
-        and sig[idx - 1].raw in ("'", '"')
-        and idx + 1 < len(sig)
-        and sig[idx + 1].kind == "PUNCT"
-        and sig[idx + 1].raw == sig[idx - 1].raw
-    )
-
-
-def _is_nonzero_exit(exit_code: int | str | None) -> bool:
-    """判断提取到的退出码是否为非零失败码（退出码 0 属成功码，绝不覆盖真实异常或当作故障细节渲染）。"""
-    if exit_code is None:
-        return False
-    if isinstance(exit_code, str):
+    @classmethod
+    def from_dict(cls, fault: dict) -> FaultRecord | None:
         try:
-            return int(exit_code, 16) != 0
+            ec = ErrorCode(str(fault.get("code")))
         except ValueError:
-            return True
-    return exit_code != 0
+            ec = ErrorCode.UNKNOWN
+        http = st if (st := cls.pos_int(fault.get("http"))) in cls.VALID_HTTP else None
+        re_, hx = fault.get("exit"), str(fault.get("hex") or "")
+        exit_c = re_ if isinstance(re_, int) and not isinstance(re_, bool) and re_ != 0 else (re_.lower() if isinstance(re_, str) and cls.NTSTATUS_RE.fullmatch(re_) and int(re_, 16) != 0 else None)
+        hex_c = hx.lower() if cls.NTSTATUS_RE.fullmatch(hx) and int(hx, 16) != 0 else ""
+        return FaultRecord(ec, http, exit_c, cls.pos_int(fault.get("winerror")), cls.pos_int(fault.get("errno")), hex_c, cls.norm_file(str(fault.get("file") or ""))) if (ec != ErrorCode.UNKNOWN or hex_c) else None
 
 
-def _extract_http_candidates(sig: list[Token], used_exit_idx: set[int], in_process_ctx: bool) -> list[int]:
-    """从词元流收集所有合法 HTTP 状态码（status_code/statusCode/http_status/httpStatus 永远归 HTTP，不受 pwsh/git/ssh 干扰）。"""
-    m = len(sig)
-    out: list[int] = []
-    for i, tok in enumerate(sig):
-        if i in used_exit_idx:
-            continue
-        if tok.kind == "ZH" and tok.raw.endswith("状态码"):
-            k = i + 1
-            if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-                k += 1
-            if (val := _read_http_code_at(sig, k, used_exit_idx)) is not None:
-                out.append(val)
-            continue
-        if tok.kind != "IDENT":
-            continue
-        low = tok.raw.lower()
-        nk = _norm_key(tok.raw)
-        # 1. HTTP/1.1 502、HTTP/2 429、HTTP Error 503、HTTP 429
-        if low == "http":
-            k = i + 1
-            if k + 1 < m and sig[k].kind == "PUNCT" and sig[k].raw == "/" and sig[k + 1].kind in ("FLOAT", "INT"):
-                k += 2
-            elif k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "error":
-                k += 1
-            elif k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() in ("status", "status_code", "status-code"):
-                k += 1
-                if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "code":
-                    k += 1
-            if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-                k += 1
-            if (val := _read_http_code_at(sig, k, used_exit_idx)) is not None:
-                out.append(val)
-            continue
-        # 2. 显式 HTTP 键（status_code / status-code / statusCode / http_status / http-status / httpStatus / 两词 status code）
-        #    永远归属 HTTP；裸 status 仅在非进程退出语境或 JSON 引号键里归 HTTP。
-        is_quoted = _is_quoted_token(sig, i)
-        is_two_word_sc = (
-            not is_quoted and low == "status"
-            and i + 1 < m and sig[i + 1].kind == "IDENT" and sig[i + 1].raw.lower() == "code"
-        )
-        is_explicit_kv = nk in _LexSpec.HTTP_EXPLICIT_KEYS or is_two_word_sc
-        is_bare_status_kv = low == "status" and not is_two_word_sc and (not in_process_ctx or is_quoted)
-        if not (is_explicit_kv or is_bare_status_kv):
-            continue
-        k = i + (2 if (is_quoted or is_two_word_sc) else 1)
-        has_sep = False
-        if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-            k += 1
-            has_sep = True
-        if is_quoted and not has_sep:
-            continue
-        if (val := _read_http_code_at(sig, k, used_exit_idx)) is not None:
-            out.append(val)
-    return out
+def fault_from_exc(exc: BaseException | type[BaseException] | None) -> dict | None:
+    """源头活异常采集：直接读异常类与属性（winerror/errno/status_code/returncode/filename），零文本猜测。"""
+    if exc is None:
+        return None
+    cls, inst = (exc, None) if isinstance(exc, type) else (type(exc), exc)
+    mro = {c.__name__ for c in cls.__mro__}
+    winerr, err_no = (_FaultSpec.pos_int(getattr(inst, "winerror", None)), _FaultSpec.pos_int(getattr(inst, "errno", None))) if inst is not None else (None, None)
+    rc_raw = getattr(inst, "returncode", None) if inst is not None else None
+    exit_c = rc_raw if isinstance(rc_raw, int) and not isinstance(rc_raw, bool) and rc_raw != 0 else None
+    kw = {"winerror": winerr, "errno": err_no, "file": _FaultSpec.norm_file(getattr(inst, "filename", "") or "") if inst is not None else ""}
+    if inst is not None:
+        st = _FaultSpec.pos_int(getattr(getattr(inst, "response", None), "status_code", None))
+        if st not in _FaultSpec.VALID_HTTP and any("HTTP" in n or "Response" in n for n in mro):
+            st = next((v for a in ("status_code", "status", "code") if (v := _FaultSpec.pos_int(getattr(inst, a, None))) in _FaultSpec.VALID_HTTP), None)
+        if st in _FaultSpec.VALID_HTTP:
+            return _FaultSpec.pack(ErrorCode.HTTP_ERROR, http=st, **kw)
+    if (ec := _FaultSpec.os_code(winerr, err_no, pre=True) or next((c for c, ns in _FaultSpec.MRO_PRE if mro & ns), None) or (ErrorCode.SSL_ERROR if any(n.startswith("SSL") for n in mro) else None)):
+        return _FaultSpec.pack(ec, exit=exit_c if ec == ErrorCode.TIMEOUT else None, **kw)
+    if isinstance(reason := getattr(inst, "reason", None) if inst is not None else None, BaseException) and (inner := fault_from_exc(reason)) and inner.get("code") != ErrorCode.UNKNOWN.value:
+        return inner
+    if (ec := _FaultSpec.os_code(winerr, err_no, pre=False) or next((c for c, ns in _FaultSpec.MRO_POST if mro & ns), None)):
+        return _FaultSpec.pack(ec, **kw)
+    if exit_c is not None:
+        return _FaultSpec.pack(ErrorCode.PROCESS_EXIT, exit=exit_c, **kw)
+    if (ec := next((c for c, ns in _FaultSpec.MRO_TAIL if mro & ns), None) or (ErrorCode.OS_ERROR if winerr is not None else None)):
+        return _FaultSpec.pack(ec, **kw)
+    if inst is not None and ((rec := classify_fault(f"{cls.__name__}: {inst}")).code != ErrorCode.UNKNOWN or rec.hex_code):
+        return _FaultSpec.pack(rec.code, http=rec.http, exit=rec.exit_code, hex=rec.hex_code)
+    return _FaultSpec.pack(ErrorCode.UNKNOWN, **kw)
 
 
-def _extract_codes(tokens: list[Token]) -> tuple[int | str | None, int | None, int | None, str]:
-    """直接基于单遍词法分析器 Token 流提取退出码、HTTP 状态码、WinError 与十六进制错误码。"""
-    # 用 URL_BARRIER 替代 URL 词元，防止 URL 前后原本隔开的词元被误拼相邻；空白词元跳过。
-    sig = [
-        Token("URL_BARRIER", "", t.start, t.end) if t.kind == "URL" else t
-        for t in tokens
-        if t.kind != "WS"
-    ]
-    m = len(sig)
-    in_process_ctx = _has_process_exit_ctx(sig)
-
-    # 1. 显式退出码（记录已占用词元下标，杜绝 exit status 500 被 HTTP 二次拾取）。
-    exit_code: int | str | None = None
-    used_exit_idx: set[int] = set()
-    i = 0
-    while i < m:
-        hit = _match_explicit_exit(sig, i)
-        if hit is not None:
-            code_tok, end_idx = hit
-            if exit_code is None:
-                exit_code = _parse_code_val(code_tok.raw)
-            used_exit_idx.update(range(i, end_idx + 1))
-            i = end_idx + 1
-        else:
-            i += 1
-
-    # 2. 外部命令退出语境下，仅裸 status（不含 status_code / status-code / statusCode / status code 与引号 JSON 键）
-    #    可作为进程退出码兜底，绝不抢占 HTTP 状态码。
-    if exit_code is None and in_process_ctx:
-        for i, tok in enumerate(sig):
-            if i in used_exit_idx or tok.kind != "IDENT" or tok.raw.lower() != "status" or _is_quoted_token(sig, i):
-                continue
-            k = i + 1
-            if k < m and sig[k].kind == "IDENT" and sig[k].raw.lower() == "code":
-                continue
-            if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-                k += 1
-            if k < m and k not in used_exit_idx and _is_standalone_code(sig, k):
-                exit_code = _parse_code_val(sig[k].raw)
-                used_exit_idx.update(range(i, k + 1))
-                break
-
-    # 3. 合法 HTTP 状态码（同时存在 200/302 与 >=400 错误码时优先保留 >=400）。
-    http_candidates = _extract_http_candidates(sig, used_exit_idx, in_process_ctx)
-    http_code: int | None = next((c for c in http_candidates if c >= 400), None)
-    if http_code is None and http_candidates:
-        http_code = http_candidates[0]
-
-    # 4. Windows 系统错误码（WinError N）与十六进制错误码（排除 UnicodeDecodeError 里的 byte 0xff）。
-    win_error: int | None = None
-    hex_code = ""
-    for i, tok in enumerate(sig):
-        if win_error is None and tok.kind == "IDENT" and tok.raw.lower() == "winerror":
-            k = i + 1
-            if k < m and sig[k].kind == "PUNCT" and sig[k].raw in (":", "=", "："):
-                k += 1
-            if k < m and sig[k].kind == "INT" and sig[k].raw.isdigit() and _is_standalone_code(sig, k):
-                win_error = int(sig[k].raw)
-        if not hex_code and tok.kind == "HEX":
-            prev_word = sig[i - 1].raw.lower() if i > 0 and sig[i - 1].kind == "IDENT" else ""
-            if prev_word not in _LexSpec.BYTE_HEX_PREFIXES:
-                hex_code = tok.raw
-    return exit_code, http_code, win_error, hex_code
+def classify_fault(raw: str, fault: dict | None = None) -> FaultRecord:
+    """把源头故障字典或原始日志文本归类为确定的 FaultRecord。"""
+    if isinstance(fault, dict) and fault.get("code") and (rec := _FaultSpec.from_dict(fault)):
+        return rec
+    text = str(raw or "")
+    if not text.strip():
+        return FaultRecord()
+    scan = _FaultSpec.DATE_TIME_RE.sub(" ", _PlainSpec.mask_safe(text, mask_hex=False))
+    has_proc = bool(_FaultSpec.PROC_CTX_RE.search(scan))
+    http = next((int(g) for p in _FaultSpec.HTTP_RES for m in p.finditer(scan) if (g := next((x for x in m.groups() if x), "")) and int(g) in _FaultSpec.VALID_HTTP), None)
+    if http is None and not has_proc:
+        http = next((int(m.group(1)) for m in _FaultSpec.HTTP_BARE_RE.finditer(scan) if int(m.group(1)) in _FaultSpec.VALID_HTTP), None)
+    exit_c = next((v for p in ((*_FaultSpec.EXIT_RES, _FaultSpec.EXIT_BARE_RE) if has_proc else _FaultSpec.EXIT_RES) for m in p.finditer(scan) if (g := next((x for x in m.groups() if x), "")) and (v := (g.lower() if g.lower().startswith("0x") and int(g, 16) != 0 else int(g) if not g.lower().startswith("0x") and int(g) != 0 else None)) is not None), None)
+    winerr = int(m.group(1)) if (m := _FaultSpec.WINERR_RE.search(scan)) and int(m.group(1)) > 0 else None
+    err_no = int(m.group(1)) if (m := _FaultSpec.ERRNO_RE.search(scan)) and int(m.group(1)) > 0 else None
+    hex_c = next((m.group(1).lower() for m in _FaultSpec.NTSTATUS_RE.finditer(text) if int(m.group(1), 16) != 0), "")
+    code = (_FaultSpec.os_code(winerr, err_no, pre=True) or next((c for c, p in _FaultSpec.RULES_PRE if p.search(scan)), None)
+            or (ErrorCode.HTTP_ERROR if http is not None else None) or _FaultSpec.os_code(winerr, err_no, pre=False)
+            or next((c for c, p in _FaultSpec.RULES_POST if p.search(scan)), None) or (ErrorCode.PROCESS_EXIT if exit_c is not None else None)
+            or next((c for c, p in _FaultSpec.RULES_TAIL if p.search(scan)), None) or (ErrorCode.OS_ERROR if winerr is not None else ErrorCode.UNKNOWN))
+    return FaultRecord(code, http, exit_c, winerr, err_no, hex_c, _FaultSpec.extract_file(text, code))
 
 
-def _classify_fault_kind(
-    tokens: list[Token], exit_code: int | str | None, http_code: int | None, win_error: int | None
-) -> str:
-    """按精确优先级归类故障类别：DNS/超时/占用 > 非零退出码 > HTTP 错误码(>=400) > 常规异常 > WinError。
-
-    先用词法分析器遮蔽 URL 与文件路径（避免文件名里的 timeout/ssl 造成误判，也绝不丢失紧贴 URL 的异常名）；
-    成功退出码 0 与 HTTP 1xx/2xx/3xx（如 HTTP/1.1 200 OK）绝不抢占 JSONDecodeError/ValueError/KeyError 等真实故障类别。
-    """
-    diag = "".join(" " if t.kind in ("URL", "UNC_PATH", "WIN_PATH", "REL_PATH") else t.raw for t in tokens)
-    for kind, pat in _FAULT_RULES_PRE:
-        if pat.search(diag):
-            return kind
-    if _is_nonzero_exit(exit_code) or re.search(r"\bCalledProcessError\b", diag):
-        return "process_exit"
-    if http_code is not None and http_code >= 400:
-        return "http_error"
-    for kind, pat in _FAULT_RULES_POST:
-        if pat.search(diag):
-            return kind
-    if win_error is not None:
-        return "win_error"
-    for kind, pat in _FAULT_RULES_FALLBACK:
-        if pat.search(diag):
-            return kind
-    return ""
-
-
-def _extract_files_and_cmds(tokens: list[Token]) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """直接基于词法分析器 Token 流提取命令名与真实文件路径，保留 UNC 前导 \\\\ 与配对 (x86) 并严格去重。"""
-    seen: set[tuple[str, str]] = set()
-    cmds: list[str] = []
-    files: list[str] = []
-
-    # 收集词元流里的非路径命令候选（IDENT 与不含斜杠的裸文件名 REL_PATH），按既有优先级取首项。
-    cand_words = [
-        t.raw for t in tokens
-        if t.kind == "IDENT" or (t.kind == "REL_PATH" and "\\" not in t.raw and "/" not in t.raw)
-    ]
-    for pat, label in _LexSpec.CMD_SPECS:
-        if any(pat.fullmatch(w) for w in cand_words):
-            key = ("cmd", label.lower())
-            if key not in seen:
-                seen.add(key)
-                cmds.append(label)
-                break
-
-    cmd_norms = {c.lower() for c in cmds}
-    for tok in tokens:
-        if tok.kind not in ("UNC_PATH", "WIN_PATH", "REL_PATH"):
-            continue
-        cleaned = tok.raw.rstrip(".,;:'\"」）]")
-        while cleaned.endswith(")") and cleaned.count(")") > cleaned.count("("):
-            cleaned = cleaned[:-1]
-        raw_p = _display_path(cleaned)
-        if not raw_p:
-            continue
-        norm = _path_norm_key(raw_p)
-        # 若裸文件名与已提取命令同名（如 pwsh.exe），只保留「命令 pwsh.exe」，避免重复输出。
-        if "\\" not in norm and norm in cmd_norms:
-            continue
-        key = ("file", norm)
-        if key not in seen:
-            seen.add(key)
-            files.append(raw_p)
-        if len(files) >= 2:
-            break
-    return tuple(files), tuple(cmds)
-
-
-def _pop_glued_before_stripped(out: list[str], out_ends: list[int], tok_start: int) -> None:
-    """剥离非法英文词元时，同步回退清除紧贴其左侧黏连的孤立连接符（/、\\、=、:、-，如 v2/HTTP、--flag）。"""
-    while out and out_ends[-1] == tok_start and out[-1] in ("/", "\\", "=", ":", "-"):
-        tok_start -= len(out[-1])
-        out.pop()
-        out_ends.pop()
-
-
-def _skip_disallowed_cluster(toks: list[Token], i: int) -> int:
-    """跳过紧跟在被剥离英文后的协议/编码/斜杠簇（QUIC/v1、HTTP/2.0-draft、foo/bar）以及尾随黏连连接符（/ \\ = :）。"""
-    n = len(toks)
-    while i < n:
-        if (
-            toks[i].kind == "PUNCT"
-            and toks[i].raw in ("/", "\\", ".", "@")
-            and toks[i].start == toks[i - 1].end
-            and i + 1 < n
-            and toks[i + 1].start == toks[i].end
-            and toks[i + 1].kind in ("IDENT", "FLOAT", "INT", "SEMVER", "OTHER")
-            and (toks[i + 1].kind != "IDENT" or toks[i + 1].raw not in ALLOWED_WORDS)
-        ):
-            i += 2
-            continue
-        if (
-            toks[i].kind == "PUNCT"
-            and toks[i].raw == "-"
-            and toks[i].start == toks[i - 1].end
-            and i + 1 < n
-            and toks[i + 1].start == toks[i].end
-            and (
-                toks[i + 1].kind in ("FLOAT", "INT", "SEMVER", "OTHER")
-                or (toks[i + 1].kind == "IDENT" and toks[i + 1].raw not in ALLOWED_WORDS)
-            )
-        ):
-            i += 2
-            continue
-        break
-    while i < n and toks[i].kind == "PUNCT" and toks[i].raw in ("/", "\\", "=", ":") and toks[i].start == toks[i - 1].end:
-        i += 1
-    return i
-
-
-def _strip_disallowed_tokens_segment(segment: str) -> str:
-    """用单遍词法分析器清洗单个不含占位符的片段：去除未放行英文、黏连符号（/\\=:-）、非法数字字母串（0xZZZ）与原子 HEX。"""
-    toks = _lex_text(segment)
-    n = len(toks)
-    out: list[str] = []
-    out_ends: list[int] = []
-    i = 0
-    while i < n:
-        tok = toks[i]
-        if tok.kind == "HEX":
-            # 原子十六进制错误码整块剥离，绝不切出孤立残渣 0（原值由 info.hex_code 统一渲染）。
-            out.append(" ")
-            out_ends.append(-1)
-            i += 1
-            continue
-        if (
-            tok.kind == "OTHER"
-            and i + 1 < n
-            and toks[i + 1].start == tok.end
-            and toks[i + 1].kind == "IDENT"
-            and toks[i + 1].raw not in ALLOWED_WORDS
-        ):
-            # 非法十六进制或数字紧贴英文（如 0xZZZ）整块剥离，绝不残留孤立 0。
-            _pop_glued_before_stripped(out, out_ends, tok.start)
-            i = _skip_disallowed_cluster(toks, i + 2)
-            out.append(" ")
-            out_ends.append(-1)
-            continue
-        if tok.kind == "IDENT" and tok.raw not in ALLOWED_WORDS:
-            _pop_glued_before_stripped(out, out_ends, tok.start)
-            i = _skip_disallowed_cluster(toks, i + 1)
-            out.append(" ")
-            out_ends.append(-1)
-            continue
-        out.append(tok.raw)
-        out_ends.append(tok.end)
-        i += 1
-    return "".join(out)
-
-
-def _hold_protected_tokens(text: str, kept: list[str], skip_bare_cmd: bool) -> str:
-    """按单遍词法分析器结果保护合法 URL / 路径 / ISO 时间戳 / 日期 / 时刻 / 版本号并整块剥离原子 HEX。"""
-    out: list[str] = []
-    for part in re.split(r"(\x00\d+\x00)", text):
-        if part.startswith("\x00") and part.endswith("\x00"):
-            out.append(part)
-            continue
-        for tok in _lex_text(part):
-            if tok.kind == "URL":
-                kept.append(tok.raw)
-                out.append(f"\x00{len(kept) - 1}\x00")
-            elif tok.kind in ("UNC_PATH", "WIN_PATH", "REL_PATH"):
-                if skip_bare_cmd and tok.kind == "REL_PATH" and _is_bare_cmd_token(tok.raw):
-                    out.append(tok.raw)
-                else:
-                    kept.append(_display_path(tok.raw))
-                    out.append(f"\x00{len(kept) - 1}\x00")
-            elif tok.kind in ("SEMVER", "DATETIME", "DATE", "TIME"):
-                kept.append(tok.raw)
-                out.append(f"\x00{len(kept) - 1}\x00")
-            elif tok.kind == "HEX":
-                out.append(" ")
-            else:
-                out.append(tok.raw)
-    return "".join(out)
-
-
-def _extract_head_zh(raw: str, extracted_codes: set[int | str]) -> str:
-    """从原始日志中切出干净的中文业务主干：堆栈帧切分 + 词法占位 + 括号配平 + 零残渣清理。"""
-    # 1. 有显式分隔符「｜」或「|」时取其前段；同时在无 Traceback 头的 Python 堆栈帧（File "...", line N）前截断。
-    cand = re.split(r"\s*[｜|]\s*", raw, maxsplit=1)[0]
-    if m_sf := _STACK_FRAME_CUT_RE.search(cand):
-        cand = cand[:m_sf.start()]
-    cand = cand.strip()
-    if not re.search(r"[\u4e00-\u9fff]", cand) or _LEADING_EXC_RE.search(cand):
-        return ""
-
-    # 2. 用单遍词法分析器先保护合法 URL / UNC / Windows / 相对路径 / ISO 时间戳 / 预发布版本号，并原子剥离 HEX。
-    kept: list[str] = []
-    cand = _hold_protected_tokens(cand, kept, skip_bare_cmd=True)
-
-    # 3. 去掉成对括号块（含（）、()、【】、[]）内含未放行英文/协议/报错的补充说明。
-    def _drop_tech_paren(m: re.Match) -> str:
-        inner = re.sub(r"\x00\d+\x00", " ", m.group(0)[1:-1])
-        return " " if _has_disallowed_english(inner) else m.group(0)
-
-    for _ in range(3):
-        nxt = _PAREN_BLOCK_RE.sub(_drop_tech_paren, cand)
-        if nxt == cand:
-            break
-        cand = nxt
-
-    # 4. 按中文之后出现的首个技术诊断边界截断（不把前导词如「subprocess调用失败」误切空）。
-    for m in _TECH_BOUNDARY_RE.finditer(cand):
-        if re.search(r"[\u4e00-\u9fff]", cand[:m.start()]):
-            cand = cand[:m.start()]
-            break
-
-    # 5. 补保护剩余合法文件名，剥离指向占位符的英文键前缀（如 url=https://...、file=D:\...）并解包 <URL>，
-    #    再按词法器整块清除残留英文键值、未允许标识符及黏连符号。
-    s = _hold_protected_tokens(cand, kept, skip_bare_cmd=False)
-
-    def _strip_kv_prefix(m: re.Match) -> str:
-        return m.group(0) if m.group(1) in ALLOWED_WORDS else f" {m.group(2)}"
-
-    s = re.sub(
-        r"(?<![A-Za-z0-9_\x00])([A-Za-z_][A-Za-z0-9_.-]*)\s*[=:]\s*(\x00\d+\x00)",
-        _strip_kv_prefix,
-        s,
-    )
-    s = _KV_ASCII_RE.sub(" ", s)
-    s = re.sub(r"<\s*(\x00\d+\x00)\s*>", r" \1 ", s)
-    s = re.sub(r"<[^>\x00]*>", " ", s)
-    s = re.sub(r"[<>]", " ", s)
-    s = "".join(
-        part if (part.startswith("\x00") and part.endswith("\x00")) else _strip_disallowed_tokens_segment(part)
-        for part in re.split(r"(\x00\d+\x00)", s)
-    )
-
-    # 6. 术语与模糊词规范化，清理孤立符号（含 / \ =）、尾随错误码，再走显式栈括号配平，最后还原占位符。
-    s = _normalize_plain_zh(s, strip_vague=True)
-    s = re.sub(r"['\"`]", "", s)
-    s = re.sub(r"[:：]\s*[:：]+", "：", s)
-    s = re.sub(r"\s+", " ", s)
-    s = re.sub(r"(?<!\d)[:：=_\-]+\s*-?\d+\.?\s*$", "", s)
-    for code in extracted_codes:
-        s = re.sub(rf"\s+{re.escape(str(code))}\.?\s*$", "", s)
-    s = re.sub(r"[：:,，；;、.!！？?｜|\-—_/\\=\s]+$", "", s)
-    s = re.sub(r"^[：:,，；;、.!！？?｜|\-—_/\\=）)】\]\s]+", "", s)
-    s = _balance_brackets(s)
-    s = re.sub(r"[：:,，；;、.!！？?｜|\-—_/\\=\s]+$", "", s)
-    s = re.sub(r"\s{2,}", " ", s).strip()
-
-    # 若剥离英文后两个路径占位符仅隔空格且前为 Windows/UNC 路径、后含反斜杠，改用「、」隔开防止重扫粘连。
-    def _sep_adjacent_paths(m: re.Match) -> str:
-        a, b = kept[int(m.group(1))], kept[int(m.group(2))]
-        if (a.startswith("\\\\") or (len(a) >= 2 and a[1] == ":")) and "\\" in b:
-            return f"\x00{m.group(1)}\x00、\x00{m.group(2)}\x00"
-        return m.group(0)
-
-    s = re.sub(r"\x00(\d+)\x00\s+\x00(\d+)\x00", _sep_adjacent_paths, s)
-
-    for i, val in enumerate(kept):
-        s = s.replace(f"\x00{i}\x00", val)
-    if len(re.findall(r"[\u4e00-\u9fff]", s)) < 2:
-        return ""
-    # 含完整 URL 或路径的主干绝不按固定字数拦腰切坏路径，仅对纯文本超长主干截断并重新配平括号。
-    has_long_entity = any(t.kind in ("URL", "WIN_PATH", "UNC_PATH", "REL_PATH") for t in _lex_text(s))
-    if len(s) > 72 and not has_long_entity:
-        s = _balance_brackets(s[:72].rstrip("：:,，；;、.!！？?｜|-—_（(【[ "))
-    return s
-
-
-def _parse_fault(raw: str) -> FaultInfo:
-    """结构化词法解析器：单遍分词拆解为 FaultInfo（主干、故障类型、退出码、HTTP码、文件、命令、URL）。"""
-    text = str(raw or "").strip()
-    if not text:
-        return FaultInfo()
-
-    tokens = _lex_text(text)
-    url = next((t.raw for t in tokens if t.kind == "URL"), "")
-
-    exit_code, http_code, win_error, hex_code = _extract_codes(tokens)
-    fault_kind = _classify_fault_kind(tokens, exit_code, http_code, win_error)
-    files, cmds = _extract_files_and_cmds(tokens)
-
-    extracted_codes: set[int | str] = {c for c in (exit_code, http_code, win_error) if c is not None}
-    head_zh = _extract_head_zh(text, extracted_codes)
-    return FaultInfo(
-        head_zh=head_zh,
-        fault_kind=fault_kind,
-        exit_code=exit_code,
-        http_code=http_code,
-        win_error=win_error,
-        files=files,
-        cmds=cmds,
-        url=url,
-        hex_code=hex_code,
-    )
-
-
-def _scrub_plain_violations(text: str, strip_vague: bool = True) -> str:
-    """输出前 fail-closed 清理器：基于单遍词法分析器剥离任何残留未放行英文并重跑归一化与括号配平。"""
-    s = _strip_disallowed_tokens_segment(text)
-    s = _normalize_plain_zh(s, strip_vague=strip_vague)
-    s = _balance_brackets(s)
-    s = re.sub(r"[：:,，；;、.!！？?｜|\-—_=\s]+$", "", s)
-    s = re.sub(r"^[：:,，；;、.!！？?｜|\-—_=\s]+", "", s)
-    return re.sub(r"\s{2,}", " ", s).strip()
-
-
-def _render_fault(info: FaultInfo) -> str:
-    """根据 FaultInfo 模板拼装干净白话中文，单层括号展示上下文细节，并执行输出前 fail-closed plain() 守卫。"""
-    if info.fault_kind == "http_error" and info.http_code is not None:
-        base_cause = f"对方服务器返回了状态码 {info.http_code}"
-    else:
-        base_cause = _FAULT_TEMPLATES.get(info.fault_kind, "")
-
-    # 守卫 1：先对中文主干执行 plain() 核验，若残留未识别技术词则自动剥离并重跑归一化与括号配平。
-    head = info.head_zh
-    if head and plain(head):
-        head = _scrub_plain_violations(head, strip_vague=True)
-        if len(re.findall(r"[\u4e00-\u9fff]", head)) < 2:
-            head = ""
-
-    # 按 (类型, 归一化值) 统一去重拼装上下文细节，避免重复文件名（含双反斜杠/UNC/大小写差异）或双层括号。
-    details: list[str] = []
-    seen: set[tuple[str, str]] = set()
-
-    def _add(kind: str, label: str, norm: str) -> None:
-        key = (kind, norm.lower())
-        if key not in seen:
-            seen.add(key)
-            details.append(label)
-
-    head_file_keys = {
-        _path_norm_key(_display_path(t.raw))
-        for t in _lex_text(head)
-        if t.kind in ("UNC_PATH", "WIN_PATH", "REL_PATH")
-    }
-
-    for cmd in info.cmds:
-        if cmd.lower() not in head.lower():
-            _add("cmd", f"命令 {cmd}", cmd)
-    for fpath in info.files:
-        disp = _display_path(fpath)
-        norm = _path_norm_key(disp)
-        if any(k == norm or k.endswith("\\" + norm) for k in head_file_keys):
-            continue
-        _add("file", f"文件 {disp}", norm)
-    if info.hex_code and info.hex_code.lower() not in head.lower():
-        _add("hex", f"错误码 {info.hex_code}", info.hex_code)
-    # 仅 >= 400 的 HTTP 错误码才作为故障细节补充展示，200/302 等正常响应码不当故障渲染。
-    if info.http_code is not None and info.http_code >= 400 and info.fault_kind != "http_error":
-        _add("http", f"状态码 {info.http_code}", str(info.http_code))
-    # 仅非零退出码才作为故障细节渲染，退出码 0 属成功码不当故障渲染。
-    if _is_nonzero_exit(info.exit_code):
-        if isinstance(info.exit_code, str) and info.exit_code.lower().startswith("0x"):
-            if info.exit_code.lower() != info.hex_code.lower():
-                _add("hex", f"错误码 {info.exit_code}", info.exit_code)
-        else:
-            _add("exit", f"退出码 {info.exit_code}", str(info.exit_code))
-    if info.win_error is not None and info.fault_kind == "win_error":
-        _add("win", f"系统错误码 {info.win_error}", str(info.win_error))
-
-    parts: list[str] = []
-    if head:
-        parts.append(head)
-    if base_cause and base_cause not in head:
-        parts.append(base_cause)
-    if not parts:
-        parts.append("程序发生运行异常")
-    elif not base_cause and not any(k in head for k in _HEAD_FAIL_VERBS):
-        # 剥离模糊词后若主干仅剩动作短语（如「解析活动数据」），补齐失败谓词以免读起来像正常语句。
-        parts.append("发生运行异常")
-
-    msg = "——".join(parts)
-    if details:
-        msg += f"（{'，'.join(details)}）"
-    out = f"{msg}，原文已记日志"
-
-    # 守卫 2：终极 fail-closed plain() 校验，保证无论输入多极端，最终返回 100% 过 plain() 且绝不吞错。
-    if plain(out):
-        cleaned = _scrub_plain_violations(msg, strip_vague=True)
-        out = f"{cleaned}，原文已记日志" if cleaned else "程序发生运行异常，原文已记日志"
-        if plain(out):
-            out = "程序发生运行异常，原文已记日志"
-    return out
-
-
-def fault_cause(what: str) -> str:
-    """将日志原话中的系统/网络/HTTP/Win32/外部命令/Python 异常翻成直白中文原因；未匹配时返回空串。"""
-    info = _parse_fault(what)
-    if not info.fault_kind:
-        return ""
-    if info.fault_kind == "http_error" and info.http_code is not None:
-        return f"对方服务器返回了状态码 {info.http_code}"
-    if info.fault_kind == "process_exit":
-        if _is_nonzero_exit(info.exit_code):
-            if isinstance(info.exit_code, str) and info.exit_code.lower().startswith("0x"):
-                return f"外部命令执行失败（错误码 {info.exit_code}）"
-            return f"外部命令执行失败（退出码 {info.exit_code}）"
-        return "外部命令执行失败"
-    if info.fault_kind == "win_error" and info.win_error is not None:
-        return f"系统调用失败（系统错误码 {info.win_error}）"
-    return _FAULT_TEMPLATES.get(info.fault_kind, "")
-
-
-def _clean_pure_zh(raw: str) -> str:
-    """对纯中文消息做白话规范化与括号配平，同时保护 URL/路径/时间戳/版本号/十六进制不被空括号规则误伤（如 http://[::]:8080/api）。"""
-    kept: list[str] = []
+def _normalize_zh(text: str) -> str:
+    """对纯中文句或安全前缀做轻度术语/模糊词规整，完整保护 URL/路径/ISO 时间/版本号。"""
     held: list[str] = []
-    for tok in _lex_text(raw):
-        if tok.kind in ("URL", "UNC_PATH", "WIN_PATH", "REL_PATH", "DATETIME", "DATE", "TIME", "SEMVER", "HEX"):
-            kept.append(tok.raw)
-            held.append(f"\x00{len(kept) - 1}\x00")
-        else:
-            held.append(tok.raw)
-    s = _balance_brackets(_normalize_plain_zh("".join(held), strip_vague=False))
-    for i, val in enumerate(kept):
+    s = _PlainSpec.mask_safe(text, hold=held)
+    for old, new in _ZH_PLAIN_MAP:
+        s = s.replace(old, new)
+    s = re.sub(r"^[\s，,、；;：:]+|[\s，,、；;：:]+$", "", re.sub(r"[，,、]{2,}", "，", s))
+    for i, val in enumerate(held):
         s = s.replace(f"\x00{i}\x00", val)
-    return s
+    return s.strip()
 
 
-def format_fault_reason(what: str) -> str:
-    """统一的白话故障原因格式化入口：纯中文走受保护规范化+括号配平，含英文走单遍词法解析+fail-closed 守卫。"""
+def fault_cause(what: str, fault: dict | None = None) -> str:
+    """把报错日志或结构化故障翻成简短中文原因；未识别返回空串（供 errwatch._kept 保留尾因）。"""
+    rec = classify_fault(what, fault=fault)
+    if rec.code == ErrorCode.UNKNOWN:
+        return ""
+    if rec.code == ErrorCode.HTTP_ERROR and rec.http is not None:
+        return f"对方服务器返回了状态码 {rec.http}"
+    if rec.code == ErrorCode.PROCESS_EXIT and rec.exit_code is not None:
+        return f"外部命令执行失败（退出码 {rec.exit_code}）"
+    return f"系统调用失败（系统错误码 {rec.winerror}）" if rec.code == ErrorCode.OS_ERROR and rec.winerror is not None else _FAULT_TEMPLATES[rec.code]
+
+
+def _pure_zh(raw: str) -> str:
+    if not raw or any(w not in ALLOWED_WORDS for w in _PlainSpec.WORD_RE.findall(_PlainSpec.mask_safe(raw))):
+        return ""
+    clean = raw if not plain(raw) else _normalize_zh(raw)
+    return clean if clean and not plain(clean) else ""
+
+
+def format_fault_reason(what: str, fault: dict | None = None) -> str:
+    """统一白话故障渲染入口：纯中文轻度规整，含英文或结构化故障一律走封闭中文模板。"""
     raw = str(what or "").strip()
-    if not raw:
+    if not raw and not fault:
         return "记录里没有写具体原因，详见中继日志"
-    if not _has_disallowed_english(raw):
-        clean = _clean_pure_zh(raw)
-        if clean and not plain(clean):
-            return clean
-    return _render_fault(_parse_fault(raw))
+    if not fault and (clean := _pure_zh(raw)):
+        return clean
+    rec = classify_fault(raw, fault=fault)
+    cand = re.split(r"[｜|]", raw, maxsplit=1)[0].strip() if ("｜" in raw or "|" in raw) else (raw if fault else "")
+    p_raw = cand if (cand and not plain(cand)) else (_normalize_zh(cand) if cand else "")
+    prefix = p_raw if p_raw and re.search(r"[\u4e00-\u9fff]{2,}", p_raw) and not plain(p_raw) else ""
+    base = f"对方服务器返回了状态码 {rec.http}" if rec.code == ErrorCode.HTTP_ERROR and rec.http is not None else ("系统调用失败" if rec.code == ErrorCode.OS_ERROR and rec.winerror is not None else _FAULT_TEMPLATES[rec.code])
+    details = [d for d in (f"系统错误码 {rec.winerror}" if rec.code == ErrorCode.OS_ERROR and rec.winerror is not None else "", f"退出码 {rec.exit_code}" if rec.exit_code is not None else "", f"错误码 {rec.hex_code}" if rec.hex_code and rec.hex_code != rec.exit_code else "", f"文件 {rec.file_ref}" if rec.file_ref and rec.file_ref not in prefix else "") if d]
+    body = f"{base}（{'，'.join(details)}）" if details else base
+    out = f"{prefix}——{body}，原文已记日志" if prefix else f"{body}，原文已记日志"
+    return out if not plain(out) else (f"{base}，原文已记日志" if not plain(f"{base}，原文已记日志") else "程序发生运行异常，原文已记日志")
 
 
-def _said(what: str) -> str:
-    """将一条报错日志转成推群可读的直白人话：纯中文也经受保护白话规范化与 plain() 守卫，绝不漏网。"""
+def _said(what: str, fault: dict | None = None) -> str:
+    """将单条报错转为推群可读白话：纯中文照抄，含英文或结构化故障走封闭中文模板。"""
     raw = str(what or "").strip()
-    if raw and not _has_disallowed_english(raw):
-        clean = _clean_pure_zh(raw)
-        if clean and not plain(clean):
-            return f"它说：{clean}"
-    return f"原因：{format_fault_reason(raw)}"
+    return f"它说：{clean}" if (not fault and (clean := _pure_zh(raw))) else f"原因：{format_fault_reason(raw, fault=fault)}"
 
 
 def relay_error_recurred(fixed_in: str) -> str:
@@ -3093,33 +1397,27 @@ def relay_error_recurred(fixed_in: str) -> str:
     return f"{RELAY_ERROR}（v{fixed_in} 修过的又出现了）" if fixed_in else f"{RELAY_ERROR}（修过的又出现了）"
 
 
-def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: str = "") -> str:
+def relay_error_recurred_body(where: str, what: str, at: str = "", fixed_what: str = "",
+                              fault: dict | None = None) -> str:
     when = f"（{at}）" if at else ""
     fixed = f"当时修的是：{fixed_what}。" if fixed_what else ""
-    return (f"一种已经修过的错又出现了{when}，出在「{relay_part(where)}」。{fixed}{_said(what)}\n"
+    return (f"一种已经修过的错又出现了{when}，出在「{relay_part(where)}」。{fixed}{_said(what, fault=fault)}\n"
             "修过的毛病又犯了，已交给我们这边去查为什么没修住。")
 
 
 def relay_faults_section(rows: list) -> str:
-    """技术日志中的当日中继报错汇总（仅写入技术日志，绝不进入用户日报；一律输出结构化白话错因）。"""
+    """技术日志中的当日中继报错汇总（仅写入技术日志，绝不进入用户日报；一律输出封闭白话错因）。"""
     if not rows:
         return ""
     lines = []
     for r in rows[:10]:
-        n = int(r.get("count") or 1)
-        tags = []
-        if r.get("fixed_in"):
-            tags.append(f"复发：v{r['fixed_in']} 修过的又出现了")
-        pushed = int(r.get("pushed") or 0)
-        if pushed >= n:
-            tags.append("已报群")
-        elif pushed:
-            tags.append(f"已报群 {pushed} 次，还有 {n - pushed} 次在排队等着报")
-        else:
-            tags.append("还在排队等着报群")
-        said = format_fault_reason(str(r.get("line") or ""))
-        lines.append(f"· {relay_part(str(r.get('where') or ''))}：{said}"
-                     + (f"（{n} 次）" if n > 1 else "") + f"｜{'；'.join(tags)}")
+        n, pushed = int(r.get("count") or 1), int(r.get("pushed") or 0)
+        tags = ([f"复发：v{r['fixed_in']} 修过的又出现了"] if r.get("fixed_in") else []) + [
+            "已报群" if pushed >= n else (f"已报群 {pushed} 次，还有 {n - pushed} 次在排队等着报" if pushed else "还在排队等着报群")
+        ]
+        fault = r.get("fault") if isinstance(r.get("fault"), dict) else None
+        said = format_fault_reason(str(r.get("line") or ""), fault=fault)
+        lines.append(f"· {relay_part(str(r.get('where') or ''))}：{said}" + (f"（{n} 次）" if n > 1 else "") + f"｜{'；'.join(tags)}")
     if len(rows) > 10:
         lines.append(f"· 另外还有 {len(rows) - 10} 种，见中继日志")
     return "中继自己记下的报错\n" + "\n".join(lines)

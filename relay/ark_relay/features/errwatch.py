@@ -490,10 +490,12 @@ def render(item: dict) -> tuple[str, str]:
     at = span(item)
     if item.get("body") is not None:
         return item["title"], f"{item['body']}\n（{at}）"
+    # 兼容旧队列 JSON：有源头提取的结构化故障字段就直传，没有则自动退回文本分类
+    fault = item.get("fault") if isinstance(item.get("fault"), dict) else None
     if item.get("fixed_in") is not None:
         return item["title"], texts.relay_error_recurred_body(item.get("where", ""), item.get("line", ""), at,
-                                                              item.get("fixed_what", ""))
-    return item["title"], texts.relay_error_body(item.get("where", ""), item.get("line", ""), at)
+                                                              item.get("fixed_what", ""), fault=fault)
+    return item["title"], texts.relay_error_body(item.get("where", ""), item.get("line", ""), at, fault=fault)
 
 
 def merge(items: list[dict]) -> tuple[str, str]:
@@ -509,8 +511,9 @@ def merge(items: list[dict]) -> tuple[str, str]:
             parts.append(f"【{t}】\n{b}")
         else:
             generic = True
+            fault = x.get("fault") if isinstance(x.get("fault"), dict) else None
             parts.append(texts.relay_error_line(x.get("where", ""), x.get("line", ""), span(x),
-                                                x.get("fixed_in") or "", x.get("fixed_what") or ""))
+                                                x.get("fixed_in") or "", x.get("fixed_what") or "", fault=fault))
     body = "\n".join(parts)
     return title, body + ("\n" + texts.RELAY_ERROR_TAIL if generic else "")
 
@@ -656,7 +659,11 @@ class ErrorKindAlert(logging.Handler):
 
     def _item(self, record: logging.LogRecord, sig: str, stamp: str) -> dict:
         line = first_line(record)
+        fault = None
         if record.exc_info and record.exc_info[0]:
+            # 直接在源头读活异常对象的类型/状态码/退出码/系统码，落盘随队列透传，彻底摆脱全靠文本反猜
+            exc_obj = record.exc_info[1] if record.exc_info[1] is not None else record.exc_info[0]
+            fault = texts.fault_from_exc(exc_obj)
             line += f" ｜ {record.exc_info[0].__name__}: {record.exc_info[1]}"
         given = getattr(record, ALARM, None)
         if isinstance(given, (tuple, list)) and len(given) == 2:
@@ -667,6 +674,8 @@ class ErrorKindAlert(logging.Handler):
                     "fixed_in": str(fixed.get("fixed_in", "")), "fixed_what": str(fixed.get("what", ""))}
         else:
             item = {"title": texts.RELAY_ERROR, "where": record.name, "line": _kept(line, 160)}
+        if fault and item.get("body") is None:
+            item["fault"] = fault
         # Merged in a backlog by the whole first line, not its first 160 characters: two faults
         # alike that far were one queued item and the second one's tail was lost (audit C-05).
         item["key"] = json.dumps([item.get("title"), item.get("body"), item.get("where"), line], ensure_ascii=False)
@@ -717,6 +726,8 @@ class ErrorKindAlert(logging.Handler):
         row.update(last=stamp, level=record.levelname, where=record.name, line=first_line(record)[:200])
         if item.get("fixed_in") is not None:
             row["fixed_in"] = item["fixed_in"]
+        if isinstance(item.get("fault"), dict):
+            row["fault"] = item["fault"]
         if fresh or self._clock() - self._saved_at >= SAVE_EVERY:
             self._save_day(day)
 
