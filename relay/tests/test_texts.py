@@ -710,6 +710,180 @@ def _part_texts_lexer():
         check(f"fail-closed 守卫零放行：{extreme!r}", (bool(out), texts.plain(out)), (True, []))
 
 
+def _part_texts_lexer_boundaries():
+    """五类通用词法文法收紧回归：URL 边界、Windows/UNC 双向边界、ISO DATETIME、HTTP/退出码归类与主干残渣清零。"""
+    ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(ROOT))
+    from ark_relay.core import texts
+
+    print("\n[1. URL 通用结构边界：越过 host 禁 [] / 裸 () / 紧跟字母与括号的 ,;! / :Ident]")
+    url_cases = [
+        ("拉取 https://cos.example.com/api/v1:ReadTimeout", "https://cos.example.com/api/v1", "timeout", None, "ReadTimeout"),
+        ("拉取 https://cos.example.com/api/v1:ConnectTimeout", "https://cos.example.com/api/v1", "timeout", None, "ConnectTimeout"),
+        ("拉取 https://cos.example.com/api/v1:RemoteDisconnected", "https://cos.example.com/api/v1", "conn_reset", None, "RemoteDisconnected"),
+        ("拉取 https://cos.example.com/api/v1:IncompleteRead", "https://cos.example.com/api/v1", "conn_reset", None, "IncompleteRead"),
+        ("拉取 https://cos.example.com/api/v1:BrokenPipe", "https://cos.example.com/api/v1", "conn_reset", None, "BrokenPipe"),
+        ("拉取 https://cos.example.com/api/v1:Error", "https://cos.example.com/api/v1", "", None, ":Error"),
+        ("拉取 https://cos.example.com/api/v1:UnknownCustomExc", "https://cos.example.com/api/v1", "", None, "UnknownCustomExc"),
+        ("拉取 https://cos.example.com/a.json?x=1&y=2:ReadTimeout", "https://cos.example.com/a.json?x=1&y=2", "timeout", None, "ReadTimeout"),
+        ("拉取 https://cos.example.com/a.json#frag:ReadTimeout", "https://cos.example.com/a.json#frag", "timeout", None, "ReadTimeout"),
+        ("拉取 https://cos.example.com/a.json?k=v:RemoteDisconnected", "https://cos.example.com/a.json?k=v", "conn_reset", None, "RemoteDisconnected"),
+        ("拉取 https://cos.example.com/api/v1:status=503", "https://cos.example.com/api/v1", "http_error", 503, "status=503"),
+        ("拉取 https://cos.example.com/a.json(TimeoutError)", "https://cos.example.com/a.json", "timeout", None, "TimeoutError"),
+        ("拉取 https://cos.example.com/a.json[PermissionError]", "https://cos.example.com/a.json", "permission", None, "PermissionError"),
+        ("拉取 https://cos.example.com/a.json,[KeyError]", "https://cos.example.com/a.json", "key_error", None, "KeyError"),
+        ("拉取 https://cos.example.com/a.json;[TimeoutError]", "https://cos.example.com/a.json", "timeout", None, "TimeoutError"),
+        ("拉取 https://cos.example.com/a.json(HTTP/1.1)", "https://cos.example.com/a.json", "", None, "HTTP/1.1"),
+        ("拉取 https://cos.example.com/a_(TimeoutError)", "https://cos.example.com/a_", "timeout", None, "TimeoutError"),
+    ]
+    for raw, want_url, want_kind, want_http, forbid in url_cases:
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        body = texts.relay_error_body("ark.service", raw, "09:30:00")
+        check(f"URL 通用结构硬停：{raw[:42]}",
+              (bool(texts.plain(raw)), info.url, info.fault_kind, info.http_code,
+               forbid in out, want_url in out, texts.plain(out), texts.plain(body)),
+              (True, want_url, want_kind, want_http, False, True, [], []))
+    check("维基百科式 _(词)、/w/File:Logo.png 与纯中文 IPv6 未指定地址 http://[::]:8080/api 完整放行",
+          (texts.plain("查看 https://en.wikipedia.org/wiki/Python_(programming_language)"),
+           texts.plain("查看 https://wiki.example.com/w/File:Logo.png"),
+           texts.format_fault_reason("访问 http://[::]:8080/api 失败"),
+           texts.plain(texts.format_fault_reason("访问 http://[::]:8080/api 失败"))),
+          ([], [], "访问 http://[::]:8080/api 失败", []))
+
+    print("\n[2. Windows/UNC 双向文法：不吞英文/异常括号 + 完整保盘符根/中文目录/空格共享名/版本号点号目录]")
+    win_stop_cases = [
+        (r"打开 C:\ark\readme ReadTimeout at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "timeout", ("ReadTimeout", " at ")),
+        (r"打开 C:\ark\readme failed at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "", ("failed", " at ")),
+        (r"打开 C:\ark\readme Error at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "", ("Error", " at ")),
+        (r"打开 C:\ark\foo.properties failed at logs\a.log", (r"C:\ark\foo.properties", r"logs\a.log"), "", ("failed", " at ")),
+        (r"打开 C:\ark\dir(ReadTimeout)", (r"C:\ark\dir",), "timeout", ("ReadTimeout",)),
+        (r"打开 C:\ark\dir(Error)", (r"C:\ark\dir",), "", ("Error",)),
+        (r"读取 \\fileserver\share\dir(ReadTimeout)", (r"\\fileserver\share\dir",), "timeout", ("ReadTimeout",)),
+        (r"读取 \\fileserver\share\dir(Error)", (r"\\fileserver\share\dir",), "", ("Error",)),
+        (r"copy C:\ark\src to logs\dst.log", (r"C:\ark\src", r"logs\dst.log"), "", ("copy", " to ")),
+        (r"打开 C:\ark\readme got ValueError at logs\a.log", (r"C:\ark\readme", r"logs\a.log"), "value_error", ("got", "ValueError")),
+    ]
+    for raw, want_files, want_kind, forbids in win_stop_cases:
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"Windows/UNC 绝不吞英文异常：{raw[:40]}",
+              (bool(texts.plain(raw)), info.files, info.fault_kind,
+               any(f in out for f in forbids), out.count(want_files[0]), texts.plain(out)),
+              (True, want_files, want_kind, False, 1, []))
+
+    check("合法盘符根、中文目录、UNC 空格共享名与含纯数字版本号空格目录完整保留",
+          (texts.format_fault_reason(r"磁盘 C:\ 空间不足"),
+           texts.plain(r"磁盘 C:\ 空间不足"),
+           texts._parse_fault(r"读取 C:/ 失败：PermissionError").files,
+           r"读取 C:/ 失败" in texts.format_fault_reason(r"读取 C:/ 失败：PermissionError"),
+           texts._parse_fault("OSError: [Errno 28] No space left on device: 'C:\\\\'").files,
+           texts._parse_fault(r"打开 D:\游戏\终末地\config.json 失败：PermissionError").files,
+           r"D:\游戏\终末地\config.json" in texts.format_fault_reason(r"打开 D:\游戏\终末地\config.json 失败：PermissionError"),
+           texts._parse_fault(r"读取 \\fileserver\share\日志\err.log 失败：FileNotFoundError").files,
+           r"\\fileserver\share\日志\err.log" in texts.format_fault_reason(r"读取 \\fileserver\share\日志\err.log 失败：FileNotFoundError"),
+           texts._parse_fault(r"读取 \\fileserver\shared docs\logs\readme 失败：PermissionError").files,
+           r"\\fileserver\shared docs\logs\readme" in texts.format_fault_reason(r"读取 \\fileserver\shared docs\logs\readme 失败：PermissionError"),
+           texts._parse_fault(r"打开 C:\Program Files\Python3.15 Tools\python.exe").files,
+           texts.plain(r"打开 C:\Program Files\Python3.15 Tools\python.exe"),
+           texts.plain(r"打开 C:\Users\Default User\AppData\a.log")),
+          (r"磁盘 C:\ 空间不足",
+           [],
+           ("C:/",),
+           True,
+           ("C:\\",),
+           (r"D:\游戏\终末地\config.json",),
+           True,
+           (r"\\fileserver\share\日志\err.log",),
+           True,
+           (r"\\fileserver\shared docs\logs\readme",),
+           True,
+           (r"C:\Program Files\Python3.15 Tools\python.exe",),
+           [],
+           []))
+
+    print("\n[3. ISO 8601 完整 DATETIME 原子词元：不删小时数、不删 Z、不误判退出码]")
+    for raw, want_dt in (
+        ("任务记录 2026-11-28T20:45:00+08:00 exited ValueError: bad", "2026-11-28T20:45:00+08:00"),
+        ("同步失败 2026-11-28T20:45:00Z：TimeoutError", "2026-11-28T20:45:00Z"),
+        ("任务失败 2026-11-28T20:45:00.123+08:00：TimeoutError", "2026-11-28T20:45:00.123+08:00"),
+        ("任务记录 2026-11-28t09:30+0900：TimeoutError", "2026-11-28t09:30+0900"),
+    ):
+        toks = [(t.kind, t.raw) for t in texts._lex_text(raw) if t.kind == "DATETIME"]
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"ISO DATETIME 完整保留：{want_dt}",
+              (toks, info.exit_code, want_dt in out, texts.plain(out)),
+              ([("DATETIME", want_dt)], None, True, []))
+    check("纯中文含 ISO 8601 时间戳直通放行",
+          (texts.plain("任务于 2026-11-28T20:45:00+08:00 失败"),
+           texts.format_fault_reason("任务于 2026-11-28T20:45:00+08:00 失败")),
+          ([], "任务于 2026-11-28T20:45:00+08:00 失败"))
+
+    print("\n[4. status_code/statusCode 永归 HTTP + 中文无空格负退出码 + 退出码 0 不盖真错]")
+    for raw, want_http in (
+        ("pwsh 调接口失败 ｜ status_code=502 Bad Gateway", 502),
+        ("git 调接口失败 ｜ status_code=503 Service Unavailable", 503),
+        ("ssh 代理返回 ｜ statusCode=504 Gateway Timeout", 504),
+        ("git 调接口失败 ｜ status-code=502", 502),
+        ("pwsh 调接口失败 ｜ http_status=503", 503),
+        ("ssh 代理返回 ｜ httpStatus=504", 504),
+    ):
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"外部命令语境下显式 HTTP 键绝不误判退出码：{raw[:34]}",
+              (info.fault_kind, info.http_code, info.exit_code, f"状态码 {want_http}" in out,
+               "退出码" in out, texts.plain(out)),
+              ("http_error", want_http, None, True, False, []))
+    check("中文退出码/返回码无空格负整数精确提取，且退出码 0 不盖 ValueError",
+          (texts._parse_fault("脚本失败 退出码-1073741819").exit_code,
+           texts._parse_fault("脚本失败 退出码-1073741819").fault_kind,
+           texts._parse_fault("脚本失败 返回码-1").exit_code,
+           texts._parse_fault("脚本失败 返回码-1").fault_kind,
+           "退出码 -1073741819" in texts.format_fault_reason("脚本失败 退出码-1073741819 RuntimeError: crash"),
+           texts._parse_fault("exit status 0 ValueError: bad").fault_kind,
+           "退出码 0" in texts.format_fault_reason("exit status 0 ValueError: bad")),
+          (-1073741819, "process_exit", -1, "process_exit", True, "value_error", False))
+
+    print("\n[5. 主干残渣符号清零 + _scan_rel_path 异常/协议/版本号目录拒绝 + 大写 SEMVER + <URL>]")
+    for raw, must_have, must_not in (
+        (r"抛出 Error\SubError", ("抛出",), ("\\",)),
+        ("抛出 Foo/TimeoutError", ("抛出", "连接或读写超时"), ("/",)),
+        (r"抛出 Foo\KeyError", ("抛出", "缺少必要内容"), ("\\",)),
+        ("下载 url=https://cos.example.com/a.json 失败：TimeoutError",
+         ("下载 https://cos.example.com/a.json 失败",), ("=https://",)),
+        (r"读取 file=D:\ark\a.json 失败：PermissionError",
+         (r"读取 D:\ark\a.json 失败",), ("=D:",)),
+        ("拉取 <https://cos.example.com/a.json> 失败：TimeoutError",
+         ("拉取 https://cos.example.com/a.json 失败",), ("<", ">")),
+        ("调用 _private_func 失败", ("调用", "失败"), ("_",)),
+        ("拉取 v3.15.2-RC1 失败：TimeoutError", ("v3.15.2-RC1",), ("v3.15.2- ",)),
+        ("拉取 v2.0.0-ALPHA.1 失败：TimeoutError", ("v2.0.0-ALPHA.1",), ("v2.0.0- ",)),
+        ("程序崩溃 0xZZZ", ("程序崩溃",), ("程序崩溃 0",)),
+        ("使用 v2/HTTP 失败", ("使用 v2 失败",), ("v2/",)),
+    ):
+        out = texts.format_fault_reason(raw)
+        check(f"主干无残渣符号：{raw[:36]}",
+              (all(m in out for m in must_have), any(b in out for b in must_not), texts.plain(out)),
+              (True, False, []))
+
+    for fake_rel in (
+        "抛出 PermissionError/state.json",
+        "返回 HTTP/1.1/a.json",
+        "返回 gRPC/1.0/a.json",
+        "返回 TLS/1.3/a.json",
+        "返回 QUIC/v1/a.json",
+        "返回 WS/a.json",
+        "返回 MQTT/a.json",
+        "返回 2.0/a.json",
+        r"抛出 ValueError\cfg.json",
+    ):
+        out = texts.format_fault_reason(fake_rel)
+        check(f"_scan_rel_path 拒绝异常/协议/版本前缀：{fake_rel}",
+              (bool(texts.plain(fake_rel)), out == fake_rel, texts.plain(out)),
+              (True, False, []))
+
+
 def _part_user_switches():  # noqa: C901
 
     import ast
@@ -6897,4 +7071,4 @@ def _part_flush_unsent_persist():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_texts_lexer, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation, _part_yesterday_report_midnight_wait, _part_flush_unsent_persist]))
+    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_texts_lexer, _part_texts_lexer_boundaries, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation, _part_yesterday_report_midnight_wait, _part_flush_unsent_persist]))
