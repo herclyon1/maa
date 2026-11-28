@@ -35,30 +35,42 @@ class _PlainSpec:
 
     EXTS = "py|rs|cs|js|ts|jsonl|json|log|txt|md|yaml|yml|toml|ini|cfg|conf|exe|dll|dmp|bat|cmd|ps1|sh|zip|gz|zst|db|sqlite|png|jpg|jpeg|webp|csv|xml|html|swift|lock|flag|bak|tmp|pth|whl|env|dat|crt|pem"
     PROTO_HEADS = frozenset({"http", "https", "grpc", "tls", "ssl", "quic", "rtsp", "sip", "ws", "wss", "mqtt", "ftp", "ssh", "tcp", "udp"})
-    EXC_RE = re.compile(r"^(?:Error|Exception|Warning|Timeout|WinError|Errno|Traceback|[A-Z][a-z0-9]+(?:Error|Exception|Warning|Timeout|Interrupt|Failed|Failure|Refused|Reset|Aborted|Disconnected|Denied|Closed|Expired|Iteration|Redirects|Pipe|Read|Exists|Locked)|(?:Bad|Cannot|NoSuch|ResponseNot|TooMany|Connection|Permission|Access|File|System|Http|Ssl)[A-Z][A-Za-z0-9]+)$")
-    CAMEL_TWO_RE, IDENT_RE = re.compile(r"^[A-Z][a-z0-9]+[A-Z][A-Za-z0-9]*$"), re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    EXC_RE = re.compile(r"^(?:Error|Exception|Warning|Timeout|WinError|Errno|Traceback|gaierror|[A-Z][A-Za-z0-9]*(?:Error|Exception|Warning|Timeout|Interrupt|Failed|Failure|Refused|Reset|Aborted|Disconnected|Denied|Closed|Expired|Iteration|Redirects|Pipe|Read|Exists|Locked|NotFound|Exit)|(?:Bad|Cannot|NoSuch|ResponseNot|TooMany)[A-Z][A-Za-z0-9]+)$")
+    CAMEL_TWO_RE, IDENT_RE = re.compile(r"^(?:[A-Z][a-z0-9]+[A-Z]|[A-Z]{3,}[a-z]{2})[A-Za-z0-9]*$"), re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
     URL_AUTH_RE, URL_CHARS = re.compile(r"https?://(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._~%-]+)(?::\d+)?", re.I), frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#@!$&*+,;=%()")
-    WIKI_PAREN_RE, WIKI_NS_RE, PROTO_SLASH_RE = re.compile(r"^[a-z0-9_]+$"), re.compile(r"/(?:File|Category|Special)$"), re.compile(r"(?:https?|grpc|tls|ssl|quic|rtsp|sip|ws|wss|mqtt)/", re.I)
-    # 引号内 Windows/UNC、显式 Unix 根路径、无引号 Windows/UNC（仅放行明确系统目录空格与纯中文目录空格）
+    WIKI_PAREN_RE, WIKI_NS_RE, PROTO_SLASH_RE, MATRIX_PARAM_RE = re.compile(r"^[a-z0-9_]+$"), re.compile(r"/(?:File|Category|Special)$"), re.compile(r"(?:https?|grpc|tls|ssl|quic|rtsp|sip|ws|wss|mqtt)/", re.I), re.compile(r"(?:jsessionid|phpsessid|sid)=[A-Za-z0-9._-]+", re.I)
+    # 引号内 Windows/UNC、显式 Unix 根路径（含中文目录）、无引号 Windows/UNC（仅放行明确系统目录空格与纯中文目录空格）
     QUOTED_WIN_RE = re.compile(r"""(?P<q>['"])((?:[A-Za-z]:[\\/]|\\\\[^\\/\s'"]+[\\/])[^\r\n'"]*?)(?P=q)""")
-    UNIX_PATH_RE = re.compile(r"""(?:^|(?<=[\s'"（(\[【：:，,、=\u4e00-\u9fff]))(?:/(?:opt|etc|var|usr|Users|home|tmp|bin)/|\./|\.\./|~/)[A-Za-z0-9_./@+~%-]+""")
+    _UROOT = r"opt|etc|var|usr|Users|home|tmp|bin|sbin|Library|private|Applications|System|Volumes|dev|proc|srv|run|mnt"
+    _USEG = r"[A-Za-z0-9_.+@~%\u4e00-\u9fff-]+"
+    _UEND = rf"(?:[A-Za-z0-9_.+@~%-]*[\u4e00-\u9fff][A-Za-z0-9_.+@~%\u4e00-\u9fff-]*(?:\.(?i:{EXTS}))+(?![A-Za-z0-9_])|[A-Za-z0-9_.+@~%-]+)"
+    UNIX_PATH_RE = re.compile(rf"""(?:^|(?<=[\s'"（(\[【：:，,、=\u4e00-\u9fff]))(?:/(?:{_UROOT})/(?:{_USEG}/)*{_UEND}?|(?:\./|\.\./|~/)(?:(?:{_USEG}/)+{_UEND}?|{_UEND}))""")
     _DIR = r"(?:(?:Program Files \(x86\)|Program Files \(x64\)|Program Files|Default User|Common Files|Application Data)|(?:[\u4e00-\u9fff][\u4e00-\u9fff0-9._-]*(?: (?:[\u4e00-\u9fff][\u4e00-\u9fff0-9._-]*|\d+(?:\.\d+)*))*)|[A-Za-z0-9_.+~@#%$-]+)"
     _END = rf"(?:[\u4e00-\u9fff][\u4e00-\u9fff0-9._-]*\.(?:{EXTS})|[A-Za-z0-9_.+~@#%$-]+)"
     WIN_UNC_RE = re.compile(rf"(?:(?<![A-Za-z0-9_])[A-Za-z]:[\\/](?:{_DIR}[\\/])*{_END}?|(?<![\\A-Za-z0-9_])\\\\[A-Za-z0-9_.-]+[\\/](?:(?:{_DIR}[\\/])+{_END}?|{_END}))", re.I)
-    REL_PATH_RE = re.compile(r"(?<![A-Za-z0-9_/:.\\-])([A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+)(?![A-Za-z0-9_])")
-    EXT_END_RE, NUM_SEG_RE = re.compile(rf"(?:\.(?:{EXTS}))+$", re.I), re.compile(r"^v?\d+(?:\.\d+)*$", re.I)
+    _RSEG = r"[A-Za-z0-9_.\u4e00-\u9fff-]+"
+    _REND = rf"(?:[A-Za-z0-9_.-]*[\u4e00-\u9fff][A-Za-z0-9_.\u4e00-\u9fff-]*(?:\.(?i:{EXTS}))+|[A-Za-z0-9_.-]+)"
+    REL_PATH_RE = re.compile(rf"((?:(?<![A-Za-z0-9_/:.\\\u4e00-\u9fff-])[\u4e00-\u9fff][\u4e00-\u9fff0-9_.-]*|(?<![A-Za-z0-9_/:.\\-])[A-Za-z0-9_.-]+)(?:[\\/]{_RSEG})*[\\/]{_REND})(?![A-Za-z0-9_])")
+    EXT_END_RE, EXT_TAIL_RE, NUM_SEG_RE = re.compile(rf"(?:\.(?:{EXTS}))+$", re.I), re.compile(rf"\.(?:{EXTS})(?:\s+\S|[,;!][A-Za-z_])", re.I), re.compile(r"^v?\d+(?:\.\d+)*$", re.I)
     FILE_RE = re.compile(rf"(?<![A-Za-z0-9_/:.\\-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?(?:\.(?:{EXTS}))+(?![A-Za-z0-9_])", re.I)
     SEMVER_RE, WORD_RE = re.compile(r"(?<![A-Za-z0-9_-])v\d+(?:\.\d+)*(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?(?![A-Za-z0-9_])"), re.compile(r"[A-Za-z][A-Za-z0-9./\-]*")
     DIRECT_RES = (UNIX_PATH_RE, WIN_UNC_RE, re.compile(r"(?<![A-Za-z0-9_/:.\\-])(?:scripts/mac/deploy-relay\.sh|resource/tasks|(?:state/)?shots/[A-Za-z0-9_./-]+|\d{4}-\d{2}-\d{2}/(?:ark|arknights|endfield|wuwa)/[A-Za-z0-9_.-]+)(?![A-Za-z0-9_])"), FILE_RE, re.compile(r"(?<![A-Za-z0-9])\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}:?\d{2})?(?![A-Za-z0-9])"), re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])"))
 
     @classmethod
+    def is_exc(cls, word: str) -> bool:
+        """判断词元是否为英文异常/报错类名，自动排除 ALLOWED_WORDS 白名单词。"""
+        return word not in ALLOWED_WORDS and bool(cls.EXC_RE.match(word))
+
+    @classmethod
     def scan_url(cls, text: str, start: int) -> int:
-        """扫描合法 RFC 3986 URL：保 COS/REST 查询串 ; , 与 IPv6，遇异常/协议/非法括号硬停。"""
+        """扫描合法 RFC 3986 URL：path 段遇 ,/;(!) 紧跟英文词即停（仅留 ;jsessionid= 矩阵参数），?query 内保 COS/REST ; , 并拦异常/协议/非法括号。"""
         if (start > 0 and text[start - 1].isascii() and text[start - 1].isalnum()) or not (m := cls.URL_AUTH_RE.match(text, start)):
             return start
-        i, n, auth_end = m.end(), len(text), m.end()
+        i, n, auth_end, in_query = m.end(), len(text), m.end(), False
         while i < n and text[i] in cls.URL_CHARS:
             ch = text[i]
+            if ch == "?":
+                in_query = True
             if ch == "(":
                 close = text.find(")", i + 1) if i > auth_end and text[i - 1] == "_" else -1
                 if close > i + 1 and cls.WIKI_PAREN_RE.match(text[i + 1 : close]):
@@ -73,7 +85,12 @@ class _PlainSpec:
             if ch in ",;!":
                 rest = text[i + 1 :]
                 wm = cls.IDENT_RE.match(rest)
-                if not rest or rest[0] in "([)]\"'<> " or not rest[0].isascii() or cls.PROTO_SLASH_RE.match(rest) or (wm and (cls.EXC_RE.match(wm.group(0)) or (cls.CAMEL_TWO_RE.match(wm.group(0)) and not rest[wm.end() :].startswith(("=", "&"))))):
+                if not rest or rest[0] in "([)]\"'<> " or not rest[0].isascii() or cls.PROTO_SLASH_RE.match(rest):
+                    break
+                if not in_query:
+                    if wm and not (ch == ";" and cls.MATRIX_PARAM_RE.match(rest)):
+                        break
+                elif wm and (cls.is_exc(wm.group(0)) or (wm.group(0) not in ALLOWED_WORDS and cls.CAMEL_TWO_RE.match(wm.group(0)) and not rest[wm.end() :].startswith(("=", "&")))):
                     break
             i += 1
         while i > auth_end and text[i - 1] in ".,;:!?":
@@ -92,7 +109,10 @@ class _PlainSpec:
     @classmethod
     def valid_rel(cls, cand: str) -> bool:
         segs = re.split(r"[\\/]", cand)
-        return len(segs) >= 2 and bool(cls.EXT_END_RE.search(segs[-1])) and not (segs[0].lower() in cls.PROTO_HEADS or cls.NUM_SEG_RE.match(segs[0]) or cls.EXC_RE.match(segs[0]))
+        s0 = re.sub(r"^[\u4e00-\u9fff]+", "", segs[0]) if segs else ""
+        return (len(segs) >= 2 and bool(cls.EXT_END_RE.search(segs[-1]))
+                and not (s0.lower() in cls.PROTO_HEADS or cls.NUM_SEG_RE.match(s0))
+                and not any(cls.is_exc(w) for seg in segs[:-1] for w in cls.IDENT_RE.findall(seg)))
 
     @classmethod
     def mask_safe(cls, text: str, hold: list[str] | None = None, *, mask_hex: bool = True) -> str:
@@ -105,15 +125,26 @@ class _PlainSpec:
 
         def _qwin(m: re.Match) -> str:
             rest = m.group(2)[2:] if len(m.group(2)) >= 2 and m.group(2)[1] == ":" else m.group(2)
-            return _put(m.group(0)) if ":" not in rest and not any(cls.EXC_RE.match(w) for w in cls.IDENT_RE.findall(rest)) else m.group(0)
+            last = ([seg for seg in re.split(r"[\\/]", rest) if seg] or [""])[-1]
+            if ":" in rest or cls.EXT_TAIL_RE.search(last) or any(cls.is_exc(w) for w in cls.IDENT_RE.findall(rest)):
+                return m.group(0)
+            return _put(m.group(0))
+
+        def _path(m: re.Match) -> str:
+            val = m.group(0).rstrip(".,;:")
+            tail = re.split(r"[\\/]", val)[-1]
+            if tail and not cls.EXT_END_RE.search(tail) and cls.is_exc(tail):
+                return m.group(0)
+            return _put(val) + m.group(0)[len(val) :]
 
         s = cls.QUOTED_WIN_RE.sub(_qwin, cls.mask_urls(text, _put))
-        for pat in cls.DIRECT_RES[:3]:
-            s = pat.sub(lambda m: _put(m.group(0).rstrip(".,;:")), s)
+        for pat in cls.DIRECT_RES[:2]:
+            s = pat.sub(_path, s)
+        s = cls.DIRECT_RES[2].sub(lambda m: _put(m.group(0).rstrip(".,;:")), s)
         s = cls.REL_PATH_RE.sub(lambda m: _put(m.group(0)) if cls.valid_rel(m.group(0)) else m.group(0), s)
         for pat in (cls.DIRECT_RES[3:] if mask_hex else cls.DIRECT_RES[3:5]):
             s = pat.sub(lambda m: _put(m.group(0)), s)
-        return cls.SEMVER_RE.sub(lambda m: _put(m.group(0)) if not any(cls.EXC_RE.match(x) for x in m.group(0).split("-")[1:]) else m.group(0), s)
+        return cls.SEMVER_RE.sub(lambda m: _put(m.group(0)) if not ("-" in m.group(0) and any(cls.is_exc(x) for x in re.split(r"[.-]", m.group(0).split("-", 1)[1]))) else m.group(0), s)
 
 
 def plain(text: str) -> list[str]:
@@ -1218,6 +1249,7 @@ class _FaultSpec:
     """故障分类器内部常量、正则与辅助方法（封在类内不混入对外文案常量扫描）。"""
 
     VALID_HTTP = frozenset({*range(400, 419), 421, 422, 423, 424, 425, 426, 428, 429, 431, 451, 499, *range(500, 509), 510, 511, *range(520, 528), 529, 530})
+    HTTP_EXCS = frozenset({"HTTPError", "HTTPStatusError", "ClientResponseError"})
     FILE_CODES = frozenset({ErrorCode.FILE_LOCKED, ErrorCode.PERMISSION_DENIED, ErrorCode.FILE_NOT_FOUND, ErrorCode.OS_ERROR})
     MRO_PRE = ((ErrorCode.DNS_FAILED, {"gaierror", "NameResolutionError"}), (ErrorCode.TIMEOUT, {"TimeoutError", "TimeoutExpired", "ReadTimeout", "ConnectTimeout", "WriteTimeout", "PoolTimeout"}), (ErrorCode.CONN_RESET, {"ConnectionResetError", "ConnectionRefusedError", "ConnectionAbortedError", "BrokenPipeError", "RemoteDisconnected", "IncompleteRead"}))
     MRO_POST = ((ErrorCode.PERMISSION_DENIED, {"PermissionError"}), (ErrorCode.FILE_NOT_FOUND, {"FileNotFoundError"}), (ErrorCode.BAD_JSON, {"JSONDecodeError", "UnicodeDecodeError", "UnicodeEncodeError", "BadZipFile"}), (ErrorCode.NET_ERROR, {"URLError", "ConnectionError", "ProxyError", "TooManyRedirects", "RequestException"}))
@@ -1225,7 +1257,7 @@ class _FaultSpec:
     DATE_TIME_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b|(?<!\d)\d{2}-\d{2}(?!\d)|\b\d{1,2}:\d{2}(?::\d{2})?\b")
     HTTP_RES = (re.compile(r"\bHTTP/\d(?:\.\d)?\s+(\d{3})\b|\bHTTP\s+(\d{3})\b|\bHTTP\s*Error\s*[:(]?\s*(\d{3})\b|\bHTTPStatusError\b[^\r\n]{0,60}?\b(\d{3})\b|\bClientResponseError\b[^\r\n]{0,40}?\b(\d{3})\b", re.I), re.compile(r"""\bstatus code does not indicate success\s*[:=]\s*(\d{3})\b|\breturned error\s*:\s*(\d{3})\b|(?<![A-Za-z0-9_-])["']?(?:status[_-]code|statusCode|http[_-]status|httpStatus)["']?\s*[:=]\s*(\d{3})\b|(?<![A-Za-z0-9_-])status\s+code\s*[:=]?\s*(\d{3})\b""", re.I))
     HTTP_BARE_RE, PROC_CTX_RE = re.compile(r"""(?<![A-Za-z0-9_-])["']?status["']?\s*[:=]\s*(\d{3})\b""", re.I), re.compile(r"\b(?:process|child|subprocess|waitpid|exited|exit|ended|taskkill|pwsh|powershell|git|ssh|adb|schtasks|CalledProcessError)\b", re.I)
-    EXIT_RES = (re.compile(r"(?:退出码|返回码)\s*[:：=]?\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)|\b(?:CalledProcessError\s*\(|returned non-zero exit\s+status\s+)(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I), re.compile(r"(?<![A-Za-z0-9_-])(?:exit[\s_]+status|exit[\s_]+code|return[\s_]+code|returncode|rc)\s*[:=\s]\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)|(?<![A-Za-z0-9_-])(?:exit[-_]status|exit[-_]code|return[-_]code)-(\d+)(?!\.\d)|(?<![A-Za-z0-9_-])exited(?:\s+with(?:\s+(?:code|status))?)?\s*[:=]?\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I))
+    EXIT_RES = (re.compile(r"(?:退出码|返回码)\s*[:：=]?\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)|\b(?:CalledProcessError\s*\(|returned non-zero exit\s+status\s+)(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I), re.compile(r"(?<![A-Za-z0-9_-])(?:(?:exit[\s_]+status|exit[\s_]+code|return[\s_]+code|returncode)\s*[:=\s]|rc\s*[:=]|(?-i:rc)\s+)\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)|(?<![A-Za-z0-9_-])(?:exit[-_]status|exit[-_]code|return[-_]code)-(\d+)(?!\.\d)|(?<![A-Za-z0-9_-])exited(?:\s+with(?:\s+(?:code|status))?)?\s*[:=]?\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I))
     EXIT_BARE_RE = re.compile(r"(?<![A-Za-z0-9_-])status(?!\s*[_-]?code)\s*[:=\s]\s*(0x[0-9a-fA-F]+|-?\d+)(?!\.\d)", re.I)
     WINERR_RE, ERRNO_RE, NTSTATUS_RE = re.compile(r"\bWinError\s+(\d+)\b", re.I), re.compile(r"\bErrno\s+(\d+)\b", re.I), re.compile(r"(?<![A-Za-z0-9])(0x[0-9a-fA-F]{8})(?![A-Za-z0-9])")
     QUOTED_FILE_RE, FILE_LIKE_RE = re.compile(r"""(?P<q>['"])([^\r\n'"]{2,200})(?P=q)"""), re.compile(rf"[\\/]|(?:\.(?:{_PlainSpec.EXTS}))$", re.I)
@@ -1293,16 +1325,21 @@ def fault_from_exc(exc: BaseException | type[BaseException] | None) -> dict | No
     rc_raw = getattr(inst, "returncode", None) if inst is not None else None
     exit_c = rc_raw if isinstance(rc_raw, int) and not isinstance(rc_raw, bool) and rc_raw != 0 else None
     kw = {"winerror": winerr, "errno": err_no, "file": _FaultSpec.norm_file(getattr(inst, "filename", "") or "") if inst is not None else ""}
+    is_http_cls, raw_sts = any("HTTP" in n or "Response" in n for n in mro), []
     if inst is not None:
-        st = _FaultSpec.pos_int(getattr(getattr(inst, "response", None), "status_code", None))
-        if st not in _FaultSpec.VALID_HTTP and any("HTTP" in n or "Response" in n for n in mro):
-            st = next((v for a in ("status_code", "status", "code") if (v := _FaultSpec.pos_int(getattr(inst, a, None))) in _FaultSpec.VALID_HTTP), None)
+        resp_st = _FaultSpec.pos_int(getattr(getattr(inst, "response", None), "status_code", None))
+        raw_sts = ([resp_st] if resp_st is not None else []) + ([v for a in ("status_code", "status", "code") if (v := _FaultSpec.pos_int(getattr(inst, a, None))) is not None] if is_http_cls else [])
+        st = next((v for v in raw_sts if v in _FaultSpec.VALID_HTTP), None)
+        if st is None and is_http_cls and not any(100 <= v < 400 for v in raw_sts):
+            st = classify_fault(f"{cls.__name__}: {inst}").http or next((int(m.group(1)) for m in re.finditer(r"\b(\d{3})\b", _FaultSpec.DATE_TIME_RE.sub(" ", _PlainSpec.mask_safe(str(inst)))) if int(m.group(1)) in _FaultSpec.VALID_HTTP), None)
         if st in _FaultSpec.VALID_HTTP:
             return _FaultSpec.pack(ErrorCode.HTTP_ERROR, http=st, **kw)
     if (ec := _FaultSpec.os_code(winerr, err_no, pre=True) or next((c for c, ns in _FaultSpec.MRO_PRE if mro & ns), None) or (ErrorCode.SSL_ERROR if any(n.startswith("SSL") for n in mro) else None)):
         return _FaultSpec.pack(ec, exit=exit_c if ec == ErrorCode.TIMEOUT else None, **kw)
     if isinstance(reason := getattr(inst, "reason", None) if inst is not None else None, BaseException) and (inner := fault_from_exc(reason)) and inner.get("code") != ErrorCode.UNKNOWN.value:
         return inner
+    if (mro & _FaultSpec.HTTP_EXCS) and not any(100 <= v < 400 for v in raw_sts):
+        return _FaultSpec.pack(ErrorCode.HTTP_ERROR, **kw)
     if (ec := _FaultSpec.os_code(winerr, err_no, pre=False) or next((c for c, ns in _FaultSpec.MRO_POST if mro & ns), None)):
         return _FaultSpec.pack(ec, **kw)
     if exit_c is not None:
@@ -1310,7 +1347,7 @@ def fault_from_exc(exc: BaseException | type[BaseException] | None) -> dict | No
     if (ec := next((c for c, ns in _FaultSpec.MRO_TAIL if mro & ns), None) or (ErrorCode.OS_ERROR if winerr is not None else None)):
         return _FaultSpec.pack(ec, **kw)
     if inst is not None and ((rec := classify_fault(f"{cls.__name__}: {inst}")).code != ErrorCode.UNKNOWN or rec.hex_code):
-        return _FaultSpec.pack(rec.code, http=rec.http, exit=rec.exit_code, hex=rec.hex_code)
+        return _FaultSpec.pack(rec.code, http=rec.http, exit=rec.exit_code, winerror=rec.winerror or winerr, errno=rec.errno or err_no, hex=rec.hex_code, file=rec.file_ref or kw["file"])
     return _FaultSpec.pack(ErrorCode.UNKNOWN, **kw)
 
 
@@ -1329,7 +1366,7 @@ def classify_fault(raw: str, fault: dict | None = None) -> FaultRecord:
     exit_c = next((v for p in ((*_FaultSpec.EXIT_RES, _FaultSpec.EXIT_BARE_RE) if has_proc else _FaultSpec.EXIT_RES) for m in p.finditer(scan) if (g := next((x for x in m.groups() if x), "")) and (v := (g.lower() if g.lower().startswith("0x") and int(g, 16) != 0 else int(g) if not g.lower().startswith("0x") and int(g) != 0 else None)) is not None), None)
     winerr = int(m.group(1)) if (m := _FaultSpec.WINERR_RE.search(scan)) and int(m.group(1)) > 0 else None
     err_no = int(m.group(1)) if (m := _FaultSpec.ERRNO_RE.search(scan)) and int(m.group(1)) > 0 else None
-    hex_c = next((m.group(1).lower() for m in _FaultSpec.NTSTATUS_RE.finditer(text) if int(m.group(1), 16) != 0), "")
+    hex_c = next((m.group(1).lower() for m in _FaultSpec.NTSTATUS_RE.finditer(scan) if int(m.group(1), 16) != 0), "")
     code = (_FaultSpec.os_code(winerr, err_no, pre=True) or next((c for c, p in _FaultSpec.RULES_PRE if p.search(scan)), None)
             or (ErrorCode.HTTP_ERROR if http is not None else None) or _FaultSpec.os_code(winerr, err_no, pre=False)
             or next((c for c, p in _FaultSpec.RULES_POST if p.search(scan)), None) or (ErrorCode.PROCESS_EXIT if exit_c is not None else None)

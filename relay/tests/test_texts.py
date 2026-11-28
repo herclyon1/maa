@@ -436,6 +436,42 @@ def _part_texts_structured_faults():
            texts.plain(texts.format_fault_reason("这一步可能有问题，不确定是否落盘"))),
           ("保存失败", "中继更新失败", []))
 
+    print("\n[4. P1-3 & P1-4 回归：HTTPError(response=None) 优先级 / 兜底 winerror+file / RC 1 / URL 内 0x]")
+    class _RequestException(Exception):
+        pass
+
+    class _ReqHTTPError(_RequestException):
+        def __init__(self, msg, response=None):
+            super().__init__(msg)
+            self.response = response
+
+    class _CustomBrandNewError(Exception):
+        pass
+
+    f_req502 = texts.fault_from_exc(_ReqHTTPError("502 Server Error: Bad Gateway", response=None))
+    f_req302 = texts.fault_from_exc(urllib.error.HTTPError("https://x", 302, "Found", {}, None))
+    f_w193 = texts.fault_from_exc(_CustomBrandNewError("WinError 193: %1 is not a valid Win32 application"))
+    f_e13_zh = texts.fault_from_exc(_CustomBrandNewError("[Errno 13] Permission denied: '/Library/Logs/ark-relay/relay.log'"))
+    out_w193 = texts.format_fault_reason("启动脚本失败", fault=f_w193)
+    check("fault_from_exc：HTTPError(response=None) 优先归 HTTP 502，302 仍落 net_error，兜底完整透传 winerror/errno/file",
+          (f_req502, f_req302, f_w193, f_e13_zh, "系统错误码 193" in out_w193, texts.plain(out_w193)),
+          ({"code": "http_error", "http": 502}, {"code": "net_error"},
+           {"code": "os_error", "winerror": 193},
+           {"code": "permission_denied", "errno": 13, "file": "/Library/Logs/ark-relay/relay.log"},
+           True, []))
+
+    rc1_rec = texts.classify_fault("测试版本 RC 1 校验失败 ｜ KeyError: 'x'")
+    url_hex_raw = "拉取 https://cos.example.com/obj/0x12345678.bin 失败 ｜ TimeoutError: timed out"
+    url_hex_rec = texts.classify_fault(url_hex_raw)
+    url_hex_out = texts.format_fault_reason(url_hex_raw)
+    check("RC 1 不误判退出码 1（小写 rc=1/rc: 1/rc 1 照常保留），NTSTATUS 不扫 URL 里的 0x",
+          (rc1_rec.code, rc1_rec.exit_code,
+           texts.classify_fault("命令失败 rc=1").exit_code,
+           texts.classify_fault("命令失败 rc: 1").exit_code,
+           texts.classify_fault("命令失败 rc 1").exit_code,
+           url_hex_rec.code, url_hex_rec.hex_code, "错误码 0x12345678" in url_hex_out, texts.plain(url_hex_out)),
+          (texts.ErrorCode.KEY_ERROR, None, 1, 1, 1, texts.ErrorCode.TIMEOUT, "", False, []))
+
 
 def _part_texts_plain_strict():
     """极简严格 plain() 门禁与 v4 报告五类真实生产场景全覆盖回归。"""
@@ -562,6 +598,67 @@ def _part_texts_plain_strict():
         check(f"含英文运算符/非法十六进制无残渣：{expr}",
               (bool(texts.plain(expr)), any(op in out for op in ("->", "&&", "!=", "0xZZZ")), texts.plain(out)),
               (True, False, []))
+
+    print("\n[5. P0-1 & P0-2 回归：缩写/多段驼峰 EXC_RE、无 ? URL 分隔符、引号/Semver/WIN 尾段防穿透、macOS 根路径与中文目录]")
+    for leak, want_code, want_http in (
+        ("拉取 https://cos.example.com/a.json,HTTPError: 502", texts.ErrorCode.HTTP_ERROR, 502),
+        ("拉取 https://cos.example.com/a.json,status=503", texts.ErrorCode.HTTP_ERROR, 503),
+        ("拉取 https://cos.example.com/a.json,JSONDecodeError", texts.ErrorCode.BAD_JSON, None),
+        ("拉取 https://cos.example.com/a.json;SSLError", texts.ErrorCode.SSL_ERROR, None),
+        ("拉取 https://cos.example.com/a.json,URLError", texts.ErrorCode.NET_ERROR, None),
+        ("拉取 https://cos.example.com/a.json,OSError", texts.ErrorCode.OS_ERROR, None),
+        ("拉取 https://cos.example.com/a.json,HTTPStatusError", texts.ErrorCode.UNKNOWN, None),
+        ("拉取 https://cos.example.com/a.json,SSLCertVerificationError", texts.ErrorCode.SSL_ERROR, None),
+        ("拉取 https://cos.example.com/a.json,failed", texts.ErrorCode.UNKNOWN, None),
+        ("拉取 https://cos.example.com/a.json;timeout", texts.ErrorCode.UNKNOWN, None),
+        ("拉取 https://cos.example.com/a.json,Forbidden", texts.ErrorCode.UNKNOWN, None),
+        ("拉取 https://cos.example.com/a.json?k=v,JSONDecodeError", texts.ErrorCode.BAD_JSON, None),
+        ("抛出 JSONDecodeError/config.json", texts.ErrorCode.BAD_JSON, None),
+        ("抛出 UnicodeDecodeError/a.txt", texts.ErrorCode.BAD_JSON, None),
+        ("抛出 HTTPError/a.json", texts.ErrorCode.UNKNOWN, None),
+        ("抛出 SSLError/a.json", texts.ErrorCode.SSL_ERROR, None),
+        ("抛出 URLError/a.json", texts.ErrorCode.NET_ERROR, None),
+        ("抛出 OSError/a.json", texts.ErrorCode.OS_ERROR, None),
+        ("抛出 ReadTimeoutError/a.json", texts.ErrorCode.TIMEOUT, None),
+        ("抛出 NameResolutionError/a.json", texts.ErrorCode.DNS_FAILED, None),
+        ("抛出 ClientResponseError/a.json", texts.ErrorCode.UNKNOWN, None),
+        ("抛出 ModuleNotFoundError/a.py", texts.ErrorCode.UNKNOWN, None),
+        ("抛出 CustomBrandNewError/a.json", texts.ErrorCode.UNKNOWN, None),
+        (r"读取 'C:\ark\a.json JSONDecodeError' 失败", texts.ErrorCode.BAD_JSON, None),
+        (r"读取 'C:\ark\a.json UnicodeDecodeError' 失败", texts.ErrorCode.BAD_JSON, None),
+        (r"读取 'C:\ark\a.json HTTPError' 失败", texts.ErrorCode.UNKNOWN, None),
+        (r"读取 'C:\ark\a.json failed to open' 失败", texts.ErrorCode.UNKNOWN, None),
+        ("升级到 v1.2.3-JSONDecodeError 失败", texts.ErrorCode.BAD_JSON, None),
+        ("升级到 v1.2.3-ReadTimeoutError 失败", texts.ErrorCode.TIMEOUT, None),
+        (r"读取 C:\ark\TimeoutError 失败", texts.ErrorCode.TIMEOUT, None),
+        (r"读取 C:\ark\JSONDecodeError 失败", texts.ErrorCode.BAD_JSON, None),
+    ):
+        rec = texts.classify_fault(leak)
+        body = texts.relay_error_body("ark.service", leak, "09:00:00")
+        check(f"P0-1 防穿透拦截：{leak[:42]}",
+              (bool(texts.plain(leak)), "它说：" in body, rec.code, rec.http, texts.plain(body)),
+              (True, False, want_code, want_http, []))
+
+    for path_ok in (
+        "/Users/herclyon/Money/手机迁移/dsh_web/redmi_adb.py",
+        "/Library/Logs/ark-relay/relay.log",
+        "/private/tmp/ark.log",
+        "/Applications/Python/bin/python3",
+        "/System/Library/CoreServices/SystemVersion.plist",
+        "/Volumes/Backup/日志/state.json",
+        "手机迁移/dsh_web/redmi_adb.py",
+    ):
+        sent = f"检查 {path_ok} 失败"
+        err_sent = f"检查 {path_ok} 失败：FileNotFoundError"
+        out = texts.format_fault_reason(err_sent)
+        check(f"P0-2 Unix/中文路径完整保留：{path_ok[:40]}",
+              (texts.plain(sent), texts._FaultSpec.norm_file(path_ok),
+               texts.classify_fault(err_sent).file_ref, f"文件 {path_ok}" in out, texts.plain(out)),
+              ([], path_ok, path_ok, True, []))
+    fnf_zh = FileNotFoundError(2, "missing", "/Users/herclyon/Money/手机迁移/dsh_web/redmi_adb.py")
+    check("活异常中文 Mac 路径完整保留不丢 file",
+          texts.fault_from_exc(fnf_zh),
+          {"code": "file_not_found", "errno": 2, "file": "/Users/herclyon/Money/手机迁移/dsh_web/redmi_adb.py"})
 
 
 def _part_user_switches():  # noqa: C901
