@@ -1794,6 +1794,54 @@ def _part_maaend_watchdog_main():
         r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
         r.step(60)
         check("all plugins ended -> nothing left", _body_calls[-1][1].get("left", []), [])
+
+        # 2026-11-28 (#210/#211): cpp-algo.exe self-exits when MaaEnd.exe dies; if it is already
+        # gone before plugin_paths() runs, it is not treated as an outside/surviving plugin.
+        r = Rig(paths={21932: str(Path(tmpdir()) / "agent" / "go-service.exe")})
+        r.paths = {21932: str(r.debug.parent / "agent" / "go-service.exe")}
+        orig_kill = r._kill
+
+        def _kill_and_exit_cpp(pid, image):
+            res = orig_kill(pid, image)
+            if image == "MaaEnd.exe":
+                r.procs = [x for x in r.procs if x[1] != 21940]
+            return res
+
+        r.dog.kill = _kill_and_exit_cpp
+        r.run_for(240, new_lines=40)
+        r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+        r.step(60)
+        check("plugin exited before plugin_paths -> nothing left", _body_calls[-1][1].get("left", []), [])
+
+        # _taskkill: rc=1 「操作不被支持」 when cpp-algo.exe is mid-abort -> re-checked via _tasklist
+        import subprocess as _sp
+        real_run, real_tl, real_sleep = maaend_watchdog.subprocess.run, maaend_watchdog._tasklist, maaend_watchdog.time.sleep
+        _tk_warns = []
+
+        class _TkWarnH(logging.Handler):
+            def emit(self, rec):
+                if rec.levelno >= logging.WARNING:
+                    _tk_warns.append(rec.getMessage())
+
+        _h = _TkWarnH()
+        maaend_watchdog.log.addHandler(_h)
+        try:
+            err_bytes = "错误: 无法终止 PID 为 3224 的进程。\r\n原因: 操作不被支持。\r\n".encode("gbk")
+            maaend_watchdog.subprocess.run = lambda *a, **kw: _sp.CompletedProcess(a[0], 1, b"", err_bytes)
+            maaend_watchdog.time.sleep = lambda _s: None
+            maaend_watchdog._tasklist = lambda: [("System", 4)]
+            check("_taskkill rc=1 操作不被支持但进程已不在 -> (True, '')",
+                  maaend_watchdog._taskkill(3224, "cpp-algo.exe"), (True, ""))
+            check("已自行退出时不打 WARNING（不误报中继自己报错）", _tk_warns, [])
+            maaend_watchdog._tasklist = lambda: [("System", 4), ("cpp-algo.exe", 3224)]
+            check("_taskkill rc=1 操作不被支持且进程仍在 -> (False, '退出码 1')",
+                  maaend_watchdog._taskkill(3224, "cpp-algo.exe"), (False, "退出码 1"))
+            check("真没死时仍打 WARNING", len(_tk_warns), 1)
+        finally:
+            maaend_watchdog.log.removeHandler(_h)
+            maaend_watchdog.subprocess.run = real_run
+            maaend_watchdog._tasklist = real_tl
+            maaend_watchdog.time.sleep = real_sleep
     finally:
         texts.maaend_stuck_body = _real_body
 

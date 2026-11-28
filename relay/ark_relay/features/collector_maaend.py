@@ -981,6 +981,24 @@ LOGGED_OUT = "这个号在别的设备上登录了，游戏弹「登录认证已
 AGREEMENT_TEXT = "请您仔细阅读并同意以下协议"
 AGREEMENT = "游戏停在「协议更新」窗口，要人点同意"
 
+# Recognized OCR text always sits inside a JSON `"text":"..."` value (OCRer.cpp
+# [all_results_=...] / Recognizer.cpp detail.all), never inside `[param_.expected=[...]]`.
+# MaaEnd v3.3.0 added `"登录认证已失效"` to param_.expected on normal-gameplay checks;
+# 2026-11-28 09:32/09:33 (#209/#212) raw substring search matched param_.expected with
+# filtered_results_=[] and killed two healthy MaaEnd runs in a row.
+_OCR_TEXT_VAL = re.compile(r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"')
+
+
+def ocr_read_has(line: str, forms: "tuple[str, ...]") -> bool:
+    """True only when one of `forms` appears inside an OCR `"text":"..."` value on `line`
+    (never in `[param_.expected=[...]]` or pipeline node configs)."""
+    if not any(x in line for x in forms):
+        return False
+    head = line.split("[param_.", 1)[0]
+    if not any(x in head for x in forms):
+        return False
+    return any(any(x in m.group(1) for x in forms) for m in _OCR_TEXT_VAL.finditer(head))
+
 
 # A dialog read this long before the task's own 「任务开始」 line still counts as read during it:
 # MaaFW's start event and AUTO-MAS's line differ by up to a second (11-20: 09:34:27.414 / .524).
@@ -1043,10 +1061,10 @@ def _add_logged_out(text: str, maaend_dir, failed: list[str], causes: dict, out:
     q0 = t0 - timedelta(seconds=TASK_START_SLACK_S)
     out_forms = (LOGGED_OUT_TEXT, json.dumps(LOGGED_OUT_TEXT).strip('"'))
     agr_forms = (AGREEMENT_TEXT, json.dumps(AGREEMENT_TEXT).strip('"'))
-    all_forms = out_forms + agr_forms
-    hits = _fw_lines(_fw_files(maaend_dir, q0, t1), q0, t1, lambda line: any(x in line for x in all_forms))
-    out_reads = sorted(t for h in hits if any(x in h for x in out_forms) and (t := _line_or_stamp(h)) and t >= t0)
-    agr_reads = sorted(t for h in hits if any(x in h for x in agr_forms) and (t := _line_or_stamp(h)) and t >= q0)
+    hits = _fw_lines(_fw_files(maaend_dir, q0, t1), q0, t1,
+                     lambda line: ocr_read_has(line, out_forms) or ocr_read_has(line, agr_forms))
+    out_reads = sorted(t for h in hits if ocr_read_has(h, out_forms) and (t := _line_or_stamp(h)) and t >= t0)
+    agr_reads = sorted(t for h in hits if ocr_read_has(h, agr_forms) and (t := _line_or_stamp(h)) and t >= q0)
     at, lost = _causes_from_reads(text, out_reads, LOGGED_OUT, during=False)
     if at:
         out["maaend_logged_out_at"] = at
@@ -1603,4 +1621,4 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     out.update(out_flags)
     return out
 
-__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'AGREEMENT', 'AGREEMENT_TEXT', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'has_combat_block_text', 'in_window', 'is_combat_block_shot', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']
+__all__ = ['BAG_FULL', 'CLAIM_HEAD_LINES', 'CLAIM_LINE_CHARS', 'CLAIM_TAIL_LINES', 'CLAIM_UNCONFIRMED', 'AGREEMENT', 'AGREEMENT_TEXT', 'LOGGED_OUT', 'LOGGED_OUT_TEXT', 'OBSTACLE_SHOT', 'UPDATE_AT_START_S', 'UPDATE_INSTALL_S', '_FW_META', '_FW_PICK', '_MXU_INSTALLED', '_MXU_PENDING', '_MXU_STAMP', '_fw_files', 'blocked_routes', 'claim_failures', 'claim_lines', 'has_combat_block_text', 'in_window', 'is_combat_block_shot', 'is_obstacle_shot', 'maaend_unreachable', 'maafw_grep', 'obstacle_shots', 'ocr_read_has', 'parse_maaend_log', 'line_time', 'round_shots', 'round_until', 'route_windows', 'shot_time', 'spans', 'task_evidence', 'task_times', 'update_restart_version']

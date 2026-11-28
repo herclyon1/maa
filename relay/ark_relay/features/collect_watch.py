@@ -32,8 +32,8 @@ from pathlib import Path
 log = logging.getLogger("ark.collect_watch")
 
 # Blocking Endfield dialogs as MaaFW's OCR logs them (collector_maaend):
-# only counted here (raw or JSON-escaped), maaend_watchdog judges them.
-from ark_relay.features.collector_maaend import AGREEMENT_TEXT, LOGGED_OUT_TEXT  # noqa: E402 - after the logger, as above
+# only counted here when matched in an OCR `"text":"..."` value (never in param_.expected).
+from ark_relay.features.collector_maaend import AGREEMENT_TEXT, LOGGED_OUT_TEXT, ocr_read_has  # noqa: E402 - after the logger, as above
 
 _AGREE_FORMS = (AGREEMENT_TEXT, json.dumps(AGREEMENT_TEXT).strip('"'))
 _LOGOUT_FORMS = (LOGGED_OUT_TEXT, json.dumps(LOGGED_OUT_TEXT).strip('"'))
@@ -78,11 +78,12 @@ class Watcher:
     def feed(self, text: str) -> list[str]:
         """Consume log text (any number of lines). Returns the notes it logged."""
         notes: list[str] = []
-        if any(x in text for x in _AGREE_FORMS):
+        lines = text.splitlines()
+        if any(x in text for x in _AGREE_FORMS) and any(ocr_read_has(ln, _AGREE_FORMS) for ln in lines):
             self.agreement_seen += 1
-        if any(x in text for x in _LOGOUT_FORMS):
+        if any(x in text for x in _LOGOUT_FORMS) and any(ocr_read_has(ln, _LOGOUT_FORMS) for ln in lines):
             self.logout_seen += 1
-        for line in text.splitlines():
+        for line in lines:
             if _NOTIFY not in line:
                 continue
             if self.shots is not None and _TASK_EVENT in line:

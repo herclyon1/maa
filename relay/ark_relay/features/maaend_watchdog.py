@@ -29,6 +29,7 @@ from pathlib import Path
 
 from ark_relay.core import config, texts
 from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.desktop import _TASKKILL_GONE
 
 log = logging.getLogger("ark.maaend_watchdog")
 
@@ -79,6 +80,23 @@ def _tasklist() -> "list[tuple[str, int]] | None":
     return rows
 
 
+_TASKKILL_RACE = (
+    *_TASKKILL_GONE,
+    "操作不被支持",
+    "not supported",
+    "没有运行的任务匹配指定标准",
+    "no tasks running with the specified criteria",
+)
+
+
+def _pid_alive(pid: int, image: str, procs_fn=None) -> "bool | None":
+    rows = (_tasklist if procs_fn is None else procs_fn)()
+    if rows is None:
+        return None
+    want = image.lower()
+    return any(p == pid and n.lower() == want for n, p in rows)
+
+
 def _taskkill(pid: int, image: str) -> "tuple[bool, str]":
     """End one PID, but only if it still carries `image` (no /T, see the module docstring)."""
     try:
@@ -92,6 +110,19 @@ def _taskkill(pid: int, image: str) -> "tuple[bool, str]":
     out = (r.stdout or b"").decode("gbk", "replace") + (r.stderr or b"").decode("gbk", "replace")
     if r.returncode == 0 and ("成功" in out or "SUCCESS" in out):
         return True, ""
+    low = out.lower()
+    if any(k in low for k in _TASKKILL_RACE):
+        # 2026-11-28 09:34:55 / 09:39:55 (#210/#211): cpp-algo.exe's ParentProcessWatcher
+        # aborts milliseconds after MaaEnd.exe exits; taskkill on a mid-teardown PID returns
+        # rc=1 「原因: 操作不被支持。」 (or 「没有此任务的实例在运行」). Confirm via tasklist
+        # before treating it as a failure.
+        for attempt in range(3):
+            if _pid_alive(pid, image) is False:
+                log.info("taskkill PID %s（%s）后复核：进程已自行退出（退出码 %s：%s）",
+                         pid, image, r.returncode, " ".join(out.split()))
+                return True, ""
+            if attempt < 2:
+                time.sleep(0.2)
     log.warning("taskkill PID %s（%s）退出码 %s：%s", pid, image, r.returncode, out.strip())
     if r.returncode == 0:
         return False, "要结束的那个已经不在了"
@@ -326,9 +357,18 @@ class Watchdog:
         left = []
         if ok:
             paths = self.plugin_paths()
+            fresh_procs: "list[tuple[str, int]] | None" = None
+            fresh_checked = False
             for name, p in procs:
                 if name.lower() not in PLUGINS:
                     continue
+                if p not in paths:
+                    if not fresh_checked:
+                        fresh_procs = self.processes()
+                        fresh_checked = True
+                    if fresh_procs is not None and not any(q == p and n.lower() == name.lower() for n, q in fresh_procs):
+                        log.info("MaaEnd 的插件 %s（%s）已随 MaaEnd 自行退出", name, p)
+                        continue
                 if not str(paths.get(p, "")).lower().startswith(self.agent_dir):
                     log.warning("%s（%s）不在 MaaEnd 的 agent 目录下（%s），不结束", name, p, paths.get(p, "读不到路径"))
                     left.append(paths.get(p) or "agent\\" + name)

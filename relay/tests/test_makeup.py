@@ -1309,6 +1309,14 @@ lists an older relay version narrowed go back at the next attempt's start.
     check("JSON \\uXXXX 转义也认", w.agreement_seen, 2)
     w.feed(_json.dumps({"text": "登录认证已失效"}))
     check("登录认证已失效也计次", w.logout_seen, 1)
+    # 2026-11-28 (#209/#212): MaaEnd v3.3.0 logs param_.expected=["...","登录认证已失效",...]
+    # on healthy screens with filtered_results_=[]; must NOT increment logout_seen / agreement_seen.
+    w.feed('[2026-11-28 09:33:53.044][DBG][Px11764][Tx47189][OCRer.cpp][L87] OCR '
+           '[all_results_=[{"box":[368,381,50,28],"score":0.96,"text":"Lv.60"}]] '
+           '[filtered_results_=[]] [best_result_=null] [cost=119ms] [param_.model=] '
+           '[param_.only_rec=false] [param_.expected=["自动登出","登录认证已失效","请您仔细阅读并同意以下协议"]]')
+    w.feed('[2026-11-28 09:33:54.000][DBG][PipelineParser.cpp] {"expected":["登录认证已失效","请您仔细阅读并同意以下协议"]}')
+    check("param_.expected 与 PipelineParser 词表不算真正读到弹窗", (w.agreement_seen, w.logout_seen), (2, 1))
     w.feed("\n".join(LINES))
     check("别的行不算", (w.agreement_seen, w.logout_seen), (2, 1))
     check("采集路线的记账照旧", w.failed, ["Route10"])

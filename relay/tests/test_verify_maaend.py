@@ -1764,6 +1764,18 @@ def _part_maaend_logged_out():
     out = parse("early", early, FW_LINE)
     check("弹框前失败：不写原因", (out.get("maaend_fail_causes") or {}).get("自动采集"), None)
 
+    print("\n[2026-11-28 (#209/#212)：param_.expected 里的待识别词表不算真正弹框]")
+    expected_only = (
+        '[2026-11-05 11:43:57.149][DBG][Px11764][Tx47189][OCRer.cpp][L87] OCR '
+        '[all_results_=[{"box":[368,381,50,28],"score":0.96,"text":"Lv.60"}]] '
+        '[filtered_results_=[]] [best_result_=null] [cost=119ms] [param_.model=] '
+        '[param_.only_rec=false] [param_.expected=["自动登出","登录认证已失效","请您仔细阅读并同意以下协议"]]\n'
+    )
+    out = parse("expected-only", HISTORY, expected_only)
+    check("param_.expected 不记登录失效时刻", "maaend_logged_out_at" in out, False)
+    check("param_.expected 不记协议更新时刻", "maaend_agreement_at" in out, False)
+    check("param_.expected 不误判失败原因", (out.get("maaend_fail_causes") or {}).get("自动采集"), None)
+
 
 def _part_maaend_agreement():
     """#187: the game opened on the one-time 「协议更新」 dialog; the failed tasks name it."""
