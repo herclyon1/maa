@@ -535,6 +535,181 @@ def _part_texts_wording():
           (503, True, [], 503, True, [], 502, True, []))
 
 
+def _part_texts_lexer():
+    """单遍确定性词法分析器、正向路径白名单、栈式括号配平与 fail-closed plain() 守卫单测与回归。"""
+    ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(ROOT))
+    from ark_relay.core import texts
+
+    def _non_ws_pairs(s: str) -> list[tuple[str, str]]:
+        toks = texts._lex_text(s)
+        # 校验词元完全无重叠且首尾严丝合缝拼接还原原串
+        rebuilt = "".join(t.raw for t in toks)
+        spans_ok = all(toks[i].end == toks[i + 1].start for i in range(len(toks) - 1)) and (
+            not toks or (toks[0].start == 0 and toks[-1].end == len(s))
+        )
+        check(f"词元无重叠完整还原：{s[:32]}", (rebuilt == s, spans_ok), (True, True))
+        return [(t.kind, t.raw) for t in toks if t.kind != "WS"]
+
+    print("\n[1. 单遍词法分析器 Token 切分单测]")
+    check("URL 硬截停在 :PermissionError 前",
+          _non_ws_pairs("拉取 https://cos.example.com/a.json:PermissionError"),
+          [("ZH", "拉取"), ("URL", "https://cos.example.com/a.json"), ("PUNCT", ":"), ("IDENT", "PermissionError")])
+    check("URL 硬截停在 ,HTTP/1.1 前且识别 IPv6",
+          _non_ws_pairs("http://[::1]:36163/api,HTTP/1.1 503"),
+          [("URL", "http://[::1]:36163/api"), ("PUNCT", ","), ("IDENT", "HTTP"), ("PUNCT", "/"), ("FLOAT", "1.1"), ("INT", "503")])
+    check("UNC 路径与 Windows 6 词目录完整识别",
+          _non_ws_pairs(r"\\server\share\readme C:\Users\Public\One Two Three Four Five Six\a.log"),
+          [("UNC_PATH", r"\\server\share\readme"), ("WIN_PATH", r"C:\Users\Public\One Two Three Four Five Six\a.log")])
+    check("Windows 路径遇 .xml 后空格立刻截停不吞 ValueError 与 a/b.txt",
+          _non_ws_pairs(r"C:\Program Files\My App\sub dir\foo.xml ValueError failed at a/b.txt"),
+          [("WIN_PATH", r"C:\Program Files\My App\sub dir\foo.xml"),
+           ("IDENT", "ValueError"), ("IDENT", "failed"), ("IDENT", "at"), ("REL_PATH", "a/b.txt")])
+    check("Unix 前缀路径纳入 REL_PATH，协议与斜杠词绝不误判为路径",
+          _non_ws_pairs("./run ../cfg/a ~/app /Users/herclyon/x ValueError/KeyError QUIC/v1"),
+          [("REL_PATH", "./run"), ("REL_PATH", "../cfg/a"), ("REL_PATH", "~/app"), ("REL_PATH", "/Users/herclyon/x"),
+           ("IDENT", "ValueError"), ("PUNCT", "/"), ("IDENT", "KeyError"), ("IDENT", "QUIC"), ("PUNCT", "/"), ("IDENT", "v1")])
+    check("原子字面量 DATE/TIME/SEMVER/HEX/FLOAT/INT 精确分型",
+          _non_ws_pairs("2026-11-28 09:30:00 v2.34.0-rc-1 0xc0000005 1.5 -128"),
+          [("DATE", "2026-11-28"), ("TIME", "09:30:00"), ("SEMVER", "v2.34.0-rc-1"),
+           ("HEX", "0xc0000005"), ("FLOAT", "1.5"), ("INT", "-128")])
+
+    print("\n[2. 硬伤 1 回归：URL 紧贴 : , ; ! 异常类名或 HTTP 头]")
+    for raw, want_url, want_kind, want_http, forbid in (
+        ("拉取 https://cos.example.com/a.json:PermissionError",
+         "https://cos.example.com/a.json", "permission", None, ("PermissionError",)),
+        ("拉取 https://cos.example.com/a.json:PermissionError: Access is denied",
+         "https://cos.example.com/a.json", "permission", None, ("PermissionError",)),
+        ("拉取 https://cos.example.com/a.json,HTTP/1.1 503 Service Unavailable",
+         "https://cos.example.com/a.json", "http_error", 503, ("HTTP/1.1",)),
+        ("拉取 https://cos.example.com/a.json;RuntimeError: bad body",
+         "https://cos.example.com/a.json", "runtime_error", None, ("RuntimeError",)),
+        ("拉取 https://cos.example.com/a.json!KeyError: 'items'",
+         "https://cos.example.com/a.json", "key_error", None, ("KeyError", "!——")),
+    ):
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"URL 硬截停不泄漏：{raw[:40]}",
+              (bool(texts.plain(raw)), info.url, info.fault_kind, info.http_code,
+               any(bad in out for bad in forbid), want_url in out, texts.plain(out)),
+              (True, want_url, want_kind, want_http, False, True, []))
+
+    print("\n[3. 硬伤 2 回归：plain() 严格正向路径白名单拦截全部斜杠词/协议/MIME]")
+    for raw in (
+        "程序抛出 ValueError/KeyError",
+        r"打开 D:\ark\a.log：ValueError/KeyError",
+        "连接 QUIC/v1 失败",
+        "协议 HTTP/2.0-draft 失败",
+        "握手 TLS/SSL 失败",
+        "程序返回 foo/bar 异常",
+        "gRPC/1.0 报错",
+        "类型 application/json 失败",
+        "协议 HTTP/1.1 失败",
+        r"打开 foo\bar 失败",
+    ):
+        out = texts.format_fault_reason(raw)
+        body = texts.relay_error_body("ark.service", raw, "09:21:00")
+        check(f"plain() 拦截且渲染零泄漏：{raw}",
+              (bool(texts.plain(raw)), texts.plain(out), texts.plain(body), out == raw),
+              (True, [], [], False))
+
+    print("\n[4. 硬伤 3 回归：Windows 含空格路径无扩展名白名单与 5 词上限]")
+    w1 = r"写入 C:\Program Files\My App\sub dir\foo.xml ValueError failed at a/b.txt"
+    w2 = r"打开 C:\Program Files\My App\sub\foo.tmp KeyError at x/y.log"
+    w3 = r"读取 C:\Users\Public\One Two Three Four Five Six\a.log 失败：FileNotFoundError"
+    w4 = r"读取 C:\Users\Public\One Two Three Four Five Six Seven Eight Nine Ten\a.log 失败：PermissionError"
+    check("任意扩展名后空格即截停不吞异常类名",
+          (bool(texts.plain(w1)), texts._parse_fault(w1).files, texts._parse_fault(w1).fault_kind,
+           "ValueError" in texts.format_fault_reason(w1), texts.plain(texts.format_fault_reason(w1)),
+           bool(texts.plain(w2)), texts._parse_fault(w2).files, texts._parse_fault(w2).fault_kind,
+           "KeyError" in texts.format_fault_reason(w2), texts.plain(texts.format_fault_reason(w2))),
+          (True, (r"C:\Program Files\My App\sub dir\foo.xml", "a/b.txt"), "value_error", False, [],
+           True, (r"C:\Program Files\My App\sub\foo.tmp", "x/y.log"), "key_error", False, []))
+    check("6 词与 10 词含空格 Windows 目录完整保留不腰斩",
+          (texts._parse_fault(w3).files, r"One Two Three Four Five Six\a.log" in texts.format_fault_reason(w3),
+           texts.plain(texts.format_fault_reason(w3)),
+           texts._parse_fault(w4).files,
+           texts.format_fault_reason(w4).count(r"One Two Three Four Five Six Seven Eight Nine Ten\a.log"),
+           texts.plain(texts.format_fault_reason(w4))),
+          ((r"C:\Users\Public\One Two Three Four Five Six\a.log",), True, [],
+           (r"C:\Users\Public\One Two Three Four Five Six Seven Eight Nine Ten\a.log",), 1, []))
+
+    print("\n[5. 硬伤 4 回归：UNC 网络路径完整保留前导 \\\\ 且不留乱码]")
+    for raw, want_unc in (
+        (r"FileNotFoundError: \\server\share\a.log", r"\\server\share\a.log"),
+        (r"读取配置失败 ｜ \\server\share\a.log PermissionError: Access is denied", r"\\server\share\a.log"),
+        (r"同步 \\server\share\readme 失败：OSError: [WinError 53] network path not found", r"\\server\share\readme"),
+        (r"读取 \\server\share\readme 失败：PermissionError: Access is denied", r"\\server\share\readme"),
+    ):
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"UNC 路径完整保留：{raw[:36]}",
+              (info.files, out.count(want_unc), " \\\\ " in out, texts.plain(out)),
+              ((want_unc,), 1, False, []))
+
+    print("\n[6. 硬伤 5 回归：日期/时刻/浮点数/预发布版本号绝不误判为退出码]")
+    for raw, want_kind in (
+        ("任务记录 MaaEnd exited 2026-11-28 ValueError: parse failed", "value_error"),
+        ("同步状态失败 ｜ exited 09:30:00 ValueError: bad", "value_error"),
+        ("脚本失败 rc=1.5 ValueError: bad", "value_error"),
+        ("任务记录 MaaEnd exited 11-28 ValueError: parse failed", "value_error"),
+    ):
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
+        check(f"非退出码不吞真实异常：{raw[:36]}",
+              (info.fault_kind, info.exit_code, "退出码" in out, texts.plain(out)),
+              (want_kind, None, False, []))
+    check("主干完整保留 2026-11-28 日期与 v1.0.0-alpha-1 / v2.0.0-rc.3 / v2.0.0-rc3 预发布版本号",
+          ("2026-11-28" in texts.format_fault_reason("任务记录 MaaEnd exited 2026-11-28 ValueError: parse failed"),
+           "v1.0.0-alpha-1" in texts.format_fault_reason("拉取 v1.0.0-alpha-1 失败：TimeoutError"),
+           "v2.0.0-rc.3" in texts.format_fault_reason("拉取 v2.0.0-rc.3 失败：TimeoutError"),
+           "v2.0.0-rc3" in texts.format_fault_reason("拉取 v2.0.0-rc3 失败：TimeoutError"),
+           texts.plain("升级 v1.0.0-alpha-1 到 v2.0.0-rc.3 与 v2.0.0-rc3")),
+          (True, True, True, True, []))
+
+    print("\n[7. 硬伤 6 与次要观察项回归：原子 HEX / 无 Traceback 堆栈帧 / 栈式括号配平 / 驼峰 JSON / byte 0xff]")
+    hex_out = texts.format_fault_reason("程序崩溃 0xc0000005：RuntimeError: fatal")
+    check("HEX 整块剥离不留残渣 0 且保留错误码",
+          ("程序崩溃 0" in hex_out, "错误码 0xc0000005" in hex_out, texts.plain(hex_out)),
+          (False, True, []))
+    sf1 = '读取配置失败\n  File "D:\\ark\\main.py", line 42, in run\nKeyError: \'token\''
+    sf2 = '请求 https://cos.example.com/api/v1/manifest.json：\n  File "C:\\Program Files\\AUTO-MAS\\sync.py", line 88, in fetch\nTimeoutError: read timed out'
+    out_sf1, out_sf2 = texts.format_fault_reason(sf1), texts.format_fault_reason(sf2)
+    check("无 Traceback 头的堆栈帧截断不泄行号残片且路径归入文件细节",
+          (", 42" in out_sf1, r"文件 D:\ark\main.py" in out_sf1, texts.plain(out_sf1),
+           ", 88" in out_sf2, r"文件 C:\Program Files\AUTO-MAS\sync.py" in out_sf2,
+           "https://cos.example.com/api/v1/manifest.json" in out_sf2, texts.plain(out_sf2)),
+          (False, True, [], False, True, True, []))
+    check("显式栈括号配平：多层未闭、英文 [、多余闭括号与空开括号",
+          (texts._balance_brackets("读取（旧配置）数据）"),
+           texts._balance_brackets("下载失败（第1步（第2步"),
+           texts._balance_brackets("下载失败[第1步"),
+           texts._balance_brackets("下载失败（"),
+           texts._balance_brackets("写入失败【"),
+           texts._balance_brackets("下载失败（第1步（")),
+          ("读取（旧配置）数据", "下载失败（第1步（第2步））", "下载失败[第1步]",
+           "下载失败", "写入失败", "下载失败（第1步）"))
+    for raw, want_prefix in (
+        ("下载失败（第1步（第2步：TimeoutError: read timed out", "下载失败（第1步（第2步））——"),
+        ("下载失败[第1步: TimeoutError: read timed out", "下载失败[第1步]——"),
+        ("读取（旧配置）数据）PermissionError: Access is denied", "读取（旧配置）数据——"),
+    ):
+        out = texts.format_fault_reason(raw)
+        check(f"端到端括号配平输出干净：{raw[:24]}", (out.startswith(want_prefix), texts.plain(out)), (True, []))
+
+    check("驼峰 JSON 状态码、混用连字符退出码与 byte 0xff 隔离",
+          (texts._parse_fault('拉取失败 ｜ {"httpStatus": 502}').http_code,
+           texts._parse_fault("同步失败 ｜ exit_status-127").exit_code,
+           texts._parse_fault("拉取页面失败 ｜ HTTP/1.1 302 Found UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff").hex_code,
+           "错误码 0xff" in texts.format_fault_reason("拉取页面失败 ｜ HTTP/1.1 302 Found UnicodeDecodeError: 'utf-8' codec can't decode byte 0xff")),
+          (502, 127, "", False))
+
+    # Fail-closed 终极守卫：极端乱码与未识别英文组合 100% 通过 plain() 且绝不吞错返回空串
+    for extreme in ("编码 UTF-8/GBK 失败", "((([[[【【（（TimeoutError", "RuntimeError", "x", "可能，大概，落盘失败（"):
+        out = texts.format_fault_reason(extreme)
+        check(f"fail-closed 守卫零放行：{extreme!r}", (bool(out), texts.plain(out)), (True, []))
+
+
 def _part_user_switches():  # noqa: C901
 
     import ast
@@ -6722,4 +6897,4 @@ def _part_flush_unsent_persist():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation, _part_yesterday_report_midnight_wait, _part_flush_unsent_persist]))
+    sys.exit(run_parts([_part_texts_gate_main, _part_texts_wording, _part_texts_lexer, _part_user_switches, _part_mute_verdicts, _part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker, _part_scoreboard_main, _part_scoreboard_log_time, _part_scoreboard_test_window, _part_ledger_bad_times, _part_ledger_guard, _part_ledger_incomplete, _part_ledger_once_per_run, _part_ledger_rewrite_race, _part_ledger_scoreboard_started, _part_ledger_truth, _part_relay_log_rotation, _part_relay_poweroff_live, _part_record_names, _part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash, _part_engine_pending, _part_loop_parts, _part_netretry, _part_tick_isolation, _part_yesterday_report_midnight_wait, _part_flush_unsent_persist]))
