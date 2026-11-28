@@ -45,6 +45,7 @@
 | 串流到 ins / 发通知 / 磁盘清理 | `scripts/mac/stream-ins.sh`；`scripts/mac/push.py`；`scripts/mac/disk-tidy.py` |
 
 ## 中英文与提交流程
-* 英文：`docs/**`、代码注释与 docstring、脚本输出、commit message、文件名。
-* 中文：根 `README.md`、推送通知（`ark_relay/core/texts.py`）、`relay/RELEASE-NOTES.md`；引他原话保留中文原文。
+* 中文：中继源码写齐白话中文注释（模块头职责与关键分支/状态机/异常说明，供直接审批；2026-11-28 12:08 原话）、根 `README.md`、推送通知（`ark_relay/core/texts.py`）、`relay/RELEASE-NOTES.md`；引用户原话保留中文原文。
+* 英文/简明标识：文件名、技术标识与 `docs/**` 既有档案结构（新增/修改中继相关说明与代码注释优先写人话中文）。
+* Mac 侧全部 16 个直连游戏机入口统一受 `scripts/mac/lib/powercut-guard.sh` / `powercut_guard.py` 分层北京时间断电硬锁保护（08:40–08:45 全量拦截 RC=78；08:22–08:46 长耗时部署/演练拦截 RC=78）。
 * 中继改完合进 `main` 立刻跑 `scripts/mac/deploy-relay.sh` 上机、发 COS 并推 `origin/main` 与清 CDN（已授权常驻运维仓，直接部署不问；机器在线禁单跑 `publish-cos.py`），部署前写好 `relay/RELEASE-NOTES.md`。

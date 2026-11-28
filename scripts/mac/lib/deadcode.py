@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """揪出「写了但永远不会被执行」的函数。
 
     scripts/mac/lib/deadcode.py <目录或文件> [...]

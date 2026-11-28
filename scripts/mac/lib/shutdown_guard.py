@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Shared Mac-side shutdown guard (Layer 3 of the no-delay deploy & no-early-shutdown architecture).
 
 Used by scripts/mac/lib/shutdown-guard.sh (sourced by winps.sh, winrun.sh, and wingui.sh launch).
@@ -306,6 +306,12 @@ def check_local(repo: Path) -> str | None:
 
 
 def _probe_remote_version(user_at: str) -> tuple[int, str]:
+    # 第 1 层北京时间断电硬锁：08:40–08:45 严禁通过 SSH 探活游戏机（RC=78）
+    _lib_dir = str(Path(__file__).resolve().parent)
+    if _lib_dir not in sys.path:
+        sys.path.insert(0, _lib_dir)
+    import powercut_guard as _pcg  # noqa: PLC0415
+    _pcg.guard_or_exit(1, "shutdown_guard.py")
     # One read-only SSH probe: current.txt first, fallback to legacy state.json versions.code.
     cmd = (
         'if exist "C:\\Program Files\\ArkRelay\\current.txt" '

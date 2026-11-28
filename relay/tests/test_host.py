@@ -721,12 +721,12 @@ def _part_hidden_launch_quoting():  # noqa: C901
     check("-WorkingDirectory is the folder", got.get("-WorkingDirectory"), str(work))
 
     print("\n[a program path with no space: the route that worked before still does]")
-    cmd = captured_command(PureWindowsPath(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"),
+    cmd = captured_command(PureWindowsPath(r"C:\Tools\pwsh\pwsh.exe"),
                            tmpdir() / "desktop", ("-File", "agent.ps1"))
     got = action_params(cmd)
     check("no loose word", got["loose"], [])
     check("arguments round-trip", win_argv(got.get("-Argument", ""))[-3:],
-          [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", "-File", "agent.ps1"])
+          [r"C:\Tools\pwsh\pwsh.exe", "-File", "agent.ps1"])
 
     print("\n[a folder with a space and a quote in its name: the quote is written twice inside '...']")
     odd = tmpdir() / "it's here"
@@ -1659,28 +1659,36 @@ abandoned before the doors were ever reachable.
         def warning(self, msg, *a): self.lines.append(("warn", msg % a if a else msg))
 
     real = socket.getaddrinfo
-    FAKE_OK = [(2, 1, 6, "", ("140.82.114.4", 443))]
+    FAKE_OK = [(2, 1, 6, "", ("119.29.29.29", 443))]
 
     try:
-        print("[network already up: returns at once, says nothing]")
-        socket.getaddrinfo = lambda *a, **kw: FAKE_OK
+        print("[network already up: returns at once, says nothing, uses domestic probe host]")
+        probed_hosts = []
+        def ok_lookup(host, port, *a, **kw):
+            probed_hosts.append((host, port))
+            return FAKE_OK
+        socket.getaddrinfo = ok_lookup
         clock, lg = Clock(), Log()
         check("returns True", load(clock)(lg, timeout=5), True)
         check("immediate", clock.slept, [])
         check("silent", lg.lines, [])
+        check("国内域名探针（绝不用 raw.githubusercontent.com）",
+              bool(probed_hosts) and all("github" not in h.lower() for h, _ in probed_hosts), True)
 
         print("\n[DNS down at first, up on the third try]")
         calls = []
         clock, lg = Clock(), Log()
-        def flaky(*a, **kw):
+        def flaky(host, port, *a, **kw):
             clock.lookup()
-            calls.append(1)
+            calls.append(host)
             if len(calls) < 3:
                 raise OSError(11001, "getaddrinfo failed")
             return FAKE_OK
         socket.getaddrinfo = flaky
         check("returns True", load(clock)(lg, timeout=30), True)
         check("kept trying", len(calls), 3)
+        check("多国内探针轮换且零 github 域名",
+              len(set(calls)) >= 2 and all("github" not in h.lower() for h in calls), True)
         # Slept in one-second slices (to hear a stop); between two lookups 2 s, then 4 s.
         check("退避是 2 秒然后 4 秒", clock.end(), [2.0, 4.0])
         check("said it waited", any("DNS 还没起来" in m for _, m in lg.lines), True)

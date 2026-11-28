@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Send one command to the running relay right now, the way the phone page does
 # (ntfy live channel). `order.sh` writes the repo inbox, which the relay reads
 # only at boot, before shutdown and on retry - so it is the "machine is off"
@@ -12,6 +12,12 @@
 # machine does not have to be on to read them. Verify the result in relay.log
 # (「📱 手机指令 …」) - this script only proves ntfy accepted the message.
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "order-now: 找不到最新版 Homebrew Python（${MAC_PY}），拒绝回退系统旧版" >&2
+  exit 1
+fi
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -26,13 +32,13 @@ if [ "${1:-}" = "--no-abort" ]; then
   shift
 fi
 BODY="${1:?用法: order-now.sh [--no-abort] '{\"action\":...}'}"
-python3 -c "import json,sys; json.loads(sys.argv[1])" "$BODY"
+"$MAC_PY" -c "import json,sys; json.loads(sys.argv[1])" "$BODY"
 # A changing order without "confirmed": true is refused by the relay (commands.py, gate 2),
 # and that refusal goes to the group as 「📱 配置没改成」: on 10-10 04:16:12 a set_master sent
 # from here without it did exactly that. Refuse it here, before anything is sent. The list
 # of changing actions is the relay's own (MUTATING), not a copy.
 RELAY_DIR="$(cd "$(dirname "$0")/../../relay" && pwd)"
-PYTHONPATH="$RELAY_DIR" python3 - "$BODY" <<'PY' || exit 1
+PYTHONPATH="$RELAY_DIR" "$MAC_PY" - "$BODY" <<'PY' || exit 1
 import json, sys
 from ark_relay.features.commands import MUTATING
 b = json.loads(sys.argv[1])
@@ -44,7 +50,7 @@ ENV="$HOME/.config/ark/push.env"
 TOPIC="$(sed -n 's/^ARK_PHONE_TOPIC=//p' "$ENV" 2>/dev/null | tail -1 | tr -d '\r')"
 PIN="$(sed -n 's/^ARK_PHONE_PIN=//p' "$ENV" 2>/dev/null | tail -1 | tr -d '\r')"
 [[ -n "$TOPIC" && -n "$PIN" ]] || { echo "✗ $ENV 里没有 ARK_PHONE_TOPIC / ARK_PHONE_PIN——按 ~/.config/ark/密钥总表.md 补上" >&2; exit 1; }
-MSG="$(python3 -c 'import json,sys,time; print(json.dumps({"v":1,"kind":"cmd","pin":sys.argv[1],"ts":int(time.time()),"body":json.loads(sys.argv[2])}, ensure_ascii=False))' "$PIN" "$BODY")"
+MSG="$("$MAC_PY" -c 'import json,sys,time; print(json.dumps({"v":1,"kind":"cmd","pin":sys.argv[1],"ts":int(time.time()),"body":json.loads(sys.argv[2])}, ensure_ascii=False))' "$PIN" "$BODY")"
 code="$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' -X POST --data-binary "$MSG" "https://ntfy.sh/$TOPIC")"
 [[ "$code" == "200" ]] || { echo "✗ ntfy 回了 $code" >&2; exit 1; }
 echo "▶ 已发到机器（ntfy ${code}）：$BODY —— 去 relay.log 看「📱 手机指令」"
@@ -54,7 +60,7 @@ if [ "$NO_ABORT" = 1 ]; then
 fi
 
 # 「下次跑完不关机」 / 「故障留机锁开启」 must also stop a power-off that has already begun.
-abort_wait="$(python3 -c 'import json,sys; b=json.loads(sys.argv[1]); a=b.get("action"); print("8" if a=="skip_shutdown" and not b.get("off") and b.get("on") is not False else ("5" if a=="alarm_hold" and b.get("on") and not b.get("off") else ""))' "$BODY")"
+abort_wait="$("$MAC_PY" -c 'import json,sys; b=json.loads(sys.argv[1]); a=b.get("action"); print("8" if a=="skip_shutdown" and not b.get("off") and b.get("on") is not False else ("5" if a=="alarm_hold" and b.get("on") and not b.get("off") else ""))' "$BODY")"
 if [ -n "$abort_wait" ]; then
   sleep "$abort_wait"
   out="$("$(dirname "$0")/winps.sh" 'shutdown /a 2>$null; "exit=$LASTEXITCODE"' 2>&1 | tr -d '\r' | grep -o 'exit=[0-9]*' | tail -1)"

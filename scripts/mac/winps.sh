@@ -20,6 +20,12 @@
 #
 # 输出按 UTF-8 取回，中文不经过 936 的控制台。
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "winps: 找不到最新版 Homebrew Python（${MAC_PY}），拒绝回退系统旧版" >&2
+  exit 1
+fi
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -40,6 +46,14 @@ case "${1:-}" in
   "")       echo "用法: $0 '<PowerShell 脚本>' | $0 --file x.ps1 | $0 --stdin" >&2; exit 2 ;;
   *)        SCRIPT="$1" ;;
 esac
+
+# 第 1 层断电硬锁（08:40:00–08:45:59 CST 禁止向游戏机发远程命令，返回 RC=78；不误伤 08:25 探活）
+ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+if [ -f "$ARK_PC_LIB" ]; then
+  # shellcheck source=lib/powercut-guard.sh
+  . "$ARK_PC_LIB"
+  ark_powercut_guard 1 "winps.sh" || exit $?
+fi
 
 # 拦住「又在手拼引号」这件事本身：脚本里如果自己带 ssh/wmic，说明还在走老路。
 if grep -qE '\bssh\b|\bwmic\b' <<<"$SCRIPT"; then
@@ -118,7 +132,7 @@ if grep -q 'WINPS_REFUSED: ' "$TMP"; then
 fi
 
 # 去 BOM、统一换行；空输出如实说明，不当成成功。
-python3 - "$TMP" <<'PY'
+"$MAC_PY" - "$TMP" <<'PY'
 import sys, pathlib
 d = pathlib.Path(sys.argv[1]).read_bytes()
 if d.startswith(b"\xef\xbb\xbf"):

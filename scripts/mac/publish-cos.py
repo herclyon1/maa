@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Publish the relay's current manifest, its files as one bundle, and latest.json to the COS bucket.
 
     scripts/mac/publish-cos.py            # after make-manifest.py: PUT relay/<version>/{manifest.json,bundle.zip} and relay/latest.json
@@ -36,6 +36,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "relay"))
+_MAC_LIB = str(Path(__file__).resolve().parent / "lib")
+if _MAC_LIB not in sys.path:
+    sys.path.insert(0, _MAC_LIB)
+import powercut_guard as _pcg  # noqa: E402
 from ark_relay.features.evidence import Cos  # noqa: E402
 from ark_relay.features.selfupdate import COS_BUNDLE, COS_LATEST, COS_PREFIX  # noqa: E402
 
@@ -164,6 +168,8 @@ def _online_check(manifest_ver: int) -> "str | None":
     `<manifest_ver>-N` so a retry after COS upload jitter is permitted), or an error string
     to refuse (fail-closed if TCP 22 is reachable and SSH cannot prove `manifest_ver` is live).
     """
+    # 第 1 层北京时间断电硬锁：08:40–08:45 严禁对游戏机发起 TCP/SSH 探活（RC=78）
+    _pcg.guard_or_exit(1, "publish-cos.py")
     host = os.environ.get("ARK_HOST") or DEFAULT_GAME_HOST
     try:
         with socket.create_connection((host, 22), timeout=2):

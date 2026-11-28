@@ -14,10 +14,24 @@
 #   OFFLINE                         machine stopped responding (exit 2)
 #   DONE                            no game process left (exit 0)
 set -uo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "watch-run: 找不到最新版 Homebrew Python（${MAC_PY}），拒绝回退系统旧版" >&2
+  exit 1
+fi
+# 第 1 层断电硬锁（08:40:00–08:45:59 CST 禁止向游戏机发远程命令，返回 RC=78）
+ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+if [ -f "$ARK_PC_LIB" ]; then
+  # shellcheck source=lib/powercut-guard.sh
+  . "$ARK_PC_LIB"
+  ark_powercut_guard 1 "watch-run.sh" || exit $?
+fi
 
 HOST="${ARK_HOST:?set ARK_HOST to the game machine Tailscale IP}"
 USER_AT="Administrator@${HOST}"
-PY_EXE='D:\ark\automas\environment\python\python.exe'
+# 游戏机现役中继无版本号滚动 Python 入口（彻底废弃 3.12.0 旧 automas\environment\python 路径）
+PY_EXE='C:\Program Files\ArkRelay\runtime\python\python.exe'
 PROBE_REMOTE='C:\Users\Administrator\ark-probe.py'
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DAY="${1:-$(TZ=Asia/Shanghai date +%F)}"
@@ -39,7 +53,7 @@ upd_seen=""
 idle=0
 miss=0
 while true; do
-  out=$(remote "$PY_EXE -X utf8 $PROBE_REMOTE $DAY")
+  out=$(remote "\"$PY_EXE\" -X utf8 $PROBE_REMOTE $DAY")
   if [ -z "$out" ] && ! ping -c 2 -W 3 "$HOST" >/dev/null 2>&1; then
     miss=$((miss + 1))
     if [ "$miss" -ge 2 ]; then
@@ -57,7 +71,7 @@ while true; do
     if [ "$tag" = "UPD" ]; then
       case "$upd_seen" in *"<$stem>"*) continue ;; esac
       upd_seen="$upd_seen<$stem>"
-      echo "UPD  $stem $kind $(printf '%s' "$res" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()))' 2>/dev/null || printf '%s' "$res")"
+      echo "UPD  $stem $kind $(printf '%s' "$res" | "$MAC_PY" -c 'import json,sys; print(json.loads(sys.stdin.read()))' 2>/dev/null || printf '%s' "$res")"
       continue
     fi
     [ "$tag" = "REC" ] || continue
@@ -66,7 +80,7 @@ while true; do
     # The probe escapes non-ASCII so it survives the machine's GBK console;
     # decode it here so a human reads the actual failure reason rather than
     # a wall of \uXXXX.
-    text=$(printf '%s' "$res" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()))' 2>/dev/null || printf '%s' "$res")
+    text=$(printf '%s' "$res" | "$MAC_PY" -c 'import json,sys; print(json.loads(sys.stdin.read()))' 2>/dev/null || printf '%s' "$res")
     if [ "$ok" = "1" ]; then
       echo "OK   $stem $kind $text"
     else

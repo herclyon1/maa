@@ -29,6 +29,12 @@
 # bash string instead. That has cost this project several wasted round trips.
 # Shipping the script as a file means no layer has to parse it at all.
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "winrun: 找不到最新版 Homebrew Python（${MAC_PY}），拒绝回退系统旧版" >&2
+  exit 1
+fi
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -47,6 +53,17 @@ if [ "${1:-}" = "--timeout" ]; then
   WINRUN_TIMEOUT="${2:?--timeout 后面要跟秒数}"
   case "$WINRUN_TIMEOUT" in ''|*[!0-9]*) echo "--timeout 必须是数字" >&2; exit 2 ;; esac
   shift 2
+fi
+
+# 第 1 层断电硬锁（08:40:00–08:45:59 CST 禁止向游戏机发任何远程命令，返回 RC=78；
+# dry-run 离线闸门自测不碰游戏机，放行）。
+if [ -z "${WINRUN_DRY_RUN:-}" ]; then
+  ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+  if [ -f "$ARK_PC_LIB" ]; then
+    # shellcheck source=lib/powercut-guard.sh
+    . "$ARK_PC_LIB"
+    ark_powercut_guard 1 "winrun.sh" || exit $?
+  fi
 fi
 
 HOST="${ARK_HOST:-100.65.39.119}"
@@ -126,8 +143,9 @@ preflight_timefilter_check() {
 run_remote_ps() {
   local b64
   b64=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
+  # 严格只用 PowerShell 7（pwsh.exe），找不到即 fail-closed 报错，零 5.1 回退
   ssh "${SSH_OPTS[@]}" -o ConnectTimeout="${2:-30}" "$USER_AT" \
-    "if exist \"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" (\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $b64) else (powershell -NoProfile -EncodedCommand $b64)" \
+    "if exist \"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" (\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand $b64) else (echo WINRUN_NO_PWSH7 >&2 & exit /b 127)" \
     2>/dev/null
 }
 
@@ -181,9 +199,9 @@ if [ "${1:-}" = "--get" ] || [ "${1:-}" = "--get-safe" ]; then
   TMP="$(mktemp)"
   scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "${USER_AT}:$(printf '%s' "$REMOTE" | tr '\\' '/')" "$TMP"
   if [ "$RAW" = 1 ]; then
-    python3 -c "$STRIP" "$TMP"
+    "$MAC_PY" -c "$STRIP" "$TMP"
   else
-    python3 -c "$STRIP" "$TMP" | python3 "$(dirname "$0")/redact.py"
+    "$MAC_PY" -c "$STRIP" "$TMP" | "$MAC_PY" "$(dirname "$0")/redact.py"
   fi
   rm -f "$TMP"
   exit 0
@@ -222,14 +240,32 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyC
   Where-Object { \$_.CommandLine -like "*winrun-run.py*" } |
   ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }
 Unregister-ScheduledTask -TaskName "winrun-py1" -Confirm:\$false -ErrorAction SilentlyContinue
-\$py  = "C:\\Program Files\\Python314\\python.exe"
-# 用 powershell -WindowStyle Hidden 取代 cmd.exe：cmd 会在交互桌面上弹一个黑框，
-# 盖住正在操作的窗口。2026-08-24 装鸣潮时它就挡住了登录区域，用户直接看见了。
-# 输出必须显式 -Encoding utf8：任务跑的是 powershell.exe（5.1），它的 *> 写的是
-# UTF-16，取回来就是一片乱码。
-\$inner = '[Console]::OutputEncoding=[Text.Encoding]::UTF8; \$env:PYTHONUTF8=1; \$env:PYTHONIOENCODING="utf-8"; & "' + \$py + '" C:\\ProgramData\\winrun-run.py $ARGS *>&1 | Out-File -FilePath C:\\ProgramData\\winrun.out -Encoding utf8'  
+# 动态解析游戏机现役最新 Python（优先中继无版本号运行环境，其次按注册表语义版本降序取最高版）
+\$py = "C:\\Program Files\\ArkRelay\\runtime\\python\\python.exe"
+if (-not (Test-Path -LiteralPath \$py)) {
+  \$cand = Get-ChildItem "HKLM:\\SOFTWARE\\Python\\PythonCore\\*\\InstallPath" -ErrorAction SilentlyContinue |
+    ForEach-Object {
+      \$p = (Get-ItemProperty \$_.PSPath -ErrorAction SilentlyContinue).ExecutablePath
+      if (\$p -and (Test-Path -LiteralPath \$p)) {
+        \$verTag = (Split-Path (Split-Path \$_.PSPath -Parent) -Leaf) -replace '[^0-9.].*$', ''
+        try { [pscustomobject]@{ Ver = [version]\$verTag; Exe = \$p } } catch {}
+      }
+    } | Sort-Object Ver -Descending | Select-Object -First 1
+  if (\$cand) { \$py = \$cand.Exe }
+}
+# 动态解析游戏机最高版本 PowerShell 7（pwsh.exe），严禁调用 PowerShell 5.1
+\$pwshExe = Get-ChildItem "HKLM:\\SOFTWARE\\Microsoft\\PowerShellCore\\InstalledVersions\\*" -ErrorAction SilentlyContinue |
+  ForEach-Object {
+    \$v = (Get-ItemProperty \$_.PSPath -ErrorAction SilentlyContinue).SemanticVersion
+    \$d = (Get-ItemProperty \$_.PSPath -ErrorAction SilentlyContinue).InstallDir
+    if (\$v -and \$d -and (Test-Path -LiteralPath (Join-Path \$d 'pwsh.exe'))) {
+      try { [pscustomobject]@{ Ver = [version](\$v -replace '-.*$', ''); Exe = (Join-Path \$d 'pwsh.exe') } } catch {}
+    }
+  } | Sort-Object Ver -Descending | Select-Object -First 1 -ExpandProperty Exe
+if (-not \$pwshExe) { \$pwshExe = Join-Path \$PSHOME 'pwsh.exe' }
+\$inner = '[Console]::OutputEncoding=[Text.Encoding]::UTF8; \$env:PYTHONUTF8=1; \$env:PYTHONIOENCODING="utf-8"; & "' + \$py + '" C:\\ProgramData\\winrun-run.py $ARGS *>&1 | Out-File -FilePath C:\\ProgramData\\winrun.out -Encoding utf8'
 \$b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\$inner))
-\$act = New-ScheduledTaskAction -Execute "powershell.exe" -Argument ("-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + \$b64)
+\$act = New-ScheduledTaskAction -Execute \$pwshExe -Argument ("-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -EncodedCommand " + \$b64)
 \$pri = New-ScheduledTaskPrincipal -UserId "administrator" -LogonType Interactive -RunLevel Highest
 Register-ScheduledTask -TaskName "winrun-py1" -Action \$act -Principal \$pri -Force | Out-Null
 Start-ScheduledTask -TaskName "winrun-py1"
@@ -243,9 +279,9 @@ PS1EOF
   } > "$LOCAL_PS1"
   scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PS1" "${USER_AT}:C:/ProgramData/winrun1.ps1" \
     || { echo "winrun1: 送不上去 ps1（scp 失败）" >&2; rm -f "$TMP" "$LOCAL_PS1"; exit 3; }
-  # 计划任务本身失败与否 ssh 不一定反映得出来，所以判据放在「有没有产出」上。
+  # 严格走 pwsh 7（零 5.1 回退）；计划任务是否成功看产出文件。
   ssh "${SSH_OPTS[@]}" -o ConnectTimeout=330 "$USER_AT" \
-    'if exist "C:\Program Files\PowerShell\7\pwsh.exe" ("C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun1.ps1) else (powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun1.ps1)' \
+    'if exist "C:\Program Files\PowerShell\7\pwsh.exe" ("C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun1.ps1) else (echo WINRUN_NO_PWSH7 >&2 & exit /b 127)' \
     >/dev/null 2>&1 || true
   if ! scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "${USER_AT}:C:/ProgramData/winrun.out" "$TMP" 2>/dev/null; then
     echo "winrun1: 远端没有产生 winrun.out（计划任务可能没跑起来）" >&2
@@ -262,7 +298,7 @@ PS1EOF
     echo "winrun1: 拒绝关机——${busy}。请先处理完当前任务或故障。" >&2
     rm -f "$TMP" "$LOCAL_PS1"; exit 5
   fi
-  python3 -c "$STRIP" "$TMP"
+  "$MAC_PY" -c "$STRIP" "$TMP"
   rm -f "$TMP" "$LOCAL_PS1"
   exit 0
 fi
@@ -434,10 +470,28 @@ GUARDTAIL
   #    exit code 用**自己打的暗号**传回来，不用 ssh 的退出码：ssh 的退出码这里同时
   #    背着「远端 python 非零退出」和「连接本身失败」两件事，分不开。
   #    本地这层也加上限：ssh 自己不会因为远端卡住而返回。
-  RUN_CMD="set PYTHONUTF8=1&& set PYTHONIOENCODING=utf-8&& \
-\"C:\\Program Files\\Python314\\python.exe\" ${REMOTE_GUARD//\//\\} $* > ${REMOTE_OUT//\//\\} 2>&1 \
-& \"C:\\Program Files\\Python314\\python.exe\" -c \"import base64,sys;sys.stdout.write('WINRUN_B64='+base64.b64encode(open(r'${REMOTE_OUT//\//\\}','rb').read()).decode())\" \
-& del /Q ${REMOTE_PY//\//\\} ${REMOTE_GUARD//\//\\} ${REMOTE_OUT//\//\\}"
+  REMOTE_BOOT="C:/ProgramData/winrun-boot-${RUN_ID}.cmd"
+  # 随同 tar 流下发一次性启动包装器：优先游戏机现役无版本号 ArkRelay 运行环境 Python，
+  # 不存在时动态通过 pwsh 7 查注册表最高 semver Python（零硬编码 Python3xx，零额外往返）。
+  cat > "$STAGE/$(basename "${REMOTE_BOOT}")" <<BOOTEOF
+@echo off
+setlocal
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
+set "ARK_WIN_PY=C:\Program Files\ArkRelay\runtime\python\python.exe"
+if not exist "%ARK_WIN_PY%" (
+  for /f "usebackq delims=" %%P in (\`"C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -Command "(Get-ChildItem 'HKLM:\SOFTWARE\Python\PythonCore\*\InstallPath' -EA SilentlyContinue | ForEach-Object { \$p=(Get-ItemProperty \$_.PSPath -EA SilentlyContinue).ExecutablePath; if (\$p -and (Test-Path -LiteralPath \$p)) { try { [pscustomobject]@{v=[version]((Split-Path (Split-Path \$_.PSPath -Parent) -Leaf) -replace '[^0-9.].*$',''); p=\$p} } catch {} } } | Sort-Object v -Descending | Select-Object -First 1 -ExpandProperty p)"\`) do set "ARK_WIN_PY=%%P"
+)
+if not exist "%ARK_WIN_PY%" (
+  echo WINRUN_NO_PYTHON >&2
+  exit /b 127
+)
+"%ARK_WIN_PY%" ${REMOTE_GUARD//\//\\} %* > ${REMOTE_OUT//\//\\} 2>&1
+"%ARK_WIN_PY%" -c "import base64,sys;sys.stdout.write('WINRUN_B64='+base64.b64encode(open(r'${REMOTE_OUT//\//\\}','rb').read()).decode())"
+del /Q ${REMOTE_PY//\//\\} ${REMOTE_GUARD//\//\\} ${REMOTE_OUT//\//\\} 2>nul
+BOOTEOF
+  # 注意：不能在 .cmd 内部删除自身（cmd 读下一行会报找不到批处理文件并返回非零），改为 call 返回后再删
+  RUN_CMD="call ${REMOTE_BOOT//\//\\} $* & del /Q ${REMOTE_BOOT//\//\\} 2>nul"
   # 送文件和跑脚本合成**一次** ssh：`tar xzf -` 先把这一趟要用的文件解出来，
   # `&&` 保证解包成功才跑（解包失败就没有任何暗号回来，走下面的「没有输出」那条路）。
   # 2026-09-08 实测：分成两次是 4.8 秒，合并成一次 2.6 秒——跨境每一次往返都是钱。
@@ -477,7 +531,7 @@ GUARDTAIL
     echo "winrun: 拒绝关机——${busy}。请先处理完当前任务或故障。" >&2
     exit 5
   fi
-  python3 -c "$STRIP" "$TMP"
+  "$MAC_PY" -c "$STRIP" "$TMP"
   # The remote's exit code has to come out as it is. This used to `exit 0`
   # unconditionally and only drop a line on stderr, so the 「拒绝派发必须非零退出」
   # added to dispatch_guard on 2026-09-08 had no effect at all on run-one.sh, the
@@ -543,11 +597,9 @@ LOCAL_PS="$(mktemp)"
 # it were the current result is exactly how stale data gets reported as fresh.
 ssh "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$USER_AT" 'del /Q C:\ProgramData\winrun.out 2>nul' >/dev/null 2>&1 || true
 scp -q "${SSH_OPTS[@]}" -o ConnectTimeout=30 "$LOCAL_PS" "${USER_AT}:C:/ProgramData/winrun.ps1"
-# Prefer PowerShell 7: it defaults to UTF-8 everywhere, so Get-Content on a
-# UTF-8 file is simply correct, where Windows PowerShell 5.1 would decode it as
-# ANSI and destroy it. 5.1 stays as the fallback because it is always present.
+# 严格使用 PowerShell 7（pwsh.exe），找不到直接 fail-closed 报错退出，零 5.1 回退。
 ssh "${SSH_OPTS[@]}" -o ConnectTimeout=90 "$USER_AT" \
-  'if exist "C:\Program Files\PowerShell\7\pwsh.exe" ("C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1) else (powershell -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1)' \
+  'if exist "C:\Program Files\PowerShell\7\pwsh.exe" ("C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -ExecutionPolicy Bypass -File C:\ProgramData\winrun.ps1) else (echo WINRUN_NO_PWSH7 >&2 & exit /b 127)' \
   >/dev/null 2>&1 || true
 TMP="$(mktemp)"
 trap 'rm -f "$TMP" "$LOCAL_PS"' EXIT
@@ -565,4 +617,4 @@ if [ -n "$CMD_GUARD_PS" ] && grep -q 'WINPS_REFUSED: ' "$TMP"; then
   echo "winrun: 拒绝关机——${busy}。请先处理完当前任务或故障。" >&2
   exit 5
 fi
-python3 -c "$STRIP" "$TMP"
+"$MAC_PY" -c "$STRIP" "$TMP"

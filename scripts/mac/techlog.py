@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Read the relay's technical log on the game machine; mark its red items handled.
 
     scripts/mac/techlog.py red [--days N]          unhandled red items, last N Beijing days (default 3)
@@ -71,6 +71,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+_MAC_LIB = str(Path(__file__).resolve().parent / "lib")
+if _MAC_LIB not in sys.path:
+    sys.path.insert(0, _MAC_LIB)
+import powercut_guard as _pcg  # noqa: E402
 
 # The format - identical to relay/ark_relay/core/statestore.py (ac38f466).
 RED_LINE = re.compile(r"^🔴 (R-\d{8}-\d{4}-\d+) (.*)$")
@@ -435,7 +439,7 @@ def unreachable() -> "str | None":
     try:
         with socket.create_connection((host, int(port)), timeout=PROBE_TIMEOUT):
             return None
-    except socket.timeout:  # the Mac python3 is 3.9, where this is not yet TimeoutError
+    except TimeoutError:
         return f"{PROBE_TIMEOUT:g} 秒内连不上 {PROBE}"
     except (OSError, ValueError) as exc:
         return f"{PROBE}：{exc.strerror if isinstance(exc, OSError) and exc.strerror else type(exc).__name__}"
@@ -452,6 +456,8 @@ def main(argv: "list[str] | None" = None) -> int:
     h.add_argument("id")
     h.add_argument("commit")
     a = ap.parse_args(argv)
+    # 第 1 层北京时间断电硬锁：08:40–08:45 严禁探活或连接游戏机读取/写入技术日志（RC=78）
+    _pcg.guard_or_exit(1, "techlog.py")
     why = unreachable()
     if why:
         print(f"游戏机现在连不上（关机或断网）：{why}")

@@ -48,12 +48,19 @@ PKG_DEPLOY='C:\Users\Administrator\ark-pkg-deploy.py'
 WATCH_PY='C:\Users\Administrator\ark-deploy-watch.py'
 WD_SRC="$HERE/../packaging/watchdog/ark_watchdog.py"
 WD_STAGED='C:\Users\Administrator\ark-watchdog-new.py'
-pkg_sha1() { python3 -c 'import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
+# Mac 侧用于打包运行环境与核对校验的最新版 Homebrew Python（自带 pip；绝不退回系统 3.9，不写死版本号）
+RELAY_HOST_PY="${RELAY_HOST_PY:-/opt/homebrew/bin/python3}"
+pkg_sha1() { "${RELAY_HOST_PY:-/opt/homebrew/bin/python3}" -c 'import hashlib,sys;print(hashlib.sha1(open(sys.argv[1],"rb").read()).hexdigest())' "$1"; }
+
+# 第 2 层断电硬锁（08:22:00–08:46:59 CST 禁止安装版部署写盘与换运行时，返回 RC=78）
+ARK_PC_LIB="$HERE/../scripts/mac/lib/powercut-guard.sh"
+if [ -f "$ARK_PC_LIB" ]; then
+  # shellcheck source=scripts/mac/lib/powercut-guard.sh
+  . "$ARK_PC_LIB"
+  ark_powercut_guard 2 "deploy-pkg.sh" || exit $?
+fi
 
 pkg_ssh() { ssh "${SSH_OPTS[@]}" "$USER_AT" "$@" 2>&1 | tr -d '\r'; }
-# Python on the Mac, for packaging/build.py --runtime-only (its pip must know the
-# cp314 wheels; /usr/bin/python3 is 3.9 with pip 21). Variable name PY314 stays for test_pkg.py.
-PY314="${PY314:-/opt/homebrew/bin/python3}"
 # Commands whose program path has a space go through base64 pwsh (repo rule 3): cmd.exe
 # keeps a quoted program path only when the line holds exactly two quotes (cmd /? on /C),
 # and these need a quoted argument as well. pkg_py <args...> runs the package's Python
@@ -77,7 +84,7 @@ fi
 trap 'rm -rf "$GATED"; ssh "${SSH_OPTS[@]}" "$USER_AT" "del $PKG_DEPLOY & del $WATCH_PY & del $WD_STAGED" >/dev/null 2>&1 || true' EXIT
 # The plain installer-written files: info returns each one's sha1 on the machine, and
 # step 4.5p swaps only the ones that differ from the repo.
-APPFILES_LIST=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" list)
+APPFILES_LIST=$("${RELAY_HOST_PY:-/opt/homebrew/bin/python3}" "$HERE/../scripts/mac/lib/pkg_appfiles.py" list)
 # shellcheck disable=SC2046  # one argument per path on purpose (no spaces in them)
 INFO=$(pkg_py "$PKG_DEPLOY" info "$APP_WIN" $(cut -f1 <<<"$APPFILES_LIST") || true)
 PREV=$(sed -n 's/^CUR=//p' <<<"$INFO")
@@ -107,22 +114,22 @@ RUNTIME_WANT=()
 RUNTIME_PY_EXE=""
 RUNTIME_WHY=""
 pkg_runtime_prepare() {
-  local want dir inc out
-  if ! want=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-want); then
+  local want dir inc out mac_py="${MAC_PY:-/opt/homebrew/bin/python3}" py_host="${RELAY_HOST_PY:-/opt/homebrew/bin/python3}"
+  if ! want=$("$mac_py" "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-want); then
     RUNTIME_WHY="relay/requirements.txt 里有不是精确版本号的行"
     return 1
   fi
   # shellcheck disable=SC2206  # one word per line on purpose (versions, name==version)
   RUNTIME_WANT=($want)
-  if [ ! -x "$PY314" ]; then
-    RUNTIME_WHY="Mac 上找不到用于打包运行环境的 Python（${PY314}），打不了运行环境"
+  if [ ! -x "$py_host" ]; then
+    RUNTIME_WHY="Mac 上找不到用于打包运行环境的最新版 Python（${py_host}），打不了运行环境"
     return 1
   fi
   dir=$(mktemp -d)
-  if ! "$PY314" "$HERE/../packaging/build.py" --runtime-only "$dir/rt" >"$dir/build.log" 2>&1; then
+  if ! "$py_host" "$HERE/../packaging/build.py" --runtime-only "$dir/rt" >"$dir/build.log" 2>&1; then
     RUNTIME_WHY="在 Mac 上打运行环境失败：$(tail -1 "$dir/build.log")"
   else
-    python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-list "$dir/rt/runtime/python" >"$dir/rt/runtime/files.sha1"
+    "$mac_py" "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-list "$dir/rt/runtime/python" >"$dir/rt/runtime/files.sha1"
     echo "    打好了：$(wc -l <"$dir/rt/runtime/files.sha1" | tr -d ' ') 个文件，$(du -sh "$dir/rt/runtime/python" | cut -f1)"
     inc=$(pkg_py "$PKG_DEPLOY" runtime-stage "$APP_WIN" | sed -n 's/^RUNTIME_IN=//p' || true)
     if [ -z "$inc" ]; then
@@ -146,7 +153,7 @@ pkg_runtime_prepare() {
 }
 # <<< runtime prepare
 RUNTIME_SWAP=0
-if ! RUNTIME_GAP=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-gap "$GATED/pkg-info.txt"); then
+if ! RUNTIME_GAP=$("${RELAY_HOST_PY:-/opt/homebrew/bin/python3}" "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-gap "$GATED/pkg-info.txt"); then
   echo "▶ 3.0/5 机器上的运行环境（Python 和它装的包）跟仓库要的不一样，打一份新的送上去先试跑（还没换）："
   printf '%s\n' "$RUNTIME_GAP" | sed 's/^/      /'
   if ! pkg_runtime_prepare; then
@@ -155,7 +162,7 @@ if ! RUNTIME_GAP=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-ga
   fi
   RUNTIME_SWAP=1
 fi
-APP_CHANGED=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" changed "$GATED/pkg-info.txt")
+APP_CHANGED=$("${RELAY_HOST_PY:-/opt/homebrew/bin/python3}" "$HERE/../scripts/mac/lib/pkg_appfiles.py" changed "$GATED/pkg-info.txt")
 INC=$(pkg_py "$PKG_DEPLOY" stage "$APP_WIN" | sed -n 's/^INCOMING=//p' || true)
 if [ -z "$INC" ]; then
   echo "  ✋ 新版本文件夹没建起来，什么都没改" >&2
@@ -180,7 +187,7 @@ if ! grep -q '^NAME=' <<<"$COMMIT"; then
   exit 8
 fi
 NEW=$(sed -n 's/^NAME=//p' <<<"$COMMIT")
-VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+VER=$("${RELAY_HOST_PY:-/opt/homebrew/bin/python3}" -c "import json;print(json.load(open('manifest.json'))['version'])")
 grep '^HASH-OK' <<<"$COMMIT" | sed 's/^/    /'
 echo "    current.txt：$PREV → ${NEW}（code-version = ${VER}）"
 
@@ -251,7 +258,7 @@ pkg_runtime_swap() {
     return 1
   fi
   pkg_py "$PKG_DEPLOY" info "$APP_WIN" >"$GATED/pkg-info-runtime.txt" || true
-  if ! gap=$(python3 "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-gap "$GATED/pkg-info-runtime.txt"); then
+  if ! gap=$("${RELAY_HOST_PY:-/opt/homebrew/bin/python3}" "$HERE/../scripts/mac/lib/pkg_appfiles.py" runtime-gap "$GATED/pkg-info-runtime.txt"); then
     RUNTIME_WHY="换完再核对不上：$(head -1 <<<"$gap")"
     return 1
   fi

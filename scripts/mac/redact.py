@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Mask secret-looking values on the way out of the machine.
 
 Why this exists: on 2026-08-23 a wide grep over AUTO-MAS's config printed

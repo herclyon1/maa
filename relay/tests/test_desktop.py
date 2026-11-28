@@ -162,13 +162,21 @@ write the result JSON the way agent.ps1 does.
     check("「请重启游戏」在长句里命中", Screen([Line("资源初始化更新完成，请重启游戏", 0, 0, 10, 10)]).has("请重启游戏"), True)
     check("「开始游戏」认成「丹始游戏」照样命中", Screen([Line("@丹始游戏", 0, 0, 10, 10)]).find("开始游戏") is not None, True)
 
-    print("\n[agent.ps1（AGENT_PS）这一侧：只能在游戏机上实证，这里核脚本文本]")
+    print("\n[agent.ps1（AGENT_PS）与 ocr_helper.py（OCR_HELPER_PY）脚本文本与旋转纠偏核验]")
     ps = dk.AGENT_PS
+    ocr_py = dk.OCR_HELPER_PY
     check("focus 没找到时写 focus_missing", "$out.focus_missing = $true" in ps, True)
     check("focus 没找到时跳过点击", ps.count('[void]$log.Add("skip click: focus missing")'), 2)
     check("click_text 两字以下要整行相等", "if ($want.Length -le 2) { $t -eq $want }" in ps, True)
     check("旧的纯子串匹配没了", "Where-Object { ($_.text -replace '\\s', '') -like \"*$want*\" }" in ps, False)
-    check("OCR 坐标按 TextAngle 旋回原图", "$result.TextAngle" in ps and "[Math]::Cos($rad)" in ps, True)
+    check("AGENT_PS 已移除 PowerShell 5.1 ContentType=WindowsRuntime", "ContentType=WindowsRuntime" not in ps, True)
+    check("AGENT_PS 委派 OCR 到 Python WinRT helper", "ocr_helper.py" in ps and "ConvertFrom-Json" in ps, True)
+    check("OCR_HELPER_PY 使用 Python WinRT 并按 text_angle 旋回原图",
+          "winrt.windows.media.ocr" in ocr_py and "text_angle" in ocr_py and "math.cos" in ocr_py, True)
+    # 实测 _deskew_rect 旋转纠偏：0 度保持不变，非零倾角把坐标旋回原图
+    check("_deskew_rect 0 度保持原坐标", dk._deskew_rect(100, 200, 260, 240, 0.0, 1920, 1080), (100, 200, 160, 40))
+    rx, ry, rw, rh = dk._deskew_rect(1400, 800, 1600, 850, -5.6, 1920, 1080)
+    check("_deskew_rect -5.6 度纠偏后 y 坐标向上回调（避免点偏到下方按钮）", ry < 775 and rw > 0 and rh > 0, True)
     check("AGENT_PS 定义 InWin 过滤聚焦窗口外文字", "function InWin($e)" in ps and "$mx -ge $win.L" in ps, True)
     ocr_blk = ps.split("'ocr' {", 1)[1].split("'ocrfile' {", 1)[0]
     click_blk = ps.split("'click_text' {", 1)[1].split("default {", 1)[0]
@@ -289,7 +297,7 @@ def _part_desktop_no_window():
     from pathlib import Path, PureWindowsPath
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core.desktop import POWERSHELL, Desktop
+    from ark_relay.core.desktop import PWSH, Desktop
     from ark_relay.features import preupdate as C
 
 
@@ -313,7 +321,7 @@ def _part_desktop_no_window():
     d.read()
     d.read_file(tmpdir() / "x.png")
     check("screenshot, read and read_file all went windowless", [c[0] for c in calls], ["hidden"] * 3)
-    check("it is still PowerShell that runs the agent", {c[1] for c in calls}, {"powershell.exe"})
+    check("由 pwsh 7 运行桌面助手（彻底脱离 PowerShell 5.1）", {c[1].lower() for c in calls}, {"pwsh.exe"})
 
     print("\n[a run that brings a window to the front keeps the measured route]")
     calls.clear()
@@ -333,13 +341,13 @@ def _part_desktop_no_window():
     print("\n[the plan the scheduled task runs]")
     cwd = tmpdir() / "desktop"
     pyw = PureWindowsPath(r"C:\Program Files\ArkRelay\runtime\python\pythonw.exe")
-    PS = PureWindowsPath(POWERSHELL)   # Windows path semantics for .stem / .name on any host
+    PS = PureWindowsPath(PWSH)   # Windows path semantics for .stem / .name on any host
     prog, args, task = C.hidden_plan(PS, cwd, ("-File", "agent.ps1"), pyw)
     check("the task starts pythonw.exe (a GUI program, no console)", prog.name, "pythonw.exe")
-    check("isolated mode, then the launcher, then PowerShell and its arguments",
-          args, ("-I", str(cwd / C.HIDDEN_LAUNCHER_NAME), str(POWERSHELL), "-File", "agent.ps1"))
+    check("isolated mode, then the launcher, then pwsh 7 and its arguments",
+          args, ("-I", str(cwd / C.HIDDEN_LAUNCHER_NAME), str(PWSH), "-File", "agent.ps1"))
     check("its own task name, apart from the focus route's",
-          (task, task != C._task_name(PS.stem)), ("ark-preupdate-launch-powershell-hidden", True))
+          (task, task != C._task_name(PS.stem)), ("ark-preupdate-launch-pwsh-hidden", True))
 
     print("\n[the launcher starts its child with CREATE_NO_WINDOW and waits for it]")
     tree = ast.parse(C.HIDDEN_LAUNCHER)
@@ -367,7 +375,7 @@ def _part_desktop_no_window():
         seen.clear()
         C._pythonw = lambda: None
         C._spawn_hidden_via_task(PS, work, ("-File", "a.ps1"))
-        check("plain route with PowerShell itself", (seen[0][0], seen[0][2]), ("powershell.exe", {}))
+        check("plain route with pwsh 7 itself", (seen[0][0], seen[0][2]), ("pwsh.exe", {}))
 
         print("\n[the OK-WW failure screenshot goes windowless too]")
         from ark_relay.features import handle

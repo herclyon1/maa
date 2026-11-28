@@ -25,6 +25,12 @@
 # COS has no cache. GitHub stays the record and the fallback door, so COS is written
 # only after the push went through, and a failed COS write ends the script non-zero.
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "order: 找不到最新版 Homebrew Python（${MAC_PY}），拒绝回退系统旧版" >&2
+  exit 1
+fi
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -41,7 +47,7 @@ usage() { sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
 [ $# -ge 1 ] || usage
 
 case "${1:-}" in
-  --show) python3 -c "import json,sys;print(json.dumps(json.load(open(sys.argv[1])),ensure_ascii=False,indent=2))" "$BOX"; exit 0 ;;
+  --show) "$MAC_PY" -c "import json,sys;print(json.dumps(json.load(open(sys.argv[1])),ensure_ascii=False,indent=2))" "$BOX"; exit 0 ;;
   --clear) BODY='[]' ;;
   -h|--help) usage ;;
   *) BODY="$1" ;;
@@ -61,7 +67,7 @@ if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
   exit 1
 fi
 
-python3 - "$BOX" "$BODY" <<'PY'
+"$MAC_PY" - "$BOX" "$BODY" <<'PY'
 import json, re, sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -117,7 +123,7 @@ if git -C "$REPO" diff --cached --quiet -- queue/config.json; then
   exit 0
 fi
 # Only the inbox file goes into the commit, whatever else is staged in this checkout.
-git -C "$REPO" commit -q -m "信箱：$(python3 -c "import json;print(json.load(open('$BOX'))['name'])")" -- queue/config.json
+git -C "$REPO" commit -q -m "信箱：$("$MAC_PY" -c "import json;print(json.load(open('$BOX'))['name'])")" -- queue/config.json
 git -C "$REPO" push -q origin HEAD:main
 echo "▶ 已推上 GitHub"
 
@@ -125,7 +131,7 @@ echo "▶ 已推上 GitHub"
 # them (COS_* in ~/.config/ark/push.env); the key comes from inbox.py, so the writer
 # and the reader cannot drift apart.
 COS_OK=1
-python3 - "$BOX" <<'PY' || COS_OK=0
+"$MAC_PY" - "$BOX" <<'PY' || COS_OK=0
 import json, sys, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 box = Path(sys.argv[1]).resolve()
@@ -175,7 +181,7 @@ sys.exit(f"COS 写不上：{why}")
 PY
 
 # 清缓存并等到各扇门真的发新版本——不等就等于没推。
-python3 "$HERE/purge-cdn.py"
+"$MAC_PY" "$HERE/purge-cdn.py"
 
 if [ "$COS_OK" != 1 ]; then
   echo "✋ COS 没写上：GitHub 已推，机器只能等 jsDelivr 缓存过期才拿到（最长 12 小时）。重跑本脚本即可（版本号会再抬一位）" >&2

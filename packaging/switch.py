@@ -54,6 +54,8 @@ and in UNINSTALL_LEFT, which the uninstaller shows, then it goes on deleting the
 from __future__ import annotations
 
 import os
+import re
+import shutil
 import subprocess
 import sys
 import time
@@ -149,12 +151,49 @@ def console_user(setup_user: str) -> str:
     return setup_user
 
 
+# PowerShell 7 默认安装路径（零 PowerShell 5.1 回退）
+_PWSH7_DEFAULT = Path(r"C:\Program Files\PowerShell\7\pwsh.exe")
+
+
+def _resolve_pwsh() -> str:
+    """动态从 Windows 注册表解析本机已装最高版本 PowerShell 7（pwsh.exe），严禁回退 PowerShell 5.1。"""
+    if sys.platform == "win32":
+        try:
+            import winreg  # noqa: PLC0415 - 仅在 Windows 上存在
+
+            best: tuple[tuple[int, ...], str] | None = None
+            root = r"SOFTWARE\Microsoft\PowerShellCore\InstalledVersions"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root) as key:
+                idx = 0
+                while True:
+                    try:
+                        sub = winreg.EnumKey(key, idx)
+                    except OSError:
+                        break
+                    idx += 1
+                    try:
+                        with winreg.OpenKey(key, sub) as sk:
+                            ver_s, _ = winreg.QueryValueEx(sk, "SemanticVersion")
+                            inst, _ = winreg.QueryValueEx(sk, "InstallDir")
+                    except OSError:
+                        continue
+                    cand = Path(str(inst)) / "pwsh.exe"
+                    if cand.is_file():
+                        nums = tuple(int(x) for x in re.findall(r"\d+", str(ver_s))) or (0,)
+                        if best is None or nums > best[0]:
+                            best = (nums, str(cand))
+            if best is not None:
+                return best[1]
+        except OSError:
+            pass
+    if _PWSH7_DEFAULT.is_file():
+        return str(_PWSH7_DEFAULT)
+    found = shutil.which("pwsh")
+    return found or str(_PWSH7_DEFAULT)
+
+
 def register_task(user: str) -> int:
-    """At logon of `user`, in that session, highest privileges (MAA runs as administrator
-    and a lower-privileged program cannot send it input), no execution time limit (the
-    default ends a task after 72 hours), never a second copy, normal priority (a task's
-    default is 7, below normal, and the programs it starts inherit that;
-    learn.microsoft.com, TaskSettings.Priority: 4-6 are the normal priority class)."""
+    """注册开机登录后以最高权限在交互会话启动中继的计划任务（仅调动态最新 pwsh 7，禁 5.1）。"""
     ps = (f"$a=New-ScheduledTaskAction -Execute '{PYW}' -Argument '\"{APP / 'launch.py'}\"';"
           f"$t=New-ScheduledTaskTrigger -AtLogOn -User '{user}';"
           f"$p=New-ScheduledTaskPrincipal -UserId '{user}' -LogonType Interactive -RunLevel Highest;"
@@ -163,7 +202,7 @@ def register_task(user: str) -> int:
           "-Priority 4;"
           f"Register-ScheduledTask -TaskPath '{TASK_PATH}' -TaskName '{TASK_NAME}' "
           "-Action $a -Trigger $t -Principal $p -Settings $s -Force | Out-Null")
-    return run("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
+    return run(_resolve_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
 
 
 def _mark_watchdog_stopped(on: bool) -> None:
@@ -244,7 +283,7 @@ def end_relaunch_helpers() -> int:
           f"Where-Object {{ $_.CommandLine -like '{HELPER_LIKE}' }} | "
           "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue; "
           "Write-Output ('helper ended: ' + $_.ProcessId) }")
-    return run("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
+    return run(_resolve_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps)
 
 
 def stop() -> int:

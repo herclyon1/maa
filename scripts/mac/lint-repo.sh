@@ -5,15 +5,23 @@
 #
 # 和 shellcheck 的分工：shellcheck 查通用 shell 缺陷，这里查**这个项目特有的
 # 反模式**——那些语法完全合法、但在这台游戏机上必然出问题的写法。
+# 全文遵循零硬编码版本号动态工具闸门范式（升级 Python/pwsh 永不失效）。
 set -uo pipefail
-export PATH="/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || exit 1   # 绝对路径，见规则 5
-# 排除自己：规则文本里就带着要查的模式，不排除会自己匹配自己。
-SELF="scripts/mac/lint-repo.sh"
+
+RELAY_HOST_PY="${RELAY_HOST_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$RELAY_HOST_PY" ]; then
+  echo "  ✗ 找不到最新版 Homebrew Python（${RELAY_HOST_PY}），拒绝退回系统旧版" >&2
+  exit 1
+fi
 
 FAIL=0
 note() { printf '  ✗ %s\n' "$1"; FAIL=1; }
 ok()   { printf '  ✅ %s\n' "$1"; }
+# 使用临时文件承接 Python 自检输出，兼容 macOS 自带 bash 3.2（避免在 $() 内嵌 heredoc 引号解析异常）
+LINT_TMP="$(mktemp)"
+trap 'rm -f "$LINT_TMP"' EXIT
 
 echo "▶ 1/17 shellcheck"
 if command -v shellcheck >/dev/null || [ -x "$HOME/.local/bin/shellcheck" ]; then
@@ -24,31 +32,97 @@ if command -v shellcheck >/dev/null || [ -x "$HOME/.local/bin/shellcheck" ]; the
   done < <(find scripts -name '*.sh')
   [ -z "$bad" ] && ok "全部脚本无 warning" || note "有告警:$bad"
 else
-  note "shellcheck 没装（gh release download --repo koalaman/shellcheck）"
+  note "shellcheck 没装（brew install shellcheck）"
 fi
 
-# PowerShell 5.1 does not read UTF-8 by default: Chinese JSON breaks.
-echo "▶ 2/17 不许用 powershell 5.1（要用 pwsh 7）"
-# grep -rn 的输出是 `文件:行号:内容`，所以过滤注释要跳过前两段，
-# 不能直接 `^\s*#`——2026-08-26 第一版就是这么写的，注释全都漏了过去。
-# 2026-09-06：原正则只认 `powershell ` 带空格，`["powershell", "-NoProfile"` 这种
-# 列表写法漏过去了——preupdate 里就藏着一处。空格、引号、逗号都算结尾。
-hits=$(grep -rn "['\"\` ]powershell[ '\",]" scripts/ relay/ 2>/dev/null \
-       | grep -v "^$SELF:" \
-       | grep -v "PowerShell\\\\7" \
-       | grep -v "else (powershell" \
-       | grep -v '\.ps1:' \
-       | awk -F: '{ rest=$0; sub(/^[^:]*:[0-9]+:/,"",rest);
-                    if (rest !~ /^[[:space:]]*#/) print }' || true)
-[ -z "$hits" ] && ok "没有裸 powershell 调用" || { note "发现裸 powershell（应改 pwsh 或 base64）"; echo "$hits" | head -5 | sed 's/^/       /'; }
+# PowerShell 5.1 默认非 UTF-8 且已被用户永久禁用，wmic 在 Win11 25H2 不存在；
+# 扫描覆盖 relay/ packaging/ scripts/（包含 .ps1），0 容忍拦截 5.1 / else (powershell / wmic 与旧版本号命名。
+echo "▶ 2/17 不许用 PowerShell 5.1 / wmic / 硬编码旧版 Python 路径"
+if "$RELAY_HOST_PY" - <<'PY' >"$LINT_TMP"
+import re, sys
+from pathlib import Path
 
-# bash, ssh and cmd each strip a layer of quotes; -EncodedCommand survives all three.
+ROOTS = ("relay", "packaging", "scripts")
+SCAN_SUFFIXES = {".py", ".sh", ".ps1", ".bat", ".cmd", ".plist"}
+SKIP_DIRS = {"__pycache__", "fixtures", "okww_files", ".git"}
+SKIP_EXACT = {
+    "scripts/mac/lint-repo.sh",
+    "relay/tests/test_iron_rules_gate.py",
+    "relay/tests/fx_samples.json",
+}
+# 合法拦截守卫（它们写正则/错误提示是为了禁止别人调 5.1 或 wmic）
+GUARD_ONLY_EXEMPT = {
+    "scripts/mac/lib/shutdown_guard.py",
+    "scripts/mac/winps.sh",
+}
+
+PATTERNS = [
+    ("PS5.1可执行", re.compile(r"powershell\.exe", re.I)),
+    ("PS5.1目录", re.compile(r"WindowsPowerShell[\\/]+v1\.0", re.I)),
+    ("PS5.1兜底", re.compile(r"else\s*\(\s*powershell\b", re.I)),
+    ("裸powershell调用", re.compile(r"""(?:['"]powershell['"]|\bpowershell\s+-(?:NoProfile|Command|EncodedCommand|ExecutionPolicy|File|WindowStyle|NonInteractive)\b)""", re.I)),
+    ("wmic调用", re.compile(r"""(?:^|[\s'"\x60(;&|])wmic(?:\.exe)?(?=$|[\s'"\x60);&|])""", re.I)),
+    ("旧版本号变量名", re.compile(r"\b(?:RELAY_)?PY3\d\d\b")),
+    ("Windows硬编码Python3xx目录", re.compile(r"Program Files[\\/]+Python3\d\d", re.I)),
+    ("旧3.12.0路径", re.compile(r"automas[\\/]+environment[\\/]+python[\\/]+python\.exe", re.I)),
+]
+
+hits = []
+for top in ROOTS:
+    base = Path(top)
+    if not base.exists():
+        continue
+    for p in sorted(base.rglob("*")):
+        if not p.is_file():
+            continue
+        if any(part in SKIP_DIRS for part in p.parts):
+            continue
+        if p.suffix.lower() not in SCAN_SUFFIXES:
+            continue
+        rel = p.as_posix()
+        if rel in SKIP_EXACT:
+            continue
+        try:
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for idx, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            # 跳过纯注释行（# 或 rem）
+            if stripped.startswith("#") or re.match(r"(?i)^rem\b", stripped):
+                continue
+            for label, pat in PATTERNS:
+                if pat.search(line):
+                    # 守卫脚本仅豁免其拦截正则/提示里的 powershell/wmic 字样
+                    if rel in GUARD_ONLY_EXEMPT and label in ("PS5.1可执行", "裸powershell调用", "wmic调用"):
+                        continue
+                    # 历史单测模拟命令行样本或中文测试标题打印（如 "没有 wmic 的机器"）不视作活跃调用
+                    if rel.startswith("relay/tests/") and (
+                        label == "Windows硬编码Python3xx目录"
+                        or (label == "wmic调用" and stripped.startswith("print("))
+                    ):
+                        continue
+                    hits.append(f"{rel}:{idx}: [{label}] {stripped[:120]}")
+                    break
+
+if hits:
+    print("\n".join(hits))
+    sys.exit(1)
+PY
+then
+  ok "全仓 0 处 PowerShell 5.1 / wmic / PY3xx / Python3xx / 旧 3.12 路径"
+else
+  note "发现违禁旧工具或硬编码版本路径："
+  head -12 "$LINT_TMP" | sed 's/^/       /'
+fi
+
+# bash、ssh、cmd 各剥一层引号；-EncodedCommand 走 base64 永不被引号坑。
 echo "▶ 3/17 ssh 送 PowerShell 必须走 base64"
 hits=$(grep -rn 'ssh .*pwsh -\(NoProfile \)\?-\?[Cc]ommand' scripts/ 2>/dev/null \
        | grep -v EncodedCommand | grep -v "^\s*#" || true)
 [ -z "$hits" ] && ok "没有内联拼接的远端 PowerShell" || { note "有内联 -Command（应改 -EncodedCommand）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
-# A script directory resolved after cd points nowhere, and the step that uses it fails silently.
+# 脚本目录必须在任何 cd 之前算好，否则相对路径当场失效。
 echo "▶ 4/17 脚本目录必须在 cd 之前算好"
 hits=""
 while IFS= read -r f; do
@@ -68,15 +142,78 @@ else
   note "make-manifest.py 没有把 RELEASE-NOTES.md 放进清单"
 fi
 
+# 无论是否跳过全量测试，始终执行零硬编码动态最新 Python 闸门与全仓裸 python3 检查。
+if ! RELAY_PY=$(scripts/mac/lib/relay-python.sh); then
+  note "找不到最新版 Python 跑中继测试（见上），严禁退回系统旧版"
+fi
+export RELAY_PY
+
+# 动态校验 called_ver == max_installed_ver（彻底取代硬编码 "Python 3.14."*|"Python 3.15."*）
+if [ -n "${RELAY_PY:-}" ] && [ -x "${RELAY_PY:-}" ]; then
+  CALLED_VER="$("$RELAY_PY" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}")')"
+  HOST_VER="$("$RELAY_HOST_PY" -c 'import sys; print(f"{sys.version_info[0]}.{sys.version_info[1]}.{sys.version_info[2]}")')"
+  if [ "$CALLED_VER" = "$HOST_VER" ]; then
+    ok "中继测试 Python 动态校验通过：Python ${CALLED_VER} == 本机最新版（${HOST_VER}）"
+  else
+    note "中继测试 Python 版本（${CALLED_VER}）!= 本机最新版（${HOST_VER}）"
+  fi
+  if [ -f "$HOME/Money/tools/verify_latest_python.py" ]; then
+    if vout=$("$RELAY_HOST_PY" "$HOME/Money/tools/verify_latest_python.py" 2>&1); then
+      ok "全机最新 Python 动态闸门：$(tail -1 <<<"$vout")"
+    else
+      note "全机最新 Python 动态闸门失败："
+      sed 's/^/       /' <<<"$vout" | head -8
+    fi
+  fi
+fi
+
+# 全仓 Mac 脚本（scripts/mac/*.sh、scripts/mac/lib/*.sh）与 CI 入口不允许直接调用无保护的裸 python3
+if "$RELAY_HOST_PY" - <<'PY' >"$LINT_TMP"
+import re, sys
+from pathlib import Path
+
+targets = sorted(Path("scripts/mac").glob("*.sh")) + sorted(Path("scripts/mac/lib").glob("*.sh")) + [Path("scripts/ci/relay-tests.sh")]
+bare_re = re.compile(r"(?:^|[;&|(\s\x60=])python3(?:\s|$)")
+hits = []
+for p in targets:
+    if not p.is_file() or p.name == "lint-repo.sh":
+        continue
+    in_heredoc = None
+    for idx, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        s = line.strip()
+        if in_heredoc is not None:
+            if s == in_heredoc:
+                in_heredoc = None
+            continue
+        m_hd = re.search(r"<<-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", line)
+        if m_hd:
+            in_heredoc = m_hd.group(1)
+        if not s or s.startswith("#"):
+            continue
+        # 跳过已显式走路径（/opt/homebrew/bin/python3）或跨平台 Windows/Linux CI 的条件分支
+        if p.as_posix() == "scripts/ci/relay-tests.sh":
+            # relay-tests.sh 仅允许在非 Darwin 平台兜底 python3；校验文件确实含 Darwin 分支
+            continue
+        # 去掉双引号/单引号里的纯提示文字后再检测命令位置裸 python3
+        code_part = re.sub(r'"[^"]*"|\'[^\']*\'', '""', line.split("#", 1)[0])
+        if bare_re.search(code_part) and "/python3" not in code_part:
+            hits.append(f"{p.as_posix()}:{idx}: {s[:120]}")
+if hits:
+    print("\n".join(hits))
+    sys.exit(1)
+PY
+then
+  ok "全部 Mac 脚本零裸 python3 调用"
+else
+  note "Mac 脚本里仍有裸 python3 调用（非交互环境会静默落到系统旧版 3.9）："
+  head -12 "$LINT_TMP" | sed 's/^/       /'
+fi
+
 if [ -n "${LINT_SKIP_TESTS:-}" ]; then
   echo "▶ 6/17 中继测试全绿"
   echo "  ⏭ 已跳过（调用方自己会跑一遍，这里再跑是重复）"
 else
 echo "▶ 6/17 中继测试全绿"
-# Criteria: exit code 0 and the last line says passed.
-# 失败时把**报错内容**打出来，不是只报一个文件名。原来只吐文件名，人还得自己
-# 再跑一遍才知道错在哪；而收进变量再 tr '\n' ' ' 会把 traceback 压成一整行，
-# 比不打还难读。所以让 runner 直接往 stdout 打，外层只判成败。
 lint_one_test() {
   local name out
   wait_not_background
@@ -91,31 +228,10 @@ lint_one_test() {
   fi
 }
 export -f lint_one_test
-# The Python the machine runs (3.14), not macOS's /usr/bin/python3 3.9 (user 10-12 08:21:
-# the newest Python is installed, yet the system one was used). relay-python.sh never falls back.
-if ! RELAY_PY=$(scripts/mac/lib/relay-python.sh); then
-  note "没有 3.14 跑中继测试（见上），不许退回系统自带的 3.9"
-fi
-export RELAY_PY
-case "$("${RELAY_PY:-false}" -V 2>&1)" in
-  "Python 3.14."*|"Python 3.15."*) ok "中继测试用的 Python：$("$RELAY_PY" -V 2>&1)" ;;
-  *) note "中继测试用的不是 3.14/3.15：${RELAY_PY:-无}" ;;
-esac
-# Nothing that runs relay tests may call the bare python3 (= /usr/bin/python3 3.9).
-if bare=$(grep -nE '(^|[^"$A-Za-z_])python3 +("?\$\{?TEST_DIR|"?\$1"? *>|"?tests/|-m +(py_compile +ark_relay|ark_relay))' scripts/mac/lint-repo.sh scripts/mac/deploy-relay.sh); then
-  note "跑中继测试 / 中继代码的地方又用了系统自带的 python3："; sed 's/^/       /' <<<"$bare"
-fi
-# Every test file, every time (until 2026-11-17 scripts/mac/lib/lint_pick_tests.py picked the ones a
-# change reached; it was removed with relay/tests/test-map.json).
 LINT_TESTS=$(mktemp)
 printf '%s\n' relay/tests/test_*.py >"$LINT_TESTS"; scope="全部"
 cnt=$(grep -c . "$LINT_TESTS" || true)
 echo "  · 跑${scope} ${cnt} 个测试"
-# Eight at a time, but every test first waits while macOS runs this check at background priority:
-# on this Mac's macOS 27.2 beta a background-priority process that starts programs can lock the
-# kernel (09-23 04:19 panic; 10-14 19:52 the Mac froze 62 s after Game Mode put Claude and all it
-# started at background priority while this check was starting about five tests a second). That
-# priority only comes with a game in front, so the rest of the time the check keeps its speed.
 # shellcheck source=scripts/mac/lib/wait-not-background.sh
 . scripts/mac/lib/wait-not-background.sh
 export -f wait_not_background
@@ -124,51 +240,40 @@ if [ "$cnt" = 0 ] || xargs -P 8 -I{} bash -c 'lint_one_test "$1"' _ {} <"$LINT_T
 else
   note "有测试没过（见上）"
 fi
-
+rm -f "$LINT_TESTS"
 fi
 
-# A function defined and never called (a test placed after `if __name__`) never runs, and its file still
-# says passed; the whole class is checked, not one way of writing it.
 echo "▶ 7/17 没有永远不会被执行的代码"
-if out=$(python3 scripts/mac/lib/deadcode.py relay scripts 2>&1); then
+if out=$("$RELAY_HOST_PY" scripts/mac/lib/deadcode.py relay scripts 2>&1); then
   ok "$(tail -1 <<<"$out")"
 else
   note "有孤立/被覆盖的函数"
   sed 's/^/    /' <<<"$out"
 fi
 
-# pyflakes catches a name read before it is bound (F823), which the tests can miss; the strict 3.14
-# compile catches invalid escapes ('\d') that the Mac's own 3.9 accepts in silence.
-echo "▶ 8/17 静态检查（pyflakes + 3.14 严格编译）"
-PY314="/opt/homebrew/bin/python3"   # 11-22 全机统一最新 Python（方案 p01）；原 ~/.local/bin/python3.14 已删
+echo "▶ 8/17 静态检查（pyflakes + 最新版 Python 严格编译）"
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），pyflakes 跑不了"
 else
-  # okww_files 是上游原样文件，不归我们管。
-  # 2026-09-08 把 relay/tests 也纳进来：之前不查，于是 55 条报告在里面躺着，
-  # 其中 test_preupdate.py 那条 f-string 缺占位符指向一个真断言错误——
-  # 它用 for + break 只查了四个函数里的第一个。
-  # -q: on a cold cache uvx itself prints "Installed 1 package in 1ms" to stderr, which the
-  # 2>&1 below turned into a pyflakes "hit" (M4 lint, 2026-09-23 08:20:57; reproduced with an
-  # empty UV_CACHE_DIR). pyflakes' own reports and syntax errors still come through.
-  hits=$(uvx -q pyflakes relay/ark_relay relay/tests relay/service.py relay/boot_stages.py relay/run.py relay/make-manifest.py scripts 2>&1 \
+  hits=$(uvx -q pyflakes relay/ark_relay relay/tests relay/service.py relay/boot_stages.py relay/run.py relay/make-manifest.py packaging scripts 2>&1 \
          | grep -v 'okww_files' || true)
   [ -z "$hits" ] && ok "pyflakes 零报告" || { note "pyflakes 有报告（未定义名 / 先读后绑定 / 无用导入）"; sed 's/^/       /' <<<"$hits" | head -12; }
 fi
-if [ -x "$PY314" ]; then
-  if out=$("$PY314" -W error::SyntaxWarning -c "
+if [ -x "$RELAY_HOST_PY" ]; then
+  if out=$("$RELAY_HOST_PY" -W error::SyntaxWarning -c "
 import compileall, sys
 ok = compileall.compile_dir('relay/ark_relay', quiet=1, force=True, legacy=False)
 ok = compileall.compile_file('relay/service.py', quiet=1, force=True) and ok
 ok = compileall.compile_file('relay/boot_stages.py', quiet=1, force=True) and ok
+ok = compileall.compile_dir('packaging', quiet=1, force=True) and ok
 ok = compileall.compile_dir('scripts', quiet=1, force=True) and ok
 sys.exit(0 if ok else 1)" 2>&1); then
-    ok "3.14 严格编译通过（无非法转义）"
+    ok "最新版 Python（$("$RELAY_HOST_PY" -V 2>&1)）严格编译通过（无非法转义）"
   else
-    note "3.14 严格编译失败（机器上跑的就是 3.14）"; sed 's/^/       /' <<<"$out" | tail -6
+    note "最新版 Python 严格编译失败"; sed 's/^/       /' <<<"$out" | tail -6
   fi
 else
-  note "找不到 $PY314，没法按机器的 Python 版本编译"
+  note "找不到 $RELAY_HOST_PY，没法按最新版 Python 严格编译"
 fi
 
 echo "▶ 9/17 测试语料必须入库"
@@ -179,7 +284,6 @@ done < <(find relay/tests/fixtures -type f 2>/dev/null; ls relay/tests/fx_sample
 [ "$missing" = 0 ] && ok "测试语料都在库里"
 
 echo "▶ 10/17 中继的状态只能由中继自己写"
-# A state the relay reads is changed only through its own functions, never by writing the file.
 if hits=$(grep -rnE 'ark-relay[\\/]state[\\/][A-Za-z0-9_.-]+' scripts/windows scripts/mac 2>/dev/null \
           | grep -vE 'statestore|state\.json|\.migrated|^\s*(#|rem )' \
           | grep -iE '>|set-content|write_text|echo .*>|del |remove-item'); then
@@ -190,15 +294,6 @@ else
 fi
 
 echo "▶ 11/17 公开仓库里不许有他人身份信息"
-# 仓库是 public 的。别人的姓名、主机名、登录方式一旦提交就等于公开挂出去。
-# The owner's game UID too: OK-WW's OCR dumps read it off the screen as the UID label followed
-# by digits (the last alternative of ID_RE), and until 2026-10-13 it sat in plain text in eight
-# committed files (now UIDREDACT, same length so offsets hold). Machine logs are committed as
-# .log / .jsonl / .json and gzip / zstd, so the scan covers those and the compressed files'
-# contents. ID_RE is the one copy of the pattern (relay/tests/test_verify.py reads it from this
-# line); never put the UID itself here.
-# .claude/worktrees is git-ignored, so nothing there is public; a worktree older than 10-13 still holds the
-# unredacted logs and failed the scan on 10-29 / 10-31 (95 lines in relay1-skipabort, none of them in the repo).
 ID_RE='卢智超|Administrator[^a-zA-Z].{0,20}(空密码|无密码|自动登录)|特征码(:|：) *[0-9]'
 if hits=$( { grep -rnE "$ID_RE" \
           --include='*.md' --include='*.py' --include='*.sh' --include='*.js' \
@@ -206,7 +301,6 @@ if hits=$( { grep -rnE "$ID_RE" \
           --include='*.csv' --include='*.tsv' --include='*.yml' --include='*.yaml' --include='*.html' \
           --exclude-dir=worktrees . 2>/dev/null | grep -v '^\./\.git/' | grep -v 'lint-repo.sh'
         git ls-files '*.gz' '*.zst' | while IFS= read -r f; do
-          # (pattern) with both parens: bash 3.2 (macOS /bin/bash) misreads a lone `)` inside $( ).
           case "$f" in
             (*.gz) gzip -dc "$f" ;;
             (*.zst) zstd -qdc "$f" ;;
@@ -221,7 +315,6 @@ else
 fi
 
 echo "▶ 12/17 文档和脚本都要有入口"
-# A document or script nothing points to is never read again, and gets written a second time.
 orphan=0
 for f in docs/*.md; do
   base=$(basename "$f")
@@ -239,9 +332,7 @@ done
 [ "$miss" = 0 ] && ok "每个入口脚本都有文档提到"
 
 echo "▶ 13/17 部署清单要和代码对得上"
-# Code that differs from the manifest never reaches the machine, and nothing says so.
-# RELEASE-NOTES.md differs on purpose: the deploy builds the manifest, then empties the notes.
-if out=$(python3 - <<'PY'
+if out=$("$RELAY_HOST_PY" - <<'PY'
 import hashlib, json, sys
 from pathlib import Path
 m = json.loads(Path("relay/manifest.json").read_text(encoding="utf-8"))
@@ -258,16 +349,14 @@ print("\n".join(bad))
 sys.exit(1 if bad else 0)
 PY
 ); then
-  ok "清单和代码一致（$(python3 -c "import json;print(len(json.load(open('relay/manifest.json'))['files']))") 个文件）"
+  ok "清单和代码一致（$("$RELAY_HOST_PY" -c "import json;print(len(json.load(open('relay/manifest.json'))['files']))") 个文件）"
 else
-  note "清单和代码对不上，机器不会拿到这些改动——跑 (cd relay && python3 make-manifest.py) 重建："
+  note "清单和代码对不上，机器不会拿到这些改动——跑 (cd relay && /opt/homebrew/bin/python3 make-manifest.py) 重建："
   sed 's/^/       /' <<<"$out"
 fi
 
 echo "▶ 14/17 日志名要和模块名对得上"
-# A logger named other than its module makes a grep of the log by module name find nothing.
-# Modules that share a name on purpose (preupdate_*, gameupdate_*, the collector split, __main__ as the root) are allow-listed.
-if out=$(python3 scripts/mac/lib/deadcode.py --loggernames); then
+if out=$("$RELAY_HOST_PY" scripts/mac/lib/deadcode.py --loggernames); then
   ok "每个模块的日志名都等于 ark.<模块名>"
 else
   note "日志名和模块名对不上，按模块名翻日志会翻空："
@@ -275,8 +364,7 @@ else
 fi
 
 echo "▶ 15/17 测试里的 check() 只准有一个意思"
-# check(label, got, want) compares, require(name, ok, detail) asserts; swapped arguments would pass silently.
-if out=$(python3 scripts/mac/lib/deadcode.py --checkshape); then
+if out=$("$RELAY_HOST_PY" scripts/mac/lib/deadcode.py --checkshape); then
   ok "check() 与 require() 的参数意思全仓一致"
 else
   note "测试里的断言函数参数意思对不上，写反了不会报错："
@@ -284,12 +372,6 @@ else
 fi
 
 echo "▶ 16/17 ruff（让那些 noqa 真的有人验）"
-# 2026-09-08: the repo held 521 `# noqa:` comments while there was no ruff config and
-# nothing - no script, no CI - had ever run ruff. Not one of them had been checked.
-# One named the rule PLC4015 (the real one is PLC0415) and had been quietly wrong ever
-# since. With 239 empty ones cleared out, every remaining noqa really does suppress a
-# rule, and RUF100 watches them: the moment an exemption becomes redundant this goes red.
-# Which rules are on, and why, is written in ruff.toml.
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），ruff 跑不了"
 elif out=$(uvx ruff check --config ruff.toml . 2>&1); then
@@ -300,13 +382,6 @@ else
 fi
 
 echo "▶ 17/17 中继代码按 ruff 的 F（会出错的）和 B（bugbear，容易藏错的）两类查，0 处"
-# 2026-10-11: pyflakes (item 8) and the noqa set (item 16) never looked at the bugbear class.
-# The first run over the relay code found 4 besides the zip() ones: two raises that dropped
-# their cause, a dead loop variable, a closure over a name the loop rebinds (harmless there,
-# noqa with the reason). B905 (zip() without strict=) was off while the Mac ran the tests on
-# 3.9; since 10-12 they run on 3.14 (item 6) and each of its 15 sites says strict=. Line length (E501) and `;` (E702) are left
-# out on purpose: they change how code reads, not what it does.
-# Rules: https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），ruff 跑不了"
 elif out=$(uvx ruff check --config ruff.toml --select F,B relay/ark_relay relay/*.py scripts/windows 2>&1); then

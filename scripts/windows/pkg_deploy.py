@@ -100,12 +100,50 @@ RUNTIME_FREE_S = 30                    # after the stops, how long until nothing
 RENAME_TRIES = 10                      # a folder rename right after the processes ended can
                                        # meet a handle not yet closed (antivirus, the loader)
 HELPER_LIKE = "*launch.py*relaunch*"   # packaging/switch.py HELPER_LIKE
-# Run by the runtime under test: it must start, load Pillow and pywin32 (the DLLs next to
-# python.exe and pywin32's .pth through site), and say what it is.
+# 试跑探针：验证新运行环境能正常导入 Pillow、pywin32 与 WinRT OCR（全部是中继运行必需依赖）。
 PROBE = ("import json, platform, importlib.metadata as m\n"
          "import PIL.Image, pythoncom, pywintypes, win32api, win32event, win32service, win32serviceutil, win32ts\n"
+         "import winrt.windows.media.ocr\n"
          "print(json.dumps({'py': platform.python_version(),"
          " 'pkgs': {d.metadata['Name']: d.version for d in m.distributions()}}))\n")
+
+_PWSH7_DEFAULT = Path(r"C:\Program Files\PowerShell\7\pwsh.exe")
+
+
+def _resolve_pwsh() -> str:
+    """动态从注册表解析本机最高版本 PowerShell 7（pwsh.exe），严禁回退 PowerShell 5.1。"""
+    if sys.platform == "win32":
+        try:
+            import winreg  # noqa: PLC0415 - 仅在 Windows 上存在
+
+            best: tuple[tuple[int, ...], str] | None = None
+            root = r"SOFTWARE\Microsoft\PowerShellCore\InstalledVersions"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root) as key:
+                idx = 0
+                while True:
+                    try:
+                        sub = winreg.EnumKey(key, idx)
+                    except OSError:
+                        break
+                    idx += 1
+                    try:
+                        with winreg.OpenKey(key, sub) as sk:
+                            ver_s, _ = winreg.QueryValueEx(sk, "SemanticVersion")
+                            inst, _ = winreg.QueryValueEx(sk, "InstallDir")
+                    except OSError:
+                        continue
+                    cand = Path(str(inst)) / "pwsh.exe"
+                    if cand.is_file():
+                        nums = tuple(int(x) for x in re.findall(r"\d+", str(ver_s))) or (0,)
+                        if best is None or nums > best[0]:
+                            best = (nums, str(cand))
+            if best is not None:
+                return best[1]
+        except OSError:
+            pass
+    if _PWSH7_DEFAULT.is_file():
+        return str(_PWSH7_DEFAULT)
+    return shutil.which("pwsh") or str(_PWSH7_DEFAULT)
 
 
 def _layout(code: Path):
@@ -527,22 +565,22 @@ class WinRuntime:
         ps = ("Get-CimInstance Win32_Process -Filter \"Name='pythonw.exe'\" -EA SilentlyContinue | "
               f"Where-Object {{ $_.CommandLine -like '{HELPER_LIKE}' }} | "
               "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue }")
-        subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
-                       capture_output=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        subprocess.run([_resolve_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+                       capture_output=True, timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         r = subprocess.run([sys.executable, str(self.app / "launch.py"), "stop"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           timeout=60, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return "" if r.returncode == 0 else f"launch.py stop exit {r.returncode}"
 
     def holders(self) -> "list[str]":
-        """The processes started from {app}\\runtime\\python ("<pid> <name>" each)."""
+        """查询仍从 {app}\\runtime\\python 启动的残留进程（统一走动态最新 pwsh 7，禁 5.1）。"""
         where = str(self.app / "runtime" / "python") + "\\*"
         ps = ("Get-CimInstance Win32_Process -EA SilentlyContinue | "
               f"Where-Object {{ $_.ExecutablePath -like '{where}' }} | "
               "ForEach-Object { '' + $_.ProcessId + ' ' + $_.Name }")
-        r = subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+        r = subprocess.run([_resolve_pwsh(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                           timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
 
     def probe(self, exe: Path) -> "tuple[str, dict[str, str]]":

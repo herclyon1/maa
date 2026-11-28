@@ -3,9 +3,19 @@
 #   stream-ins.sh              -> absolute mouse (desktop / menus)
 #   stream-ins.sh --relative   -> relative mouse (3D camera rotation in game)
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
 
-MOON=/Applications/Moonlight.app/Contents/MacOS/Moonlight
-MOON_HOST=100.65.39.119
+# 第 1 层断电硬锁（08:40:00–08:45:59 CST 禁止向游戏机发起串流连接，返回 RC=78）
+ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+if [ -f "$ARK_PC_LIB" ]; then
+  # shellcheck source=lib/powercut-guard.sh
+  . "$ARK_PC_LIB"
+  ark_powercut_guard 1 "stream-ins.sh" || exit $?
+fi
+
+# 允许单测通过 ARK_MOONLIGHT_BIN 注入桩程序，避免测试误启真实 Moonlight 串流
+MOON="${ARK_MOONLIGHT_BIN:-/Applications/Moonlight.app/Contents/MacOS/Moonlight}"
+MOON_HOST="${ARK_HOST:-100.65.39.119}"
 MOON_APP=Desktop
 MOON_RES=2880x1864
 MOON_BITRATE=70000

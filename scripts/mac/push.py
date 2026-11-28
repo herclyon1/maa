@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Push a message to the phone from this Mac.
 
     push.py "标题"                    # 正文从 stdin 读 → Server酱

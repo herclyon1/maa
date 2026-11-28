@@ -21,6 +21,7 @@
 #   adbdo.sh seq 'tap 100 200' 'sleep 2' 'tap 300 400' 'shot'
 #                                    一次连发多步，**只走一趟 ssh**
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -29,6 +30,18 @@ if [ -f "$ARK_ACTION_LIB" ]; then
   # shellcheck source=lib/mac-action-log.sh
   . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
 fi
+
+case "${1:-}" in
+  tap|swipe|key|text|focus|shot|raw|seq)
+    # 第 1 层断电硬锁（08:40:00–08:45:59 CST 禁止向游戏机发远程命令，返回 RC=78）
+    ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+    if [ -f "$ARK_PC_LIB" ]; then
+      # shellcheck source=lib/powercut-guard.sh
+      . "$ARK_PC_LIB"
+      ark_powercut_guard 1 "adbdo.sh" || exit $?
+    fi
+    ;;
+esac
 
 HOST="${ARK_HOST:-100.65.39.119}"
 USER_AT="Administrator@${HOST}"

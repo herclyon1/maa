@@ -63,20 +63,27 @@ STOP_NOTICE = "收到停止通知"
 
 
 def _wait_for_network(log, timeout: float = 90.0) -> bool:
-    """Block until DNS answers, or give up. True if the network came up; False when it
-    did not within `timeout`, or at once when the service is stopping.
+    """开机后阻塞等待国内 DNS 就绪（最多等 timeout 秒），收到停止请求则立刻退出。
 
-来龙去脉见 docs/CODE-HISTORY.md「service.py:_wait_for_network」。
+    游戏机在中国国内连不上海外代码托管，因此探针只查询国内稳定可达的腾讯云 COS 与国产游戏官服域名，
+    绝不再探测海外托管域名。任一域名解析成功即视作网络已通。
+    来龙去脉见 docs/CODE-HISTORY.md「service.py:_wait_for_network」。
     """
-    import socket  # noqa: PLC0415 - only needed on this path
+    import socket  # noqa: PLC0415 - 仅开机探网路径需要
 
+    # 探针域名列表必须内联在函数内（test_host.py 会按函数切片独立 exec 测本函数）；
+    # 每次尝试轮换国内 COS 与国产游戏官服域名，单域名异常时 2 秒内自动切到备用国内域名。
+    probe_hosts = ("cos.ap-shanghai.myqcloud.com", "ak.hypergryph.com")
     deadline = time.monotonic() + timeout
-    delay, waited = 2.0, False
+    delay, waited, attempt = 2.0, False, 0
     while True:
+        host = probe_hosts[attempt % len(probe_hosts)]
+        attempt += 1
         try:
-            socket.getaddrinfo("raw.githubusercontent.com", 443)
+            socket.getaddrinfo(host, 443)
             if waited:
-                log.info("网络已就绪（等了 %.0f 秒）", timeout - (deadline - time.monotonic()))
+                log.info("网络已就绪（等了 %.0f 秒，探针 %s）",
+                         timeout - (deadline - time.monotonic()), host)
             return True
         except OSError as exc:
             left = deadline - time.monotonic()

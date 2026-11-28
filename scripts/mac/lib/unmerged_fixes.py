@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Deploy gate: no finished relay fix may sit on a branch, outside main, unreviewed.
 
 On 10-11 23 local branches turned out to hold relay changes that never reached main.

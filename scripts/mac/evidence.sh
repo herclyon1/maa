@@ -17,6 +17,12 @@
 # This script keeps a local mirror of the index so the entries are known while
 # the machine is off.
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "evidence: 找不到最新版 Homebrew Python（${MAC_PY}），拒绝回退系统旧版" >&2
+  exit 1
+fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 MIRROR="$HOME/Claude/ark-evidence/index.jsonl"
 mkdir -p "$(dirname "$MIRROR")"
@@ -38,7 +44,7 @@ refresh() {
 case "${1:-list}" in
   list)
     refresh
-    python3 - "$MIRROR" <<'EOF'
+    "$MAC_PY" - "$MIRROR" <<'EOF'
 import json, sys, pathlib
 p = pathlib.Path(sys.argv[1])
 if not p.exists():
@@ -61,14 +67,14 @@ EOF
     ;;
   pull)
     run="${2:?usage: evidence.sh pull <run-id fragment>}"
-    python3 "$HERE/lib/evidence_pull.py" "$MIRROR" "$run" "$HOME/Claude/ark-evidence" ;;
+    "$MAC_PY" "$HERE/lib/evidence_pull.py" "$MIRROR" "$run" "$HOME/Claude/ark-evidence" ;;
   open)
     run="${2:?usage: evidence.sh open <run-id fragment>}"
-    page=$(grep -F "$run" "$MIRROR" | tail -1 | python3 -c 'import sys, json; print(json.loads(sys.stdin.read()).get("page", ""))')
+    page=$(grep -F "$run" "$MIRROR" | tail -1 | "$MAC_PY" -c 'import sys, json; print(json.loads(sys.stdin.read()).get("page", ""))')
     [ -n "$page" ] || { echo "索引里没有 $run 的下载页" >&2; exit 1; }
     echo "$page"; open "$page" ;;
   daily)
     shift
-    python3 "$HERE/lib/evidence_pull.py" --daily "$@" ;;
+    "$MAC_PY" "$HERE/lib/evidence_pull.py" --daily "$@" ;;
   *) echo "usage: evidence.sh list | pull <run-id fragment> | open <run-id fragment> | daily <YYYY-MM-DD> [HH:MM HH:MM]" >&2; exit 2 ;;
 esac

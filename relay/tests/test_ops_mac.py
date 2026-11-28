@@ -904,7 +904,7 @@ USER_AT=Administrator@host
 LAYOUT={layout}
 CHANGED="ark_relay/core/texts.py"
 SMOKE_PY='"C:\\py\\python.exe"'; SMOKE_ARGS=""
-PY='D:\\ark\\automas\\environment\\python\\python.exe'
+PY='C:\\Program Files\\ArkRelay\\runtime\\python\\python.exe'
 REMOTE_DIR='C:/ProgramData/ark-relay'
 BACKUP_DIR='C:\\ProgramData\\ark-relay-deploy-prev'
 WATCH_PY='C:\\Users\\Administrator\\ark-deploy-watch.py'

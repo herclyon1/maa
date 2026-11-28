@@ -22,6 +22,7 @@
 #
 # 图形程序必须从 session 1 起（ssh 那个会话没有桌面），所以照例走 /it 计划任务。
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -29,6 +30,13 @@ ARK_ACTION_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/mac-action-log.sh"
 if [ -f "$ARK_ACTION_LIB" ]; then
   # shellcheck source=lib/mac-action-log.sh
   . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
+fi
+# 第 1 层断电硬锁（08:40:00–08:45:59 CST 禁止向游戏机发远程命令，返回 RC=78）
+ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+if [ -f "$ARK_PC_LIB" ]; then
+  # shellcheck source=lib/powercut-guard.sh
+  . "$ARK_PC_LIB"
+  ark_powercut_guard 1 "okww-task.sh" || exit $?
 fi
 
 HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"

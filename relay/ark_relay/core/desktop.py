@@ -1,13 +1,18 @@
 """Process listing through WMI's COM interface - the one door that still exists."""
 from __future__ import annotations
 
-import logging
-import os
-import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+import asyncio
 import hashlib
 import json
+import logging
+import math
+import re
+import shutil
 import subprocess
+import sys
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -118,13 +123,232 @@ def python_processes(*, warn: bool = True,
 
 log = logging.getLogger("ark.desktop")
 
-POWERSHELL = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
+# PowerShell 7 默认安装路径（零 PowerShell 5.1 回退；Windows 侧优先从注册表动态取最高版本）
+PWSH = Path(r"C:\Program Files\PowerShell\7\pwsh.exe")
 _RUN_LOCK = threading.Lock()
 
-# The agent script. Embedded here in full rather than as a separate .ps1,
-# because the deploy manifest only picks up ark_relay/*.py (see
-# make-manifest.py); embedding also keeps it and its caller on the same version
-# forever.
+
+def _semver_key(raw: str) -> tuple[int, ...]:
+    """把语义版本号字符串（如 '7.6.10'）拆成整数元组用于降序比对，不写死任何具体版本号。"""
+    nums = [int(x) for x in re.findall(r"\d+", str(raw or ""))]
+    return tuple(nums) if nums else (0,)
+
+
+def resolve_pwsh() -> Path:
+    """动态解析游戏机上已安装的最新版 PowerShell 7（pwsh.exe），严禁回退 PowerShell 5.1。
+
+    查找顺序：
+    1. Windows 注册表 HKLM\\SOFTWARE\\Microsoft\\PowerShellCore\\InstalledVersions\\* 中语义版本最高的 InstallDir\\pwsh.exe；
+    2. 滚动安装路径 C:\\Program Files\\PowerShell\\7\\pwsh.exe；
+    3. PATH 中的 pwsh / pwsh.exe。
+    """
+    if IS_WINDOWS:
+        try:
+            import winreg  # noqa: PLC0415 - 仅在 Windows 上存在
+
+            best: tuple[tuple[int, ...], Path] | None = None
+            root = r"SOFTWARE\Microsoft\PowerShellCore\InstalledVersions"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, root) as key:
+                idx = 0
+                while True:
+                    try:
+                        sub = winreg.EnumKey(key, idx)
+                    except OSError:
+                        break
+                    idx += 1
+                    try:
+                        with winreg.OpenKey(key, sub) as sk:
+                            ver_s, _ = winreg.QueryValueEx(sk, "SemanticVersion")
+                            inst, _ = winreg.QueryValueEx(sk, "InstallDir")
+                    except OSError:
+                        continue
+                    cand = Path(str(inst)) / "pwsh.exe"
+                    if cand.is_file():
+                        ver_k = _semver_key(str(ver_s))
+                        if best is None or ver_k > best[0]:
+                            best = (ver_k, cand)
+            if best is not None:
+                return best[1]
+        except OSError:
+            pass
+    for candidate in (PWSH,):
+        if candidate.is_file():
+            return candidate
+    found = shutil.which("pwsh")
+    if found:
+        return Path(found)
+    return PWSH
+
+
+def _console_python() -> str:
+    """返回与当前运行环境对应的控制台 python.exe（避免 pythonw.exe 无 stdout 管道导致读不到 OCR JSON）。"""
+    exe = Path(sys.executable)
+    if exe.name.lower() == "pythonw.exe":
+        return str(exe.with_name("python.exe"))
+    return str(exe)
+
+
+def _deskew_rect(x1: float, y1: float, x2: float, y2: float,
+                 angle_deg: float, width: int, height: int) -> tuple[int, int, int, int]:
+    """当 Windows.Media.Ocr 返回非零 TextAngle 时，把纠偏坐标系下的文字框旋回原图像素坐标。
+
+    背景：2026-11-25 终末地 v1.7 启动器背景图倾斜（TextAngle=-5.6 度），若不旋回原图坐标，
+    「开始游戏」按钮会被向下偏移约 40 像素误点到「DirectX 11 启动」。
+    """
+    if abs(angle_deg) > 0.01 and x2 > x1:
+        rad = math.radians(angle_deg)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+        cx, cy = width / 2.0, height / 2.0
+        rx1 = ry1 = 1e9
+        rx2 = ry2 = -1e9
+        for px, py in ((x1, y1), (x2, y1), (x1, y2), (x2, y2)):
+            dx, dy = px - cx, py - cy
+            nx = cx + dx * cos_a - dy * sin_a
+            ny = cy + dx * sin_a + dy * cos_a
+            if nx < rx1:
+                rx1 = nx
+            if ny < ry1:
+                ry1 = ny
+            if nx > rx2:
+                rx2 = nx
+            if ny > ry2:
+                ry2 = ny
+        x1, y1, x2, y2 = rx1, ry1, rx2, ry2
+    return int(x1), int(y1), int(x2 - x1), int(y2 - y1)
+
+
+async def _winrt_ocr_lines_async(path: Path) -> list[dict]:
+    """使用 Python 原生 WinRT（Windows.Media.Ocr）异步识别一张本地图片并返回带像素坐标的行列表。"""
+    from winrt.windows.globalization import Language  # noqa: PLC0415 - Windows 专用依赖
+    from winrt.windows.graphics.imaging import BitmapDecoder  # noqa: PLC0415
+    from winrt.windows.media.ocr import OcrEngine  # noqa: PLC0415
+    from winrt.windows.storage import FileAccessMode, StorageFile  # noqa: PLC0415
+
+    storage_file = await StorageFile.get_file_from_path_async(str(Path(path).resolve()))
+    stream = await storage_file.open_async(FileAccessMode.READ)
+    try:
+        dec = await BitmapDecoder.create_async(stream)
+        bmp = await dec.get_software_bitmap_async()
+        lang = Language("zh-Hans-CN")
+        engine = OcrEngine.try_create_from_language(lang)
+        if engine is None:
+            raise RuntimeError("OCR 引擎建不起来（zh-Hans-CN）")
+        res = await engine.recognize_async(bmp)
+        ang = float(res.text_angle) if res.text_angle is not None else 0.0
+        w_px, h_px = int(bmp.pixel_width), int(bmp.pixel_height)
+        lines: list[dict] = []
+        for line in res.lines:
+            x1 = y1 = 1e9
+            x2 = y2 = 0.0
+            parts: list[str] = []
+            for word in line.words:
+                rc = word.bounding_rect
+                if rc.x < x1:
+                    x1 = rc.x
+                if rc.y < y1:
+                    y1 = rc.y
+                if rc.x + rc.width > x2:
+                    x2 = rc.x + rc.width
+                if rc.y + rc.height > y2:
+                    y2 = rc.y + rc.height
+                parts.append(word.text)
+            if not parts:
+                continue
+            bx, by, bw, bh = _deskew_rect(x1, y1, x2, y2, ang, w_px, h_px)
+            lines.append({"text": "".join(parts), "x": bx, "y": by, "w": bw, "h": bh})
+        return lines
+    finally:
+        stream.close()
+
+
+def _winrt_ocr_lines(path: Path) -> list[dict]:
+    """同步封装 WinRT OCR 识别，返回 [{'text','x','y','w','h'}, ...]。"""
+    return asyncio.run(_winrt_ocr_lines_async(path))
+
+
+# 嵌入在 desktop.py 里的独立 OCR 子脚本：由交互桌面中的 pwsh 7 agent.ps1 调用中继 Python 执行，
+# 彻底摆脱 PowerShell 5.1 的 ContentType=WindowsRuntime 依赖，并与调用方保持永久同版本。
+OCR_HELPER_PY = r'''"""由桌面助手（pwsh 7）调用的 Python 原生 WinRT OCR 辅助脚本。"""
+import asyncio
+import json
+import math
+import sys
+from pathlib import Path
+
+from winrt.windows.globalization import Language
+from winrt.windows.graphics.imaging import BitmapDecoder
+from winrt.windows.media.ocr import OcrEngine
+from winrt.windows.storage import FileAccessMode, StorageFile
+
+
+def deskew_rect(x1, y1, x2, y2, angle_deg, width, height):
+    if abs(angle_deg) > 0.01 and x2 > x1:
+        rad = math.radians(angle_deg)
+        cos_a, sin_a = math.cos(rad), math.sin(rad)
+        cx, cy = width / 2.0, height / 2.0
+        rx1 = ry1 = 1e9
+        rx2 = ry2 = -1e9
+        for px, py in ((x1, y1), (x2, y1), (x1, y2), (x2, y2)):
+            dx, dy = px - cx, py - cy
+            nx = cx + dx * cos_a - dy * sin_a
+            ny = cy + dx * sin_a + dy * cos_a
+            if nx < rx1:
+                rx1 = nx
+            if ny < ry1:
+                ry1 = ny
+            if nx > rx2:
+                rx2 = nx
+            if ny > ry2:
+                ry2 = ny
+        x1, y1, x2, y2 = rx1, ry1, rx2, ry2
+    return int(x1), int(y1), int(x2 - x1), int(y2 - y1)
+
+
+async def run(img_path: str):
+    f = await StorageFile.get_file_from_path_async(str(Path(img_path).resolve()))
+    stream = await f.open_async(FileAccessMode.READ)
+    try:
+        dec = await BitmapDecoder.create_async(stream)
+        bmp = await dec.get_software_bitmap_async()
+        engine = OcrEngine.try_create_from_language(Language("zh-Hans-CN"))
+        if engine is None:
+            raise RuntimeError("OCR 引擎建不起来（zh-Hans-CN）")
+        res = await engine.recognize_async(bmp)
+        ang = float(res.text_angle) if res.text_angle is not None else 0.0
+        w_px, h_px = int(bmp.pixel_width), int(bmp.pixel_height)
+        lines = []
+        for line in res.lines:
+            x1 = y1 = 1e9
+            x2 = y2 = 0.0
+            parts = []
+            for word in line.words:
+                rc = word.bounding_rect
+                if rc.x < x1:
+                    x1 = rc.x
+                if rc.y < y1:
+                    y1 = rc.y
+                if rc.x + rc.width > x2:
+                    x2 = rc.x + rc.width
+                if rc.y + rc.height > y2:
+                    y2 = rc.y + rc.height
+                parts.append(word.text)
+            if not parts:
+                continue
+            bx, by, bw, bh = deskew_rect(x1, y1, x2, y2, ang, w_px, h_px)
+            lines.append({"text": "".join(parts), "x": bx, "y": by, "w": bw, "h": bh})
+        return lines
+    finally:
+        stream.close()
+
+
+if __name__ == "__main__":
+    out = asyncio.run(run(sys.argv[1]))
+    sys.stdout.write(json.dumps(out, ensure_ascii=False))
+'''
+
+# 交互桌面助手脚本（由 pwsh 7 在 Session 1 执行，负责置前台、唤醒屏幕、截屏、点击；
+# 文字识别委派给同目录下的 ocr_helper.py 走 Python 原生 WinRT OCR）。
+# 整段内嵌在 desktop.py 里而不是单独放 .ps1，确保部署清单（仅扫 ark_relay/*.py）永远同版本下发。
 AGENT_PS = r'''
 param([string]$req, [string]$res)
 $ErrorActionPreference = 'Stop'
@@ -165,9 +389,7 @@ public class ArkD {
   $r = [IO.File]::ReadAllText($req, [Text.Encoding]::UTF8) | ConvertFrom-Json
 
   # 置前台：按进程名，或 title:窗口标题。同名多进程时按标题定位更稳。
-  # When the requested window is not there, whatever happens to be in front is
-  # NOT the launcher: say so in the result (focus_missing) and refuse to click,
-  # so another window's text is never read as the launcher's or clicked.
+  # 找不到目标窗口时标 focus_missing 并拒绝点击，避免把别的窗口文字误认成启动器。
   $focusMissing = $false
   if ($r.focus) {
     $f = [string]$r.focus
@@ -210,15 +432,7 @@ public class ArkD {
     }
   }
 
-  # The screen sleeps after 5 minutes and CopyFromScreen then hands back the last
-  # frame drawn before it went dark - no error, just a stale picture. Everything
-  # that reads the screen at the end of a queue is reading it after 45 minutes of
-  # MAA driving the emulator over ADB, which produces no system input at all, so
-  # the display is always asleep by then. On 2026-08-24 a frozen frame from 27
-  # minutes earlier was read as "the installer never started".
-  # A zero-distance relative mouse move wakes the display without moving the
-  # cursor or clicking anything; the wait is for the panel to actually come back.
-  # Once per agent run is enough - the move itself resets the idle timer.
+  # 屏幕熄灭 5 分钟后 CopyFromScreen 会吐出熄屏前的旧帧，零位移相对鼠标移动可无副作用唤醒屏幕。
   $script:ArkWoke = $false
   function WakeDisplay() {
     if ($script:ArkWoke) { return }
@@ -238,68 +452,32 @@ public class ArkD {
     $bmp.Dispose()
   }
 
-  # WinRT 的异步调用在 PowerShell 里要经 AsTask 转成 .NET Task 才能等
-  Add-Type -AssemblyName System.Runtime.WindowsRuntime
-  $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() |
-    Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
-                   $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
-  function Await($op, $type) {
-    $t = $asTaskGeneric.MakeGenericMethod($type).Invoke($null, @($op))
-    $t.Wait(-1) | Out-Null
-    $t.Result
-  }
+  # 文字识别统一委派给中继自带 Python 原生 WinRT OCR（ocr_helper.py），
+  # 彻底不再依赖 PowerShell 5.1 的 WindowsRuntime 类型加速器。
   function Ocr([string]$path) {
-    [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime] | Out-Null
-    [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
-    [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
-    [Windows.Globalization.Language,Windows.Globalization,ContentType=WindowsRuntime] | Out-Null
-    [Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime] | Out-Null
-    [Windows.Storage.FileAccessMode,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
-    [Windows.Graphics.Imaging.SoftwareBitmap,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
-    [Windows.Media.Ocr.OcrResult,Windows.Media.Ocr,ContentType=WindowsRuntime] | Out-Null
-    $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($path)) ([Windows.Storage.StorageFile])
-    $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
-    $dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-    $bmp = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-    $lang = New-Object Windows.Globalization.Language 'zh-Hans-CN'
-    $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
-    if ($null -eq $engine) { throw 'OCR 引擎建不起来（zh-Hans-CN）' }
-    $result = Await ($engine.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
-    # Windows.Media.Ocr returns Word BoundingRects in a frame deskewed by TextAngle
-    # around the image center; on artwork-heavy launchers (2026-11-25 Endfield v1.7,
-    # TextAngle=-5.6 deg) ignoring it shifts 「开始游戏」 ~40 px down onto 「DirectX 11 启动」.
-    # Rotate the four corners back into original image pixels whenever TextAngle is non-zero.
-    $ang = if ($null -ne $result.TextAngle) { [double]$result.TextAngle } else { 0.0 }
-    $rot = [Math]::Abs($ang) -gt 0.01
-    if ($rot) {
-      $rad = $ang * [Math]::PI / 180.0
-      $cos = [Math]::Cos($rad); $sin = [Math]::Sin($rad)
-      $cx = $bmp.PixelWidth / 2.0; $cy = $bmp.PixelHeight / 2.0
+    $pyExe = if ($r.python) { [string]$r.python } else { 'C:\Program Files\ArkRelay\runtime\python\python.exe' }
+    if ($pyExe -match 'pythonw\.exe$') { $pyExe = $pyExe -replace 'pythonw\.exe$', 'python.exe' }
+    $helper = if ($r.ocr_helper) { [string]$r.ocr_helper } else { Join-Path $PSScriptRoot 'ocr_helper.py' }
+    $oldEnc = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [Text.Encoding]::UTF8
+    try {
+      $raw = (& $pyExe -X utf8 $helper $path 2>&1)
+      $code = $LASTEXITCODE
+    } finally {
+      [Console]::OutputEncoding = $oldEnc
     }
+    if ($code -ne 0) {
+      throw ("Python WinRT OCR 失败（退出码 $code）：" + (($raw | Out-String).Trim()))
+    }
+    $text = ($raw | Out-String).Trim()
     $lines = New-Object System.Collections.ArrayList
-    foreach ($line in $result.Lines) {
-      $x1 = 1e9; $y1 = 1e9; $x2 = 0; $y2 = 0; $txt = ''
-      foreach ($w in $line.Words) {
-        $rc = $w.BoundingRect
-        if ($rc.X -lt $x1) { $x1 = $rc.X }; if ($rc.Y -lt $y1) { $y1 = $rc.Y }
-        if ($rc.X + $rc.Width -gt $x2) { $x2 = $rc.X + $rc.Width }
-        if ($rc.Y + $rc.Height -gt $y2) { $y2 = $rc.Y + $rc.Height }
-        $txt += $w.Text
+    if (-not $text) { return $lines }
+    $parsed = $text | ConvertFrom-Json
+    foreach ($item in @($parsed)) {
+      if ($null -ne $item) {
+        [void]$lines.Add(@{ text = [string]$item.text; x = [int]$item.x; y = [int]$item.y; w = [int]$item.w; h = [int]$item.h })
       }
-      if ($rot -and $x2 -gt $x1) {
-        $rx1 = 1e9; $ry1 = 1e9; $rx2 = -1e9; $ry2 = -1e9
-        foreach ($pt in @(@($x1,$y1), @($x2,$y1), @($x1,$y2), @($x2,$y2))) {
-          $dx = $pt[0] - $cx; $dy = $pt[1] - $cy
-          $nx = $cx + $dx * $cos - $dy * $sin
-          $ny = $cy + $dx * $sin + $dy * $cos
-          if ($nx -lt $rx1) { $rx1 = $nx }; if ($ny -lt $ry1) { $ry1 = $ny }
-          if ($nx -gt $rx2) { $rx2 = $nx }; if ($ny -gt $ry2) { $ry2 = $ny }
-        }
-        $x1 = $rx1; $y1 = $ry1; $x2 = $rx2; $y2 = $ry2
-      }
-      [void]$lines.Add(@{ text = $txt; x = [int]$x1; y = [int]$y1; w = [int]($x2 - $x1); h = [int]($y2 - $y1) })
     }
-    $stream.Dispose()
     return $lines
   }
   # 第二遍识别：黑字配亮黄底的按钮（鹰角启动器「开始游戏」）整屏 OCR 会漏掉。
@@ -357,7 +535,7 @@ public class ArkD {
     switch ([string]$a.act) {
       'wait' { Start-Sleep -Milliseconds ([int]$a.ms); [void]$log.Add("wait $($a.ms)") }
       'shot' { Shot $shot; [void]$log.Add("shot $shot") }
-      # Wake the display only, no picture: display_wake.py, while AUTO-MAS starts Endfield's launcher.
+      # 仅唤醒屏幕不截屏：供 display_wake.py 在 AUTO-MAS 拉起终末地启动器时使用
       'wake' { WakeDisplay; [void]$log.Add("wake") }
       'ocr' {
         Shot $shot
@@ -372,7 +550,7 @@ public class ArkD {
         [void]$log.Add("ocr $($lines.Count) 行（窗口增强 $($extra.Count) 行）")
       }
       'ocrfile' {
-        # OCR a downloaded image file (the Wuthering Waves version calendar); no screenshot
+        # 识别已下载的本地图片文件（如鸣潮版本活动日历长图），不截屏
         $lines = New-Object System.Collections.ArrayList
         foreach ($e in @(Ocr ([string]$a.path))) { [void]$lines.Add($e) }
         $out.ocr = @($lines)
@@ -393,14 +571,13 @@ public class ArkD {
             $out.ocr = @($lines)
           }
           $want = ([string]$a.text) -replace '\s', ''
-          # Two characters or fewer (确认, 更新) must be the whole OCR line: as a
-          # substring 「更新」 also hits a news headline like 「版本更新公告」.
+          # 两字及以内的按钮词（如「确认」「更新」）必须整行完全相等，防止误点新闻标题「版本更新公告」。
           $hit = $lines | Where-Object {
             $t = ($_.text -replace '\s', '')
             if ($want.Length -le 2) { $t -eq $want } else { $t -like "*$want*" }
           } | Select-Object -First 1
           if ($null -eq $hit -and $want.Length -ge 4) {
-            # 容忍 1 个字的误差（「开始游戏」被认成「丹始游戏」）
+            # 四字及以上容忍 1 个字的 OCR 误差（如「开始游戏」被认成「丹始游戏」）
             $hit = $lines | Where-Object {
               $t = ($_.text -replace '\s', ''); $ok = $false
               for ($i = 0; $i -le $t.Length - $want.Length; $i++) {
@@ -413,8 +590,7 @@ public class ArkD {
           }
           if ($null -eq $hit) { [void]$log.Add("click_text: 屏幕上没有「$want」") }
           else {
-            # The whole OCR line that was hit: the relay's machine check reads it
-            # to confirm a word of two characters only ever hits its own line.
+            # 记录命中的完整 OCR 行，供上线核对确认两字短词不会误点长标题。
             [void]$log.Add("click_text: 点了「$($hit.text)」")
             Click ([int]($hit.x + $hit.w / 2)) ([int]($hit.y + $hit.h / 2))
           }
@@ -542,16 +718,13 @@ class Desktop:
     def __init__(self, state_dir: Path, spawn=None, timeout: float = 90, spawn_hidden=None):
         self.dir = Path(state_dir) / "desktop"
         self.agent = self.dir / "agent.ps1"
+        self.ocr_helper = self.dir / "ocr_helper.py"
         self.timeout = timeout
-        # `spawn` starts an agent that brings a window to the front (it needs a
-        # console window of its own to be allowed to); `spawn_hidden` starts one
-        # with no window at all, so the game in front stays in front. A test
-        # that passes only `spawn` gets it for both.
+        # `spawn` 用于需要置前台的交互任务（Session 1 保留 SetForegroundWindow 权限）；
+        # `spawn_hidden` 用于截屏/纯读屏等无窗口后台任务，绝不抢前台焦点。
         self._spawn = spawn or self._spawn_default
         self._spawn_hidden = spawn_hidden or spawn or self._spawn_hidden_default
-        # What every agent run asked and answered, plus the notes the update flows
-        # add (gameupdate_games._trace): the evidence the machine checks of a game
-        # update read (machinechecks/system.py #60-#62). Newest TRACE_KEEP kept.
+        # 记录每次桌面助手调用的问答明细，供上线核对（machinechecks/system.py #60-#62）读取。
         self.trace: list[dict] = []
 
     TRACE_KEEP = 300
@@ -571,14 +744,20 @@ class Desktop:
                   clicked=list(data.get("clicked") or []), shot=str(data.get("shot") or ""),
                   lines=[str(o.get("text") or "") for o in (data.get("ocr") or []) if isinstance(o, dict)][:40])
 
-    # -- dispatch --
+    # -- 派发与落盘 --
     def _ensure_agent(self) -> None:
+        """把内嵌的 agent.ps1（pwsh 7）与 ocr_helper.py（Python WinRT）按 SHA-256 原子同步落盘。"""
         self.dir.mkdir(parents=True, exist_ok=True)
         want = hashlib.sha256(AGENT_PS.encode("utf-8")).hexdigest()
         stamp = self.dir / "agent.sha256"
         if not (self.agent.exists() and stamp.exists() and stamp.read_text().strip() == want):
             atomic_write_bytes(self.agent, b"\xef\xbb\xbf" + AGENT_PS.encode("utf-8"))
             atomic_write_text(stamp, want)
+        want_ocr = hashlib.sha256(OCR_HELPER_PY.encode("utf-8")).hexdigest()
+        stamp_ocr = self.dir / "ocr_helper.sha256"
+        if not (self.ocr_helper.exists() and stamp_ocr.exists() and stamp_ocr.read_text().strip() == want_ocr):
+            atomic_write_text(self.ocr_helper, OCR_HELPER_PY)
+            atomic_write_text(stamp_ocr, want_ocr)
 
     @staticmethod
     def _spawn_default(exe: Path, cwd: Path, args: tuple[str, ...]) -> bool:
@@ -623,14 +802,13 @@ class Desktop:
         res = self.dir / f"res-{rid}.json"
         shot = self.dir / f"shot-{rid}.png"
         atomic_write_text(req, json.dumps(
-            {"focus": focus, "actions": actions, "shot": str(shot)}, ensure_ascii=False))
-        # Only a run that has to bring a window to the front keeps the
-        # console-window route measured for it: SetForegroundWindow is honoured
-        # for the foreground process and a few other cases (its Remarks on
-        # learn.microsoft.com), and a windowless agent is none of them. A
-        # picture, a read or a click leaves the foreground where it is.
+            {"focus": focus, "actions": actions, "shot": str(shot),
+             "python": _console_python(), "ocr_helper": str(self.ocr_helper)},
+            ensure_ascii=False))
+        # 需要置前台（focus）时保留交互会话路由以确保 SetForegroundWindow 权限；
+        # 纯截屏/读图/唤醒走无窗口路由。外壳统一使用动态解析的最新版 pwsh 7，零 5.1 回退。
         spawn = self._spawn if focus else self._spawn_hidden
-        ok = spawn(POWERSHELL, self.dir,
+        ok = spawn(resolve_pwsh(), self.dir,
                    ("-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-File",
                     str(self.agent), str(req), str(res)))
         if not ok:
@@ -722,65 +900,28 @@ class Desktop:
         return bool(data.get("ok")) and bool(data.get("clicked"))
 
 
-_OCR_FILE_PS = r'''
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | ? {
-  $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
-  $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
-})[0]
-function Await($op, $t) { $asTaskGeneric.MakeGenericMethod($t).Invoke($null, @($op)).GetAwaiter().GetResult() }
-[Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime] | Out-Null
-[Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
-[Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
-[Windows.Globalization.Language,Windows.Globalization,ContentType=WindowsRuntime] | Out-Null
-[Windows.Storage.Streams.IRandomAccessStream,Windows.Storage.Streams,ContentType=WindowsRuntime] | Out-Null
-[Windows.Storage.FileAccessMode,Windows.Storage,ContentType=WindowsRuntime] | Out-Null
-[Windows.Graphics.Imaging.SoftwareBitmap,Windows.Graphics.Imaging,ContentType=WindowsRuntime] | Out-Null
-[Windows.Media.Ocr.OcrResult,Windows.Media.Ocr,ContentType=WindowsRuntime] | Out-Null
-$file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($env:ARK_OCR_PATH)) ([Windows.Storage.StorageFile])
-$stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
-try {
-  $dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
-  $bmp = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-  $lang = New-Object Windows.Globalization.Language 'zh-Hans-CN'
-  $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
-  if ($null -eq $engine) { exit 2 }
-  $res = Await ($engine.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
-  foreach ($line in $res.Lines) {
-    Write-Output (($line.Words | % { $_.Text }) -join '')
-  }
-} finally {
-  $stream.Dispose()
-}
-'''
-
-
 def ocr_image_file(path: Path, timeout: float = 15.0) -> "str | None":
-    """Read text off one local PNG/image file with Windows.Media.Ocr without touching the desktop.
+    """直接使用 Python 原生 WinRT（Windows.Media.Ocr）识别一张本地图片，不碰桌面、不闪黑框、不调 PowerShell 5.1。
 
-    Returns the joined OCR lines (possibly '') on success, or None off Windows / when the
-    file is missing / when OCR fails. Runs hidden (CREATE_NO_WINDOW) so it never steals
-    focus or flashes a console while games run.
+    成功返回按行拼接的文本（可能为空串）；非 Windows、文件缺失、超时或 OCR 出错时返回 None。
     """
     if not IS_WINDOWS or not Path(path).is_file():
         return None
-    env = dict(os.environ)
-    env["ARK_OCR_PATH"] = str(Path(path).resolve())
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    target = Path(path).resolve()
+    pool = ThreadPoolExecutor(max_workers=1)
+    fut = pool.submit(_winrt_ocr_lines, target)
     try:
-        r = subprocess.run(
-            [str(POWERSHELL), "-NoProfile", "-WindowStyle", "Hidden", "-Command", _OCR_FILE_PS],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=timeout, env=env, creationflags=flags,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        log.info("本地读图失败（%s）：%s", Path(path).name, exc)
+        lines = fut.result(timeout=timeout)
+    except FutureTimeoutError:
+        log.info("本地读图超时（%s，超过 %.1f 秒）", target.name, timeout)
+        pool.shutdown(wait=False, cancel_futures=True)
         return None
-    if r.returncode != 0:
-        log.info("本地读图失败（%s，退出码 %s）：%s", Path(path).name, r.returncode, (r.stderr or "").strip()[:160])
+    except Exception as exc:  # noqa: BLE001 - WinRT 依赖缺失或图片损坏时记录并安全返回 None
+        log.info("本地读图失败（%s）：%s", target.name, exc)
+        pool.shutdown(wait=False, cancel_futures=True)
         return None
-    return (r.stdout or "").strip()
+    pool.shutdown(wait=False)
+    return "\n".join(str(ln.get("text") or "") for ln in lines).strip()
 
 
 # taskkill's exit code when no process has that image name: not being there is not

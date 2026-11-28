@@ -10,6 +10,12 @@
 #   scripts/mac/deploy-relay.sh --dry-run   # local gates 0-0.75 only, then stop: no network, no game PC
 #
 set -euo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "  ✋ 找不到最新版 Homebrew Python（${MAC_PY}），部署取消" >&2
+  exit 1
+fi
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -29,6 +35,16 @@ for a in "$@"; do
   esac
 done
 
+# 非 dry-run 入口统一经过第 2 层北京时间断电硬锁（08:22:00–08:46:59 拦截，返回 RC=78）
+if [ "$DRY_RUN" = 0 ]; then
+  ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+  if [ -f "$ARK_PC_LIB" ]; then
+    # shellcheck source=lib/powercut-guard.sh
+    . "$ARK_PC_LIB"
+    ark_powercut_guard 2 "deploy-relay.sh" || exit $?
+  fi
+fi
+
 # A dry run stops before step 1, the first step that reaches the machine, so it needs no host.
 if [ "$DRY_RUN" = 1 ]; then HOST="${ARK_HOST:-dry-run}"; else HOST="${ARK_HOST:-100.65.39.119}"; fi
 USER_AT="Administrator@${HOST}"
@@ -41,7 +57,8 @@ USER_AT="Administrator@${HOST}"
 # 2.3 秒，共享之后 0.37 秒——跨境每个远程操作都要先付这笔钱，一天付几百次。
 SSH_OPTS=(-o ConnectTimeout=15)
 REMOTE_DIR='C:/ProgramData/ark-relay'
-PY='D:\ark\automas\environment\python\python.exe'
+# 游戏机现役中继无版本号滚动 Python 入口（彻底废弃 3.12.0 旧 automas\environment\python 路径）
+PY='C:\Program Files\ArkRelay\runtime\python\python.exe'
 # 两个绝对路径都要在任何 cd 之前算好。2026-08-26 我在 cd 之后才去解析
 # "$(dirname "${BASH_SOURCE[0]}")"，相对路径当场失效，取日志那步静静失败了。
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
@@ -74,12 +91,11 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 # that differs from manifest.json. A fix committed
 # without rebuilding the manifest then stopped the deploy as a gate self-check that killed
 # normal input (10-11 20:1x and 22:5x), which reads as a broken gate when nothing was broken.
-# The relay tests and relay code run on the Python the machine runs (3.14), never macOS's
-# /usr/bin/python3 3.9 (scripts/mac/lib/relay-python.sh; user 10-12 08:21).
-RELAY_PY=$("$HERE/../scripts/mac/lib/relay-python.sh") || { echo "  ✋ 没有 3.14 跑中继测试，部署取消"; exit 1; }
+# 中继测试统一用动态解析的最新版 Python，严禁退回系统自带旧版（scripts/mac/lib/relay-python.sh）
+RELAY_PY=$("$HERE/../scripts/mac/lib/relay-python.sh") || { echo "  ✋ 找不到最新版 Python 跑中继测试，部署取消"; exit 1; }
 export RELAY_PY
 if [ "$DRY_RUN" = 0 ]; then
-  python3 make-manifest.py > /dev/null
+  "$MAC_PY" make-manifest.py > /dev/null
 fi
 echo "▶ 0/5 本地三道闸并行（死代码 · 回归测试 · 语法）"
 # These three read the working tree and nothing else, so they have no reason to wait
@@ -205,7 +221,7 @@ GATED=$(mktemp -d)
 trap 'rm -rf "$GATED"' EXIT
 export TEST_TIMES="$GATED/times"
 
-( python3 "$HERE/../scripts/mac/lib/deadcode.py" "$HERE" "$HERE/../scripts" \
+( "$MAC_PY" "$HERE/../scripts/mac/lib/deadcode.py" "$HERE" "$HERE/../scripts" \
       >"$GATED/dead.out" 2>&1
   echo $? >"$GATED/dead.rc" ) &
 # test_manifest_covers_tree.py used to rewrite relay/manifest.json to prove the
@@ -289,7 +305,7 @@ lap
 # scripts/windows/ that is neither in main (nor on HEAD, which this deploy pushes to
 # main) nor in docs/UNMERGED-REVIEWED.txt stops the deploy. Rules: lib/unmerged_fixes.py.
 echo "▶ 0.6/5 分支上没进 main 的中继修改（每条要么合进 main，要么在 docs/UNMERGED-REVIEWED.txt 登记过）"
-if UNMERGED_OUT=$(python3 "$HERE/../scripts/mac/lib/unmerged_fixes.py" 2>&1); then
+if UNMERGED_OUT=$("$MAC_PY" "$HERE/../scripts/mac/lib/unmerged_fixes.py" 2>&1); then
   echo "    $(tail -1 <<<"$UNMERGED_OUT")"
 elif [ "$DRY_RUN" = 1 ]; then
   # A dry run checks this branch's code, not what main is missing from other branches.
@@ -334,9 +350,9 @@ if [ "$DRY_RUN" = 1 ]; then
   exit 0
 fi
 echo "▶ 1/5 重建 manifest"
-python3 make-manifest.py
+"$MAC_PY" make-manifest.py
 
-FILES=$(python3 -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
+FILES=$("$MAC_PY" -c "import json;print(' '.join(json.load(open('manifest.json'))['files']))")
 
 lap
 # How long the watch after the restart lasts. Set here, before either layout's steps:
@@ -488,12 +504,10 @@ echo "▶ 4.5/5 写入代码版本号（否则自更新会拿旧清单把这次�
 # code-version 还停在上一次自更新的值，下次启动时某扇缓存落后的门给一份
 # 更旧（甚至没有版本号）的 manifest，自更新就会认为"机器落后了"，把刚
 # 部署好的文件覆盖回旧版——2026-08-21 就这么被静默降级过一次。
-VER=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
-# 走中继自己的写入路径，不自己写文件：状态归 statestore 管，外面直接写迟早
-# 和它对不上（2026-09-08 桌面那个关机开关就是这么坏的）。顺带这里原来还留着
-# 一个 powershell 5.1 兜底，违反「只用 pwsh 7」的规矩，一并去掉。
+VER=$("$MAC_PY" -c "import json;print(json.load(open('manifest.json'))['version'])")
+# 走中继自己的写入路径与游戏机最新运行环境 Python，严禁再用 3.12.0 旧路径。
 if ! ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "\"D:\\ark\\automas\\environment\\python\\python.exe\" -c \"import sys; sys.path.insert(0, r'C:\\ProgramData\\ark-relay'); from pathlib import Path; from ark_relay.core.statestore import StateStore; StateStore(Path(r'C:\\ProgramData\\ark-relay\\state')).set('versions', 'code', '$VER')\"" >/dev/null; then
+  "\"$PY\" -c \"import sys; sys.path.insert(0, r'C:\\ProgramData\\ark-relay'); from pathlib import Path; from ark_relay.core.statestore import StateStore; StateStore(Path(r'C:\\ProgramData\\ark-relay\\state')).set('versions', 'code', '$VER')\"" >/dev/null; then
   echo "✋ 代码版本号没写进去——下次开机自更新可能把这次部署顶回旧版" >&2
   exit 8
 fi
@@ -701,7 +715,7 @@ fi
 # publish does not undo the deploy - but it does mean the next self-update
 # (a version pushed while the machine is off) has nothing to read.
 COS_OK=1
-ARK_FROM_DEPLOY_RELAY=1 python3 "$HERE/../scripts/mac/publish-cos.py" || {
+ARK_FROM_DEPLOY_RELAY=1 "$MAC_PY" "$HERE/../scripts/mac/publish-cos.py" || {
   COS_OK=0
   echo "  ✋ COS 没推上：机器已跑新版，已保留更新说明未清，网稳后直接重跑 scripts/mac/publish-cos.py 补发" >&2
 }
@@ -826,7 +840,7 @@ else
   # machine logs (v<version>) name the same deploy: until 10-13 this was the clock at
   # commit time, and "deploy: manifest 20261013135614" next to tag relay-20261013135308
   # read as a second deploy three minutes after the first.
-  STAMP=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
+  STAMP=$("$MAC_PY" -c "import json;print(json.load(open('manifest.json'))['version'])")
   if ! git -C "$HERE/.." commit -q -m "deploy: manifest $STAMP"; then
     echo "✋ git commit 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9
@@ -839,7 +853,7 @@ else
   # after the push and the purge, and the update lost the boot window). The tag
   # goes up in the same push as the commit so the manifest is never visible
   # without it.
-  REF=$(python3 -c "import json;print(json.load(open('manifest.json')).get('ref',''))")
+  REF=$("$MAC_PY" -c "import json;print(json.load(open('manifest.json')).get('ref',''))")
   if [ -n "$REF" ] && ! git -C "$HERE/.." tag "$REF" HEAD; then
     echo "✋ 打标签 $REF 失败：清单说文件在这个标签下，机器会拿不到" >&2
     exit 9
@@ -862,7 +876,7 @@ else
     # 顺手清 jsDelivr：不清的话各扇门要到十几小时后才发新清单，自更新在那之前
     # 看到的是旧版本号，什么都不做也什么都不说。机器此刻已经部署好了，所以清缓存
     # 失败只是「自更新这条后路暂时不通」，不该让整个部署判失败。
-    python3 "$HERE/../scripts/mac/purge-cdn.py" --no-wait || echo "⚠️ CDN 没清干净，自更新这条后路要等缓存自然过期" >&2
+    "$MAC_PY" "$HERE/../scripts/mac/purge-cdn.py" --no-wait || echo "⚠️ CDN 没清干净，自更新这条后路要等缓存自然过期" >&2
   else
     echo "✋ manifest 提交了但推送失败——自更新会一直看到旧清单，请手动 push" >&2
     exit 9

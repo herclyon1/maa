@@ -26,6 +26,21 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# 跨平台动态解析最新 Python：
+# - macOS：前置 Homebrew PATH 并强制走 relay-python.sh（绝不静默回退 /usr/bin/python3 3.9）；
+# - Windows / Linux CI：沿用 GitHub runner 配置好的 PATH python3。
+if [ "$(uname -s)" = "Darwin" ]; then
+  export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+  if ! TEST_PY="$("$ROOT/scripts/mac/lib/relay-python.sh")"; then
+    echo "✗ macOS 未能解析最新版中继测试 Python（拒绝回退系统旧版）" >&2
+    exit 1
+  fi
+else
+  TEST_PY="python3"
+fi
+export TEST_PY
+export RELAY_PY="$TEST_PY"
+
 EXCLUDE=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,7 +79,7 @@ export TEST_TIMES="$GATED/times"
 # seconds are also left in TT_RC / TT_SECS for run_one_test below.
 timed_test() {
   local secs rc=0 TIMEFORMAT=%2R
-  secs=$( { time timeout -k 10 "$TEST_TIMEOUT_S" python3 "$1" >"$2" 2>&1; } 2>&1 ) || rc=$?
+  secs=$( { time timeout -k 10 "$TEST_TIMEOUT_S" "$TEST_PY" "$1" >"$2" 2>&1; } 2>&1 ) || rc=$?
   TT_RC=$rc TT_SECS=$secs
   if [ -n "${TEST_TIMES:-}" ]; then
     printf '%s %s\n' "$secs" "$(basename "$1")" >>"$TEST_TIMES"
@@ -97,7 +112,7 @@ run_one_test() {
 export -f timed_test gate_run_one_test run_one_test
 
 cd "$ROOT/relay" || exit 1
-echo "python3: $(command -v python3) ($(python3 -c 'import sys; print(sys.version.split()[0])')); limit ${TEST_TIMEOUT_S} s per test file"
+echo "python3: $(command -v "$TEST_PY") ($("$TEST_PY" -c 'import sys; print(sys.version.split()[0])')); limit ${TEST_TIMEOUT_S} s per test file"
 
 printf '%s\n' tests/test_*.py >"$GATED/all"
 : >"$GATED/skip"

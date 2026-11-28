@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Talk to AUTO-MAS's backend directly, from here, over Tailscale.
 
 The Electron window is a shell over a FastAPI backend. Driving that API instead
@@ -33,6 +33,12 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+_LIB_DIR = str(Path(__file__).resolve().parent / "lib")
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
+import powercut_guard as _pcg  # noqa: E402
 
 
 HOST = os.environ.get("ARK_HOST", "100.65.39.119")
@@ -41,6 +47,8 @@ BASE = f"http://{HOST}:{PORT}"
 
 
 def call(path, body=None, method="POST"):
+    # 第 1 层北京时间断电硬锁：08:40–08:45 严禁调用游戏机 AUTO-MAS 接口（RC=78）
+    _pcg.guard_or_exit(1, "mas-api.py")
     data = json.dumps(body or {}).encode("utf-8") if method == "POST" else None
     req = urllib.request.Request(
         BASE + path, data=data, method=method,
@@ -65,6 +73,8 @@ def call(path, body=None, method="POST"):
 
 
 def spec():
+    # 第 1 层北京时间断电硬锁：08:40–08:45 严禁连接游戏机（RC=78）
+    _pcg.guard_or_exit(1, "mas-api.py")
     with urllib.request.urlopen(BASE + "/openapi.json", timeout=30) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -92,6 +102,8 @@ def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
         return 0
+    # 第 1 层北京时间断电硬锁：非帮助命令在 08:40–08:45 立即拦截返回 78
+    _pcg.guard_or_exit(1, "mas-api.py")
     cmd = argv[0]
     if cmd == "paths":
         d = spec()

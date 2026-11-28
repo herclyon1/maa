@@ -1133,7 +1133,7 @@ def _part_estop_layout():
 for cmd in "$@"; do :; done
 log="$FAKE_LOG"
 case "$cmd" in
-  pwsh*-EncodedCommand*)
+  *pwsh*-EncodedCommand*)
     b64="${cmd##* }"
     body=$(printf '%s' "$b64" | (base64 -d 2>/dev/null || base64 -D) | iconv -f UTF-16LE -t UTF-8)
     kind="PS"

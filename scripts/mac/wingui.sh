@@ -49,6 +49,9 @@
 #
 # 每次调用都在 ~/.cache/ark-relay/mac_actions.log 留一行（lib/mac-action-log.sh）。
 set -euo pipefail
+# 前置 Homebrew PATH 并锁定最新版 Python，防止非交互环境静默回退系统旧版
+export PATH="${PATH}:/opt/homebrew/bin:/opt/homebrew/sbin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -56,6 +59,13 @@ ARK_ACTION_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/mac-action-log.sh"
 if [ -f "$ARK_ACTION_LIB" ]; then
   # shellcheck source=lib/mac-action-log.sh
   . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
+fi
+# 第 1 层北京时间断电硬锁：08:40–08:45 严禁对游戏机发任何远程交互命令（RC=78）
+ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+if [ -f "$ARK_PC_LIB" ]; then
+  # shellcheck source=lib/powercut-guard.sh
+  . "$ARK_PC_LIB"
+  ark_powercut_guard 1 "wingui.sh" || exit $?
 fi
 
 HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"
@@ -521,7 +531,7 @@ esac
 # 看一眼再加开关，也不能在不知道的时候跟 OK-WW 抢键鼠。
 if [ "$ACTION" != shot ] && [ "${ARK_GUI_DURING_FARM:-}" != 1 ]; then
   STATE=$(ssh -o ConnectTimeout=20 "$USER_AT" 'type C:\ProgramData\ark-relay\state\state.json' 2>/dev/null | tr -d '\r') || STATE=""
-  if ! FARM=$(printf '%s' "$STATE" | python3 -c "$FARM_PY"); then
+  if ! FARM=$(printf '%s' "$STATE" | "$MAC_PY" -c "$FARM_PY"); then
     echo "✋ 读不到游戏机上中继的状态（C:\\ProgramData\\ark-relay\\state\\state.json），不知道刷声骸在不在跑，没有动画面。" >&2
     echo "   确认没在刷（或者就是要边刷边动）再加 ARK_GUI_DURING_FARM=1 重跑。" >&2
     exit 7

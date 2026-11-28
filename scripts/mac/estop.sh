@@ -26,6 +26,12 @@
 # no answer means the installed relay, the one every machine has run since the old
 # service was deleted on 2026-10-11 (scripts/windows/retire_legacy.py).
 set -uo pipefail
+export PATH="${PATH}:/opt/homebrew/bin:$HOME/.local/bin:/usr/local/bin"
+MAC_PY="${MAC_PY:-/opt/homebrew/bin/python3}"
+if [ ! -x "$MAC_PY" ]; then
+  echo "estop: 找不到最新版 Homebrew Python（${MAC_PY}），拒绝回退系统旧版" >&2
+  exit 1
+fi
 # Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
 # (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
 # alone, as the tests make, still runs.)
@@ -95,11 +101,20 @@ for a in "$@"; do
   esac
 done
 
-# 把一段 PowerShell 编码后送过去执行。返回它的 stdout。
+# 第 1 层断电硬锁（08:40:00–08:45:59 CST 禁止向游戏机发远程命令，返回 RC=78）
+ARK_PC_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/powercut-guard.sh"
+if [ -f "$ARK_PC_LIB" ]; then
+  # shellcheck source=lib/powercut-guard.sh
+  . "$ARK_PC_LIB"
+  ark_powercut_guard 1 "estop.sh" || exit $?
+fi
+
+# 把一段 PowerShell 编码后送过去执行（显式走 PowerShell 7 完整路径，禁裸 pwsh 与 5.1）。
+PWSH_WIN='C:\Program Files\PowerShell\7\pwsh.exe'
 run_ps() {
   local b64
   b64=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64 | tr -d '\n')
-  "${SSH[@]}" "$USER_AT" "pwsh -NoProfile -EncodedCommand $b64" 2>&1
+  "${SSH[@]}" "$USER_AT" "\"${PWSH_WIN}\" -NoProfile -EncodedCommand $b64" 2>&1
 }
 
 # ── Which relay this machine runs ─────────────────────────────
@@ -350,7 +365,7 @@ if [[ "$MODE" == "restore" ]]; then
   fi
 
   echo "-- 再恢复队列定时 --"
-  python3 - "$API" <<'PY'
+  "$MAC_PY" - "$API" <<'PY'
 import json, sys, urllib.request
 API = sys.argv[1]
 def post(p, b):
@@ -379,7 +394,7 @@ echo "== 红按钮：停止一切（顺序 中继 → MAS → 脚本 → 游戏�
 QUEUE_OFF="skipped"
 if [[ "$KEEP_QUEUE" == "0" ]]; then
   echo "-- 先关队列定时（趁 MAS 还在，它的 API 在 MAS 里）--"
-  python3 - "$API" <<'PYQ'
+  "$MAC_PY" - "$API" <<'PYQ'
 import json, sys, urllib.request
 API = sys.argv[1]
 def post(p, b):

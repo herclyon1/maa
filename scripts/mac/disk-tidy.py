@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Remove what Claude sessions left on this Mac's disk - and nothing else.
 
 The disk filled to 100 % twice on 10-13. The owner, 10-13 22:3x: we never clean what we

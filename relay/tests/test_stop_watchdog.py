@@ -750,13 +750,13 @@ def _part_publish_cos_notes():
 
     print("\n[部署脚本：先发 COS，再清空说明；默认推 origin/main、清 CDN、快进顶层；COS 失败不清空]")
     sh = (ROOT / "scripts" / "mac" / "deploy-relay.sh").read_text(encoding="utf-8")
-    pub = sh.index('python3 "$HERE/../scripts/mac/publish-cos.py"')
+    pub = sh.index('"$MAC_PY" "$HERE/../scripts/mac/publish-cos.py"')
     m_clear = re.search(r'\n[ \t]*: > "\$NOTES"\n', sh)
     clear = m_clear.start() if m_clear else -1
     check("发 COS 在清空之前", clear > 0 and pub < clear, True)
-    check("只发一次", sh.count('python3 "$HERE/../scripts/mac/publish-cos.py"'), 1)
+    check("只发一次", sh.count('"$MAC_PY" "$HERE/../scripts/mac/publish-cos.py"'), 1)
     check("仅在该行前置 ARK_FROM_DEPLOY_RELAY=1（不全局 export）",
-          'ARK_FROM_DEPLOY_RELAY=1 python3 "$HERE/../scripts/mac/publish-cos.py"' in sh
+          'ARK_FROM_DEPLOY_RELAY=1 "$MAC_PY" "$HERE/../scripts/mac/publish-cos.py"' in sh
           and "export ARK_FROM_DEPLOY_RELAY" not in sh, True)
     check("不把公开仓库推送拆进 --push 开关，默认推 origin/main 并清 CDN 与快进顶层",
           "PUSH_GITHUB" not in sh
@@ -766,11 +766,11 @@ def _part_publish_cos_notes():
     check("COS 失败不清空说明且不提交清空提交",
           sh.count('if [ "$COS_OK" = 1 ]; then') >= 3, True)
     branch_chk = sh.index('if [ "$BRANCH" != main ]; then')
-    mk_man = sh.index("python3 make-manifest.py > /dev/null")
+    mk_man = sh.index('"$MAC_PY" make-manifest.py > /dev/null')
     check("非 --dry-run 必须在 main 分支，且在 make-manifest 之前检查",
           branch_chk < mk_man, True)
     check("--dry-run 绝不调用 make-manifest.py 写脏 relay/manifest.json",
-          'if [ "$DRY_RUN" = 0 ]; then\n  python3 make-manifest.py > /dev/null\nfi' in sh, True)
+          'if [ "$DRY_RUN" = 0 ]; then\n  "$MAC_PY" make-manifest.py > /dev/null\nfi' in sh, True)
 
     print("\n[上传失败重试：10-05 两次部署都被链路打断（SSL EOF、HTTP 400），手动重发都成]")
     import io as _io

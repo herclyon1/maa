@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """The Mac half of keeping the installed relay's files outside the version folders current.
 
 The installer (packaging/ark-relay.iss, staged by packaging/build.py) writes, besides

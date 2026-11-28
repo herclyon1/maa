@@ -4,26 +4,27 @@
 ARK_SG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARK_SG_PY="$ARK_SG_DIR/shutdown_guard.py"
 ARK_SG_REPO="${ARK_SHUTDOWN_GUARD_REPO:-$(cd "$ARK_SG_DIR/../../.." && pwd)}"
+ARK_SG_PYTHON="${MAC_PY:-/opt/homebrew/bin/python3}"
 
 ark_sg_detect() {
   local kind="$1"
   shift
   if [ "$kind" = "ps" ] || [ "$kind" = "cmd" ]; then
-    printf '%s' "$1" | python3 -B "$ARK_SG_PY" detect "$kind"
+    printf '%s' "$1" | "$ARK_SG_PYTHON" -B "$ARK_SG_PY" detect "$kind"
   else
-    python3 -B "$ARK_SG_PY" detect "$kind" "$@"
+    "$ARK_SG_PYTHON" -B "$ARK_SG_PY" detect "$kind" "$@"
   fi
 }
 
 ark_sg_check_local() {
   local caller="$1"
   if [ -n "${ARK_SHUTDOWN_OVERRIDE:-}" ]; then
-    python3 -B "$ARK_SG_PY" log-override "$caller" "$ARK_SHUTDOWN_OVERRIDE"
+    "$ARK_SG_PYTHON" -B "$ARK_SG_PY" log-override "$caller" "$ARK_SHUTDOWN_OVERRIDE"
     echo "${caller}: shutdown guard overridden: ${ARK_SHUTDOWN_OVERRIDE}" >&2
     return 0
   fi
   local why
-  if ! why="$(python3 -B "$ARK_SG_PY" check-local "$ARK_SG_REPO" 2>&1)"; then
+  if ! why="$("$ARK_SG_PYTHON" -B "$ARK_SG_PY" check-local "$ARK_SG_REPO" 2>&1)"; then
     echo "${caller}: 拒绝关机——${why}。请先修完、上机部署并通过核验。" >&2
     return 5
   fi
@@ -36,7 +37,7 @@ ark_sg_check_ssh1() {
     return 0
   fi
   local why
-  if ! why="$(python3 -B "$ARK_SG_PY" check-ssh1 "$ARK_SG_REPO" "$user_at" 2>&1)"; then
+  if ! why="$("$ARK_SG_PYTHON" -B "$ARK_SG_PY" check-ssh1 "$ARK_SG_REPO" "$user_at" 2>&1)"; then
     echo "${caller}: 拒绝关机——${why}。禁止先关机再等下次开机自更新。" >&2
     return 5
   fi
@@ -45,7 +46,7 @@ ark_sg_check_ssh1() {
 
 ark_sg_ps_snippet() {
   local busy_names="$1" out_file="${2:-}"
-  python3 -B "$ARK_SG_PY" ps-snippet "$busy_names" "$out_file"
+  "$ARK_SG_PYTHON" -B "$ARK_SG_PY" ps-snippet "$busy_names" "$out_file"
 }
 
 # Single-process fast path for winps/winrun/wingui:
@@ -56,10 +57,10 @@ ark_sg_preflight() {
   local rc=0
   if [ "$kind" = "ps" ] || [ "$kind" = "cmd" ]; then
     # shellcheck disable=SC2034
-    ARK_SG_SNIPPET="$(printf '%s' "$target" | python3 -B "$ARK_SG_PY" preflight "$kind" "$caller" "$ARK_SG_REPO" "$user_at" "$busy" "$out_file")" || rc=$?
+    ARK_SG_SNIPPET="$(printf '%s' "$target" | "$ARK_SG_PYTHON" -B "$ARK_SG_PY" preflight "$kind" "$caller" "$ARK_SG_REPO" "$user_at" "$busy" "$out_file")" || rc=$?
   else
     # shellcheck disable=SC2034
-    ARK_SG_SNIPPET="$(python3 -B "$ARK_SG_PY" preflight "$kind" "$caller" "$ARK_SG_REPO" "$user_at" "$busy" "$out_file" "$target" "$extra")" || rc=$?
+    ARK_SG_SNIPPET="$("$ARK_SG_PYTHON" -B "$ARK_SG_PY" preflight "$kind" "$caller" "$ARK_SG_REPO" "$user_at" "$busy" "$out_file" "$target" "$extra")" || rc=$?
   fi
   return "$rc"
 }

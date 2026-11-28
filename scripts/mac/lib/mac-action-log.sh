@@ -58,7 +58,23 @@ ark_action_log() {
     fi
     me=$(basename -- "$0")
     if [ -n "$ARK_ACTION_LIB_DIR" ] && [ -f "$ARK_ACTION_LIB_DIR/../redact.py" ]; then
-      args=$(python3 -I -B -c "$ARK_ACTION_PY" "$ARK_ACTION_LIB_DIR/.." "$me" "$@") || args="<参数没记：脱敏没跑成>"
+      # 严格优先使用 Homebrew 最新版 Python 脱敏，绝不静默回退系统旧版 /usr/bin/python3；
+      # 若调用方特意构造不含 python 目录的隔离 PATH（如无解释器单测），则按脱敏失败拒绝写明文参数。
+      mac_py=""
+      if [ -n "${MAC_PY:-}" ] && [ -x "$MAC_PY" ]; then
+        mac_py="$MAC_PY"
+      else
+        case ":${PATH:-}:" in
+          *:/opt/homebrew/bin:*|*:/usr/bin:*|*:/bin:*)
+            [ -x /opt/homebrew/bin/python3 ] && mac_py=/opt/homebrew/bin/python3
+            ;;
+        esac
+      fi
+      if [ -n "$mac_py" ]; then
+        args=$("$mac_py" -I -B -c "$ARK_ACTION_PY" "$ARK_ACTION_LIB_DIR/.." "$me" "$@") || args="<参数没记：脱敏没跑成>"
+      else
+        args="<参数没记：脱敏没跑成>"
+      fi
     else
       args="<参数没记：找不到 redact.py>"
     fi

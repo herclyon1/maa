@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Fetch one run's evidence files back to the Mac.
 
     evidence_pull.py <index.jsonl> <run-id fragment> <dest root>

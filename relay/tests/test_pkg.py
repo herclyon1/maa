@@ -230,9 +230,23 @@ if [ -n "$APP_CHANGED" ]; then pkg_appfiles_step && echo STEP_OK || echo "STEP_F
     req = (ROOT / "relay/requirements.txt").read_text(encoding="utf-8")
     want_py = pa.py_version(build)
     pins, loose = pa.pins(req)
-    check("requirements.txt pins read (pywin32's win32 marker kept)", (pins, loose), ({"pillow": "12.3.0", "pywin32": "312"}, []))
+    want_pins = {
+        "pillow": "12.3.0",
+        "pywin32": "312",
+        "winrt-runtime": "4.2.1",
+        "winrt-windows-foundation": "4!10.0.28000.2957",
+        "winrt-windows-foundation-collections": "4!10.0.28000.2957",
+        "winrt-windows-globalization": "4!10.0.28000.2957",
+        "winrt-windows-graphics-imaging": "4!10.0.28000.2957",
+        "winrt-windows-media-ocr": "4!10.0.28000.2957",
+        "winrt-windows-storage": "4!10.0.28000.2957",
+        "winrt-windows-storage-streams": "4!10.0.28000.2957",
+    }
+    check("requirements.txt pins read (pywin32 & 8 winrt win32 markers kept)", (pins, loose), (want_pins, []))
     check("build.py PY_VERSION read", want_py, "3.14.8")
-    good = "RUNTIME_PY=3.14.8\nRUNTIME_PKG pillow==12.3.0\nRUNTIME_PKG pywin32==312\nRUNTIME_PKG pip==25.0\n"
+    good = ("RUNTIME_PY=3.14.8\n"
+            + "".join(f"RUNTIME_PKG {k}=={v}\n" for k, v in sorted(want_pins.items()))
+            + "RUNTIME_PKG pip==25.0\n")
     check("the same: no gap", pa.runtime_gap(good, req, want_py), [])
     check("names compared as PEP 503 (Pillow / pillow)", pa.runtime_gap(good.replace("pillow", "Pillow"), req, want_py), [])
     check("another Python: a gap", len(pa.runtime_gap(good.replace("3.14.8", "3.14.7"), req, want_py)), 1)
@@ -412,6 +426,7 @@ def _part_pkg_pin_whole_write():
 
 def _part_pkg_runtime_update():  # noqa: C901
     """A relay deploy swaps the installed relay's runtime when it is not what the repo builds."""
+    import json
     import os
     import subprocess
     import tempfile
@@ -429,11 +444,23 @@ def _part_pkg_runtime_update():  # noqa: C901
 
     WANT_PY = pa.py_version((ROOT / "packaging/build.py").read_text(encoding="utf-8"))
     PINS = build.runtime_pins()
+    WINRT_PKGS = {
+        "winrt-runtime": "4.2.1",
+        "winrt-Windows.Foundation": "4!10.0.28000.2957",
+        "winrt-Windows.Foundation.Collections": "4!10.0.28000.2957",
+        "winrt-Windows.Globalization": "4!10.0.28000.2957",
+        "winrt-Windows.Graphics.Imaging": "4!10.0.28000.2957",
+        "winrt-Windows.Media.Ocr": "4!10.0.28000.2957",
+        "winrt-Windows.Storage": "4!10.0.28000.2957",
+        "winrt-Windows.Storage.Streams": "4!10.0.28000.2957",
+    }
 
     print("[build.py: what the runtime is built from]")
     check("PY_VERSION", build.PY_VERSION, "3.14.8")
     check("the embeddable zip of that version", build.EMBED_URL.endswith(f"/{build.PY_VERSION}/python-{build.PY_VERSION}-embed-amd64.zip"), True)
-    check("pins from requirements.txt's Windows lines, pywin32 included", PINS, ["pillow==12.3.0", "pywin32==312"])
+    check("pins from requirements.txt's Windows lines (pywin32 & 8 winrt included)",
+          ("pillow==12.3.0" in PINS, "pywin32==312" in PINS, "winrt-windows-media-ocr==4!10.0.28000.2957" in PINS, len(PINS)),
+          (True, True, True, 10))
     for wf in ("relay-windows.yml", "package-windows.yml", "package-switch.yml"):
         got = re.findall(r"python-version: '([^']+)'", (ROOT / ".github/workflows" / wf).read_text(encoding="utf-8"))
         # relay-windows.yml sets it up once per job (tests, day-replay); each must be the same.
@@ -465,7 +492,7 @@ def _part_pkg_runtime_update():  # noqa: C901
         finally:
             build.subprocess.run = real_run
         cmd = calls[0]
-        check("one pip run, the pins as arguments, no -r", (len(calls), cmd[-2:], "-r" in cmd), (1, PINS, False))
+        check("one pip run, the pins as arguments, no -r", (len(calls), cmd[-len(PINS):], "-r" in cmd), (1, PINS, False))
         check("for the machine: win_amd64, cp, this Python version",
               (cmd[cmd.index("--platform") + 1], cmd[cmd.index("--implementation") + 1], cmd[cmd.index("--python-version") + 1]),
               ("win_amd64", "cp", build.PY_VERSION))
@@ -482,8 +509,8 @@ def _part_pkg_runtime_update():  # noqa: C901
         return py, dict(pkgs)
 
 
-    GOOD = probe_json(WANT_PY, {"Pillow": "12.3.0", "pywin32": "312", "pip": "25.0"})
-    OLD = probe_json("3.14.7", {"Pillow": "12.3.0", "pywin32": "311"})
+    GOOD = probe_json(WANT_PY, {"Pillow": "12.3.0", "pywin32": "312", **WINRT_PKGS, "pip": "25.0"})
+    OLD = probe_json("3.14.7", {"Pillow": "12.3.0", "pywin32": "311", **WINRT_PKGS})
 
 
     class FakeRuntime:
@@ -585,14 +612,14 @@ def _part_pkg_runtime_update():  # noqa: C901
             check(f"{label}: refused, nothing run", (rc, out[-1].startswith("RUNTIME_FAIL nothing changed"), want in out[-1], ops.calls),
                   (1, True, True, []))
     for label, ops, want in (
-            ("another Python", FakeRuntime(new=probe_json("3.14.7", {"Pillow": "12.3.0", "pywin32": "312"})), "Python 3.14.7 != " + WANT_PY),
-            ("pywin32 not the pin", FakeRuntime(new=probe_json(WANT_PY, {"Pillow": "12.3.0", "pywin32": "311"})), "pywin32 311 != 312"),
+            ("another Python", FakeRuntime(new=probe_json("3.14.7", {"Pillow": "12.3.0", "pywin32": "312", **WINRT_PKGS})), "Python 3.14.7 != " + WANT_PY),
+            ("pywin32 not the pin", FakeRuntime(new=probe_json(WANT_PY, {"Pillow": "12.3.0", "pywin32": "311", **WINRT_PKGS})), "pywin32 311 != 312"),
             ("it does not run", FakeRuntime(fail={"probe"}), "does not run")):
         with tempfile.TemporaryDirectory() as td:
             app = make_app(td)
             rc, out = _quiet(pd.runtime_check, app, WANT_PY, PINS, ops)
             check(f"{label}: refused", (rc, want in out[-1]), (1, True))
-    check("names compared as PEP 503", pd.runtime_gaps(probe_json(WANT_PY, {"PILLOW": "12.3.0", "PyWin32": "312"}), WANT_PY, PINS), [])
+    check("names compared as PEP 503", pd.runtime_gaps(probe_json(WANT_PY, {"PILLOW": "12.3.0", "PyWin32": "312", **WINRT_PKGS}), WANT_PY, PINS), [])
 
     print("[runtime: different = copy beside, stop, two renames, verify, watchdog on the new one]")
     with tempfile.TemporaryDirectory() as td:
@@ -660,7 +687,7 @@ def _part_pkg_runtime_update():  # noqa: C901
 
     print("[runtime: a failure after the rename puts the previous runtime back]")
     for label, ops, step in (
-            ("the new one is not the one wanted", FakeRuntime(new=probe_json(WANT_PY, {"Pillow": "12.3.0", "pywin32": "311"})), "verify"),
+            ("the new one is not the one wanted", FakeRuntime(new=probe_json(WANT_PY, {"Pillow": "12.3.0", "pywin32": "311", **WINRT_PKGS})), "verify"),
             ("the new one does not run", FakeRuntime(fail={"probe"}), "verify"),
             ("the watchdog does not come up on it", FakeRuntime(fail={"start_watchdog"}), "watchdog")):
         with tempfile.TemporaryDirectory() as td:
@@ -792,7 +819,7 @@ echo "x = 1" >"$py/Lib/site.py"
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
             log = td / "calls"
-            fake = td / "python3.14"
+            fake = td / "python-latest"
             fake.write_text(FAKE_BUILD, encoding="utf-8")
             fake.chmod(0o755)
             script = f"""
@@ -802,9 +829,9 @@ SSH_OPTS=(-o ConnectTimeout=15)
 USER_AT=Administrator@host
 APP_WIN='C:\\Program Files\\ArkRelay'
 PKG_DEPLOY='C:\\Users\\Administrator\\ark-pkg-deploy.py'
-PY314={str(fake)!r}
+RELAY_HOST_PY={str(fake)!r}
 ssh() {{ while [ "$1" = -o ]; do shift 2; done; shift; echo "ssh $*" >>{str(log)!r}; bash -c "$*"; }}
-pkg_py() {{ echo "pkg_py $2" >>{str(log)!r}; local c=$2; shift 3; python3 {str(PD_PATH)!r} "$c" {str(app)!r} "$@"; }}
+pkg_py() {{ echo "pkg_py $2" >>{str(log)!r}; local c=$2; shift 3; /opt/homebrew/bin/python3 {str(PD_PATH)!r} "$c" {str(app)!r} "$@"; }}
 {block("runtime prepare")}
 if pkg_runtime_prepare; then echo "READY $RUNTIME_PY_EXE"; echo "WANT ${{RUNTIME_WANT[*]}}"; else echo "NOT_READY $RUNTIME_WHY"; fi
 """
@@ -817,7 +844,7 @@ if pkg_runtime_prepare; then echo "READY $RUNTIME_PY_EXE"; echo "WANT ${{RUNTIME
 
 
     print("[deploy-pkg.sh 3.0p in bash: built, staged, sent, checked and run on a temp {app}]")
-    GOOD_JSON = '{"py": "%s", "pkgs": {"Pillow": "12.3.0", "pywin32": "312"}}' % WANT_PY
+    GOOD_JSON = json.dumps({"py": WANT_PY, "pkgs": {"Pillow": "12.3.0", "pywin32": "312", **WINRT_PKGS}})
     # The "python.exe" probed here is a shell script, which Windows cannot start, and the
     # block's tar takes macOS's --no-mac-metadata: this part runs on the Mac (the deploy
     # gate), where 3.0p itself runs; the Windows CI job runs the rest of this file. The
@@ -866,7 +893,8 @@ echo "SWAP=$RUNTIME_SWAP"
             return r.returncode, r.stdout.splitlines()
 
 
-    same = f"RUNTIME_PY={WANT_PY}\nRUNTIME_PKG pillow==12.3.0\nRUNTIME_PKG pywin32==312\n"
+    same = (f"RUNTIME_PY={WANT_PY}\nRUNTIME_PKG pillow==12.3.0\nRUNTIME_PKG pywin32==312\n"
+            + "".join(f"RUNTIME_PKG {k}=={v}\n" for k, v in sorted(WINRT_PKGS.items())))
     if ON_MAC_LIKE:
         rc, out = bash_gate(same)
         check("the same: no prepare, no swap", (rc, out), (0, ["SWAP=0"]))
@@ -2217,7 +2245,7 @@ restart helper before it stops the relay.
         if step[0] == "watchdog":
             return "watchdog"
         cmd = step[1]
-        if cmd[0] == "powershell.exe" and switch.HELPER_LIKE in cmd[-1]:
+        if Path(cmd[0].replace("\\", "/")).name.lower() in ("pwsh.exe", "pwsh") and switch.HELPER_LIKE in cmd[-1]:
             return "helper"
         if cmd[-2:] == (str(switch.APP / "launch.py"), "stop"):
             return "relay"

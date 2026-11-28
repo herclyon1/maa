@@ -216,10 +216,10 @@ def _part_f3_desktop_ocr_launcher():
     """F3: #198 OCR TextAngle back-rotation & taskkill PID-vanished race vs real error."""
     from ark_relay.core import desktop
 
-    print("[F3.1 #198: OCR PowerShell script rotates BoundingRect back when TextAngle != 0]")
+    print("[F3.1 #198: Python WinRT OCR rotates BoundingRect back when text_angle != 0]")
     src = (RELAY / "ark_relay" / "core" / "desktop.py").read_text(encoding="utf-8")
-    check("desktop.py OCR script reads $result.TextAngle and back-rotates corners",
-          "$result.TextAngle" in src and "[Math]::Cos(" in src and "[Math]::Sin(" in src, True)
+    check("desktop.py WinRT OCR reads text_angle and back-rotates corners",
+          "text_angle" in src and "math.cos(" in src and "math.sin(" in src and "def _deskew_rect" in src, True)
     # Sanity-check rotation geometry on the exact -5.6 deg case logged 2026-11-25:
     # A button near x=1500, y=860 shifts ~40+ px in y if -5.6 deg is ignored.
     ang = math.radians(-5.6)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Print the echo-set badge templates the OK-WW overlay matches pickup toasts against.
 
     .venv-relaytest/bin/python scripts/mac/echo-set-badges.py [ark-remote checkout]

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """git push 之后清 jsDelivr 缓存，并**确认机器真的能拿到新代码**才算完。
 
 为什么要有校验这一步（2026-08-21 凌晨实测发现）：

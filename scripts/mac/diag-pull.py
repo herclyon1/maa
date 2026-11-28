@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
 """Fetch the phone page's diagnostic records off COS and keep them on the Mac.
 
     scripts/mac/diag-pull.py           # list what is in the bucket, download the new ones

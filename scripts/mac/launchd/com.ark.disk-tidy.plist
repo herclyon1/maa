@@ -12,7 +12,7 @@
   <key>Label</key><string>com.ark.disk-tidy</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/herclyon/.local/bin/python3.14</string>
+    <string>/opt/homebrew/bin/python3</string>
     <string>/Users/herclyon/Claude/maa-automation/scripts/mac/disk-tidy.py</string>
     <string>--apply</string>
   </array>
