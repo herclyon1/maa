@@ -109,7 +109,8 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             "kind": _script_kind(info_node.get("Path") or info_node.get("RootPath") or ""),
             "path": info_node.get("Path") or info_node.get("RootPath") or "",
         }
-        for _uid, user in [got] if (got := masuser.pick((node.get("SubConfigsInfo") or {}).get("UserData"))) else []:
+        # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users
+        for _uid, user in [got] if (got := masuser.pick(masuser.user_data(node))) else []:
             # masuser: AUTO-MAS v5.7.0-beta.3 moved the stage and annihilation items out of Info.
             info, task = masuser.info_view(user), user.get("Task") or {}
             # The combat switch: off means no stage is farmed, and the plan says so.
@@ -536,7 +537,8 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
             continue
         if (script.get("Info") or {}).get("Name") != "OK-WW":
             continue
-        users = ((script.get("SubConfigsInfo") or {}).get("UserData") or {})
+        # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users
+        users = masuser.user_data(script)
         if not isinstance(users, dict):
             continue
         for user in users.values():

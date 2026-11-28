@@ -290,14 +290,51 @@ def resolve(user: dict, old_path: str) -> str:
 
 
 def info_view(user: dict) -> dict:
-    """The user's Info as an AUTO-MAS from before v5.7.0-beta.3 had it: Info plus the moved
-    items taken from their new groups."""
+    """把账号配置里的 Info 与迁移到 Stage/Task 分组的配置合并成统一视图。
+
+    兼容 AUTO-MAS v5.7.0-beta.3 起的分组拆分，以及 v5.10 插件适配器（UserEntry）
+    仅有小写 info 分组时的基础字段（name/enabled/if_quick_config），不覆盖显式 Info。
+    """
     out = dict(user.get("Info") or {})
+    low = user.get("info")
+    if isinstance(low, dict):
+        if "Name" not in out and low.get("name"):
+            out["Name"] = low["name"]
+        if "Status" not in out and "enabled" in low:
+            out["Status"] = low["enabled"]
+        if "IfQuickConfig" not in out and "if_quick_config" in low:
+            out["IfQuickConfig"] = low["if_quick_config"]
     for key, group in MOVED.items():
         src = user.get(group)
         if isinstance(src, dict) and key in src:
             out[key] = src[key]
     return out
+
+
+def user_data(node: dict | None) -> dict:
+    """取出脚本节点下的账号集合字典，同时兼容旧键 UserData 与 v5.10 插件新键 users。
+
+    读路径只返回视图，不改写原始 scripts.yaml 的键名，保证回写时不破坏 v5.10 结构。
+    """
+    if not isinstance(node, dict):
+        return {}
+    sub = node.get("SubConfigsInfo")
+    if isinstance(sub, dict):
+        # 优先取有实际账号条目的集合，避免空占位键遮蔽真实账号数据
+        for key in ("UserData", "users"):
+            val = sub.get(key)
+            if isinstance(val, dict) and any(k != "instances" for k in val):
+                return val
+        for key in ("UserData", "users"):
+            val = sub.get(key)
+            if isinstance(val, dict):
+                return val
+    # 兼容直接传入未经过 legacy() 转换的原始脚本字典
+    for key in ("UserData", "users"):
+        val = node.get(key)
+        if isinstance(val, dict):
+            return legacy(val) if _collection(val) else val
+    return {}
 
 
 def runs(info: dict) -> bool:
@@ -361,6 +398,20 @@ def legacy(node: dict) -> dict:
     return out
 
 
+# AUTO-MAS v5.10 起插件化脚本适配器（ScriptEntry，如 maa_adapter.MaaConfig）
+# 在 scripts.yaml 里将账号集合子键由 UserData 改为 users；
+# 读路径把 users 归一映射到 SubConfigsInfo.UserData，让全仓调用方无缝读取，
+# 且不生成重复副本，避免离线改配置时 diff 计数翻倍；写路径仍按原文本保留 users 键名。
+_SUB_COLLECTION_ALIAS: dict[str, str] = {
+    "users": "UserData",
+}
+
+
+def _has_collection_entries(block) -> bool:
+    """判断转换后的子集合字典里是否真的有账号/条目（排除仅含 instances 列表的空壳）。"""
+    return isinstance(block, dict) and any(k != "instances" for k in block)
+
+
 def _item(item):
     if not isinstance(item, dict):
         return item
@@ -370,6 +421,12 @@ def _item(item):
             subs[k] = legacy(v)
         else:
             plain[k] = _local(v, k)
+    for src_key, dst_key in _SUB_COLLECTION_ALIAS.items():
+        if src_key not in subs:
+            continue
+        # 目标键不存在，或目标键是空壳而新键有真实账号数据时，把新键归一为旧键名
+        if dst_key not in subs or (not _has_collection_entries(subs[dst_key]) and _has_collection_entries(subs[src_key])):
+            subs[dst_key] = subs.pop(src_key)
     if subs:
         plain["SubConfigsInfo"] = subs
     return plain
@@ -586,7 +643,7 @@ def nodes_by_level(cfg_dir: Path, unreadable: list) -> dict[tuple[str, str], lis
         if not kind:
             continue
         out[(kind, "script")].append(node)
-        users = (node.get("SubConfigsInfo") or {}).get("UserData")
+        users = user_data(node)
         out[(kind, "user")] += [u for _, u in _nodes(users)] or _entries(users)
     for _, node in _nodes(load("QueueConfig.json")):
         out[("queue", "queue")].append(node)

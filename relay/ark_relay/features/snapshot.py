@@ -176,8 +176,8 @@ def maa_from_files(automas_dir) -> dict:
         node = data.get(inst.get("uid")) or {}
         if (node.get("Info") or {}).get("Name") != "MAA":
             continue
-        # The user _mas shows and the phone's changes go to (masuser.pick).
-        if got := masuser.pick((node.get("SubConfigsInfo") or {}).get("UserData")):
+        # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users（与 _mas / 手机修改选同一账号）
+        if got := masuser.pick(masuser.user_data(node)):
             u = got[1]
             found = maa_fields(masuser.info_view(u), u.get("Task") or {})
     if found is None:

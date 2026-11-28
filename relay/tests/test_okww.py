@@ -427,16 +427,31 @@ ok.task.exceptions.WaitFailedException
     check("不记「还没有翻译」的警告", [m for m in _said if "还没有翻译" in m], [])
     _cok._log_collector_okww.removeHandler(_h)
 
-    print("[原文和异常都不认识：明说不认识，并且**把原文抄进来**]")
+    print("[原文和异常都不认识：relay.log 保留完整原文，通知与群告警走纯白话中文模板]")
+    from ark_relay.core import texts as _texts
+    from ark_relay.features import errwatch as _ew
     UNK2 = UNKNOWN.replace("ok.task.exceptions.WaitFailedException", "ok.task.exceptions.SomethingNewException")
     (d / "unk2.log").write_text(UNK2, encoding="utf-8")
-    u2 = collector.parse_okww_log(d / "unk2.log")
+    _unk_recs = []
+    _h2 = type("H2", (__import__("logging").Handler,), {"emit": lambda self, r: _unk_recs.append(r)})()
+    _cok._OKWW_UNTRANSLATED.clear()
+    _cok._log_collector_okww.addHandler(_h2)
+    try:
+        u2 = collector.parse_okww_log(d / "unk2.log")
+    finally:
+        _cok._log_collector_okww.removeHandler(_h2)
     got = u2.get("okww_error") or ""
     check("点名了是哪一步", got.startswith("无音区："), True)
     check("明说不认识", "中继还不认识这条错" in got, True)
-    check("原文照抄进来了", "some brand new english message" in got, True)
+    check("通知摘要走纯白话中文（不透英文原文）", _texts.plain(got), [])
+    check("relay.log 警告保留英文原文和异常类名",
+          any("some brand new english message" in r.getMessage() and "SomethingNewException" in r.getMessage()
+              for r in _unk_recs), True)
+    _alarm = next((getattr(r, _ew.ALARM, None) for r in _unk_recs if getattr(r, _ew.ALARM, None)), None)
+    check("推群告警走纯白话中文模板",
+          (_alarm is not None and _texts.plain(_alarm[1]) == [] and "无音区" in _alarm[1]), True)
     check("不出现「出错」「这一步」这类模糊词",
-          any(k in got.split("原文照抄")[0] for k in ("这一步", "出错", "异常", "错误")), False)
+          any(k in got for k in ("这一步", "出错", "异常", "错误")), False)
 
     from ark_relay.features.outcome import _okww_say
 
@@ -8060,5 +8075,103 @@ def _part_echo_farm_stall_and_schtasks():
             os.environ["ARK_OKWW_DIR"] = real_okww_env
 
 
+def _part_okww_walking_timeout_and_unknown_plain():
+    """#213 回归：OK-WW-17-46-37 凝素领域进场走位超时、Traceback 反推内层任务与未知英文报错纯白话兜底。"""
+    import logging
+    from ark_relay.core import texts
+    from ark_relay.features import errwatch, outcome
+
+    # 2026-11-28 实机证据 2026-11-28_wuwa_OK-WW-17-46-37\automas-0.log 关键片段（脱敏）
+    REAL_FORGERY_LOG = (
+        "2026-11-28 21:49:25,302 INFO TaskExecutor ForgeryTask:info_set Teleport to Forgery Challenge 1\n"
+        "2026-11-28 21:50:39,115 INFO TaskExecutor TaskExecutor:wait_until timeout "
+        "<bound method BaseWWTask.has_claim of <src.task.ForgeryTask.ForgeryTask object at 0x000002496A1CA7E0>> 1.5 seconds\n"
+        "2026-11-28 21:53:59,147 INFO TaskExecutor DailyTask:info_set 错误 wait condition failed while walking\n"
+        "2026-11-28 21:53:59,210 ERROR TaskExecutor TaskExecutor:📅 Daily Task exception stopped Traceback (most recent call last):\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok\\task\\TaskExecutor.py", line 837, in execute\n'
+        "    task.run()\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok_tasks\\ark_overrides.py", line 2270, in daily\n'
+        "    return daily_run(self)\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\src\\task\\DailyTask.py", line 126, in run\n'
+        "    self.get_task_by_class(ForgeryTask).farm_forgery(daily=True, used_stamina=used_stamina,\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok_tasks\\ark_overrides.py", line 2354, in hooked\n'
+        "    return original(self, *a, **kw)\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\src\\task\\ForgeryTask.py", line 48, in farm_forgery\n'
+        "    self.farm_domain_with_recovery_loop(must_use, teleport_once)\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\src\\task\\DomainTask.py", line 67, in farm_domain_with_recovery_loop\n'
+        "    finished, must_use = self.farm_in_domain(must_use=must_use)\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\src\\task\\DomainTask.py", line 94, in farm_in_domain\n'
+        "    self.combat_once()\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\src\\task\\BaseCombatTask.py", line 562, in combat_once\n'
+        "    result = self.wait_combat(target=target, time_out=wait_combat_time, raise_if_not_found=raise_if_not_found)\n"
+        '  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\src\\task\\BaseCombatTask.py", line 526, in wait_combat\n'
+        "    raise Exception(self.tr('wait condition failed while walking'))\n"
+        "Exception: wait condition failed while walking\n"
+    )
+
+    records: list[logging.LogRecord] = []
+
+    class _Cap(logging.Handler):
+        def emit(self, r: logging.LogRecord) -> None:
+            records.append(r)
+
+    h = _Cap(level=logging.WARNING)
+    outcome._OKWW_UNTRANSLATED.clear()
+    outcome._log_collector_okww.addHandler(h)
+    try:
+        print("[1. 实机 OK-WW-17-46-37 日志：精准识别凝素领域与进场走位超时，0 条 ark.collector WARNING]")
+        d = tmpdir()
+        f = d / "OK-WW-17-46-37.log"
+        f.write_text(REAL_FORGERY_LOG, encoding="utf-8")
+        parsed = outcome.parse_okww_log(f)
+        err = parsed.get("okww_error") or ""
+        check("识别内层任务为凝素领域并翻译进场走位超时",
+              err, "凝素领域：进场走位时等不到进入战斗（超时）")
+        check("包含凝素领域与进场走位超时且过 plain()",
+              ("凝素领域" in err, "进场走位时等不到进入战斗（超时）" in err, texts.plain(err)),
+              (True, True, []))
+        check("解析 OK-WW-17-46-37 零触发 ark.collector WARNING", records, [])
+
+        print("[2. SimulationTask Traceback 反推模拟领域]")
+        sim_log = REAL_FORGERY_LOG.replace("ForgeryTask", "SimulationTask").replace("farm_forgery", "farm_simulation")
+        sim_err = outcome._okww_error(sim_log)
+        check("SimulationTask 帧反推为模拟领域",
+              sim_err, "模拟领域：进场走位时等不到进入战斗（超时）")
+        check("模拟领域文案过 plain()", texts.plain(sim_err), [])
+        check("SimulationTask 解析零 WARNING", records, [])
+
+        print("[3. 未来未登记新英文报错：解包保留原 exc、relay.log 记全原文、推群走纯白话中文模板]")
+        unseen_log = (
+            REAL_FORGERY_LOG
+            .replace("wait condition failed while walking", "brand new domain sensor mismatch")
+            .replace("Exception: brand new domain sensor mismatch", "CustomDomainError: brand new domain sensor mismatch")
+        )
+        unseen_err = outcome._okww_error(unseen_log)
+        check("未登记新错点名凝素领域并过 plain()",
+              (unseen_err.startswith("凝素领域："), "中继还不认识这条错" in unseen_err, texts.plain(unseen_err)),
+              (True, True, []))
+        check("未登记新错不把英文原文透进通知摘要", "brand new domain sensor mismatch" in unseen_err, False)
+        check("relay.log 保留任务名、原异常名与英文原文，不再出现「没抓到异常名」",
+              (len(records),
+               "ForgeryTask" in records[0].getMessage() if records else False,
+               "CustomDomainError" in records[0].getMessage() if records else False,
+               "brand new domain sensor mismatch" in records[0].getMessage() if records else False,
+               "没抓到异常名" not in records[0].getMessage() if records else False),
+              (1, True, True, True, True))
+        alarm_pair = getattr(records[0], errwatch.ALARM, None) if records else None
+        check("errwatch 推群告警自带纯白话模板且含凝素领域、不退化为泛型兜底",
+              (alarm_pair is not None,
+               alarm_pair[0] == texts.RELAY_ERROR if alarm_pair else False,
+               "凝素领域" in alarm_pair[1] if alarm_pair else False,
+               "OK-WW" in alarm_pair[1] if alarm_pair else False,
+               "程序发生运行异常" not in alarm_pair[1] if alarm_pair else False,
+               "这种报错中继还不认识" not in alarm_pair[1] if alarm_pair else False,
+               texts.plain(alarm_pair[1]) if alarm_pair else ["missing"]),
+              (True, True, True, True, True, True, []))
+    finally:
+        outcome._log_collector_okww.removeHandler(h)
+        outcome._OKWW_UNTRANSLATED.clear()
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_okww_alive_cache, _part_okww_drift, _part_okww_error_event, _part_okww_error_reason, _part_okww_exit_race, _part_okww_failed_reason, _part_okww_i18n, _part_okww_landed, _part_okww_names_not_numbers, _part_okww_python_filter, _part_okww_quiesce_order, _part_okww_report, _part_okww_structured, _part_okww_battle_pass, _part_okww_battle_pass_claim, _part_okww_claim_readback, _part_okww_daily_chests, _part_okww_farm_hook, _part_okww_merge_step, _part_okww_plan_bits, _part_okww_revive_and_retry, _part_okww_stamina_end, _part_okww_stamina_nest_verdict, _part_okww_upstream_no_farm, _part_okww_nest_capture, _part_okww_nest_expected, _part_okww_nest_fought_then_full, _part_okww_nest_names, _part_okww_nest_travel_retry, _part_okww_nest_v373, _part_okww_no_challenge_window, _part_okww_weekly_boss_step, _part_okww_weekly_entry_paths, _part_okww_weekly_spend, _part_okww_overlay_main, _part_okww_overlay_faults, _part_okww_overlay_install_guard, _part_okww_overlay_pending, _part_okww_overlay_param_start, _part_okww_overlay_copies, _part_okww_battle_pass_alt_finally, _part_okww_report_atomic, _part_echo_farm_main, _part_echo_farm_stop_and_backlog, _part_echo_farm_stall_and_schtasks]))
+    sys.exit(run_parts([_part_okww_alive_cache, _part_okww_drift, _part_okww_error_event, _part_okww_error_reason, _part_okww_exit_race, _part_okww_failed_reason, _part_okww_i18n, _part_okww_landed, _part_okww_names_not_numbers, _part_okww_python_filter, _part_okww_quiesce_order, _part_okww_report, _part_okww_structured, _part_okww_battle_pass, _part_okww_battle_pass_claim, _part_okww_claim_readback, _part_okww_daily_chests, _part_okww_farm_hook, _part_okww_merge_step, _part_okww_plan_bits, _part_okww_revive_and_retry, _part_okww_stamina_end, _part_okww_stamina_nest_verdict, _part_okww_upstream_no_farm, _part_okww_nest_capture, _part_okww_nest_expected, _part_okww_nest_fought_then_full, _part_okww_nest_names, _part_okww_nest_travel_retry, _part_okww_nest_v373, _part_okww_no_challenge_window, _part_okww_weekly_boss_step, _part_okww_weekly_entry_paths, _part_okww_weekly_spend, _part_okww_overlay_main, _part_okww_overlay_faults, _part_okww_overlay_install_guard, _part_okww_overlay_pending, _part_okww_overlay_param_start, _part_okww_overlay_copies, _part_okww_battle_pass_alt_finally, _part_okww_report_atomic, _part_echo_farm_main, _part_echo_farm_stop_and_backlog, _part_echo_farm_stall_and_schtasks, _part_okww_walking_timeout_and_unknown_plain]))

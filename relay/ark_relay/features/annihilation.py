@@ -86,7 +86,8 @@ def _maa_users(data: dict):
         path = ((node.get("Info") or {}).get("Path") or "").lower()
         if "maaend" in path or "maa" not in path:
             continue
-        for uid, user in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).items():
+        # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users
+        for uid, user in masuser.user_data(node).items():
             if uid == "instances" or not isinstance(user, dict):
                 continue
             yield user

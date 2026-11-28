@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ark_relay.core import plan, texts
+from ark_relay.core import mastercfg, plan, texts
 from ark_relay.core.config import SERVER_TZ
 
 log = logging.getLogger("ark.runwatch")
@@ -195,7 +195,8 @@ def _script_of(automas_dir, uid: str) -> tuple[str, str]:
     cfg_dir = Path(automas_dir) / "config"
     kind = (plan._scripts(cfg_dir).get(uid) or {}).get("kind") or ""
     node = plan._load(cfg_dir / "ScriptConfig.json").get(uid) or {}
-    users = ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values()
+    # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users
+    users = mastercfg.user_data(node).values()
     names = [str((u.get("Info") or {}).get("Name") or "") for u in users if isinstance(u, dict)]
     return kind, next((n for n in names if n), "")
 

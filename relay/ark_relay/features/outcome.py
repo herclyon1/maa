@@ -1597,11 +1597,12 @@ def _okww_got_in(text: str) -> bool:
     return bool(_OKWW_ACTIVITY.search(text, i if i >= 0 else 0))
 
 
-# Chinese for task class names, exception names and known raw messages, used in
-# notifications; untranslated ones are quoted raw (see _okww_say).
+# 任务类名、异常类名与已知英文报错原文的白话中文对照表；
+# 没登记过的新报错一律在 relay.log 记全原文，推群走纯白话中文模板（见 _okww_say）。
 _OKWW_TASK_ZH = {
     "DailyTask": "日常清单", "FarmEchoTask": "周本", "TacetTask": "无音区",
     "NightmareNestTask": "残象聚落", "GardenTask": "周常乐园", "DomainTask": "模拟领域",
+    "ForgeryTask": "凝素领域", "SimulationTask": "模拟领域",
     "FarmWorldBossTask": "世界 Boss", "CombatCheck": "战斗", "BaseCombatTask": "战斗",
     "TaskExecutor": "任务执行", "AutoCombatTask": "战斗",
 }
@@ -1618,6 +1619,7 @@ _OKWW_MSG_ZH = (
     ("can not battle pass", texts.OKWW_BATTLE_PASS_UNCLAIMED),
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
+    ("wait condition failed while walking", "进场走位时等不到进入战斗（超时）"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
     ("Please start in game world and in team",
      "开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工"),
@@ -1625,7 +1627,30 @@ _OKWW_MSG_ZH = (
 _OKWW_WRAPPER = "Daily Task exception stopped"
 _OKWW_WAIT_SEC = re.compile(r"wait_until timeout .*? (\d+(?:\.\d+)?) seconds")
 _OKWW_ANY_ERR = re.compile(r" ERROR TaskExecutor (\w+):(.*)")
+# 从 Traceback 的 src\task\<XxxTask>.py 调用栈反推实际执行的业务任务名：
+# 跳过外层调度壳（DailyTask 等）与通用基类（DomainTask / BaseCombatTask 等），优先取具体业务任务（如 ForgeryTask）。
+_OKWW_TB_FRAME = re.compile(r'File "[^"\n]*[\\/]src[\\/]task[\\/](\w+Task)\.py"')
+_OKWW_TB_WRAPPERS = frozenset({"DailyTask", "MultiAccountDailyTask", "TaskExecutor"})
+_OKWW_TB_BASES = frozenset({"BaseWWTask", "BaseCombatTask", "SkipBaseTask", "WWOneTimeTask", "DomainTask"})
 _OKWW_UNTRANSLATED: set = set()
+
+
+def _okww_tb_task(tb_block: str) -> str:
+    """从单段 Traceback 里反推真正出事的内层任务名（如 ForgeryTask / SimulationTask）。
+
+    Python 栈从外到内打印，形如 DailyTask -> ForgeryTask -> DomainTask -> BaseCombatTask：
+    优先取具体的业务任务；若栈里只有基类，只退回已登记中文名的基类（如 DomainTask），
+    不拿未登记基类（如 BaseWWTask）盖掉外层，避免阻断后续 current task 推断。
+    """
+    frames = _OKWW_TB_FRAME.findall(tb_block)
+    concrete = [name for name in frames if name not in _OKWW_TB_WRAPPERS and name not in _OKWW_TB_BASES]
+    if concrete:
+        return concrete[-1]
+    known_bases = [name for name in frames if name in _OKWW_TB_BASES and name in _OKWW_TASK_ZH]
+    if known_bases:
+        non_combat = [name for name in known_bases if name != "BaseCombatTask"]
+        return non_combat[-1] if non_combat else known_bases[-1]
+    return ""
 
 
 _OKWW_INFO = re.compile(r" INFO TaskExecutor (\w+):info_set (.+)$", re.M)
@@ -1707,7 +1732,8 @@ def _okww_error(text: str) -> str:
     head = (inner or cluster)[0]
     task, msg = head.group(1), head.group(2).strip()
     nxt = heads[heads.index(head) + 1].start() if heads.index(head) + 1 < len(heads) else len(text)
-    excs = _OKWW_EXC_LINE.findall(text[head.end():nxt])
+    tb_block = text[head.end():nxt]
+    excs = _OKWW_EXC_LINE.findall(tb_block)
     exc = excs[-1][0].rsplit(".", 1)[-1] if excs else ""
     if "farm 4c error" in msg:
         # The catch-all sentence (see _OKWW_MSG_ZH): the reason is the exception
@@ -1727,14 +1753,16 @@ def _okww_error(text: str) -> str:
                  if m.group(1) not in ("DailyTask", "TaskExecutor", "CombatCheck", "BaseCombatTask")]
         if prior:
             task, msg = prior[-1].group(1), prior[-1].group(2).strip()
-    # When still on a wrapper header (such as 「Daily Task exception stopped」
-    # with no inner task class in msg or prior ERROR), use the step upstream
-    # recorded via `current task`.
+    # 最外层仍是 DailyTask / TaskExecutor 且前置 ERROR 未抓到内层任务时，
+    # 从本段 Traceback 调用栈里的 src\task\<XxxTask>.py 反推真实内层业务任务（如 ForgeryTask）。
+    if task in ("DailyTask", "TaskExecutor"):
+        if tb_task := _okww_tb_task(tb_block):
+            task = tb_task
+    # 仍停在包装层（例如 Traceback 里只有 DailyTask.py）时，再退回上游记录的 current task 推断。
     if task in ("DailyTask", "TaskExecutor"):
         before_tasks = okww_info(text, until=head.start())["tasks"]
         if before_tasks:
             task = _OKWW_TASK_BY_STEP.get(before_tasks[-1].split()[0], task)
-    # No generic catch-all: an untranslated error is quoted raw (_okww_say).
     return _okww_say(task, msg, exc, text, head.start())
 
 
@@ -1805,26 +1833,29 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: "int | None" = 
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
     if task_zh is not None and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:
-        # Only the outermost traceback (the daily list stopped) was found. Use
-        # OK-WW's own 「错误 …」 line when it has one, else say the list stopped.
-        # The wrapper is not in _OKWW_MSG_ZH because that table also decides which
-        # traceback is reported, and the wrapper must not win there.
+        # 只抓到最外层「Daily Task exception stopped」时，改用上游自己写的 `info_set 错误`；
+        # 递归解包时保留原异常名 exc（避免丢失异常类导致日志打成「没抓到异常名」），同时传 text="" 防二次递归。
         err = (okww_info(text).get("error") or "").strip() if text else ""
         if err and _OKWW_WRAPPER not in err:
-            return _okww_say(task, err, "")      # text="" so this branch cannot recurse
+            return _okww_say(task, err, exc)
         return f"{task_zh}：日常清单整个停了（真正的原因在它上面那条）"
     if task_zh is None or not (msg_zh or exc_zh):
+        who = task_zh or "某个任务"
+        raw = " ".join((msg or "").split())[:110]
+        # 优先复用已译消息/异常说明，其次识别标准系统/网络异常类别；未命中时由白话模板报 OK-WW 新报错
+        cause = msg_zh or exc_zh or texts.fault_cause(f"{exc}: {msg}" if exc else msg)
         sig = (task, exc, msg[:80])
-        if sig not in _OKWW_UNTRANSLATED:      # Warn once per process for the same raw message
+        if sig not in _OKWW_UNTRANSLATED:      # 同一进程内相同未翻译原文只告警一次
             _OKWW_UNTRANSLATED.add(sig)
+            from ark_relay.features import errwatch  # noqa: PLC0415
+            # relay.log 保留完整英文原文与任务/异常类名方便排查；
+            # 推往企微群的告警走纯白话中文模板（过 texts.plain()），避免退化成看不懂的通用报错。
             _log_collector_okww.warning(
                 "OK-WW 报错中继还没有翻译，通知里只能说不认识：任务 %s，异常 %s，原文「%s」",
-                task, exc or "（没抓到异常名）", msg)
-        who = task_zh or "某个任务"
-        # The raw text goes into the notification itself: the machine is often
-        # off by the time the alert is read, so the log cannot be looked up.
-        raw = " ".join((msg or "").split())[:110] or exc or "（连原文都没抓到）"
-        return f"{who}：中继还不认识这条错，原文照抄——「{raw}」"
+                task, exc or "（没抓到异常名）", msg,
+                extra=errwatch.alarm(texts.RELAY_ERROR, texts.okww_untranslated_alarm_body(who, cause)),
+            )
+        return texts.okww_untranslated_reason(who, raw, cause)
     what = msg_zh or exc_zh
     pos = at if at is not None else 0     # the helpers below as before (0 when not given)
     if "Teleport to boss failed" in msg and text and _said_before(text, pos, _NO_CHALLENGE):

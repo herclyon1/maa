@@ -370,7 +370,8 @@ def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None
         script = _maa_script(data) if data else None
         if script is None:
             return UNKNOWN, "", "找不到唯一的 MAA 脚本"
-        users = [u for u in ((script[1].get("SubConfigsInfo") or {}).get("UserData") or {}).values()
+        # 兼容旧键 UserData 与 AUTO-MAS v5.10 插件适配器新键 users
+        users = [u for u in masuser.user_data(script[1]).values()
                  if isinstance(u, dict) and masuser.runs(masuser.info_view(u))]
     verdicts: list[tuple[str, str, str]] = []
     for u in users:

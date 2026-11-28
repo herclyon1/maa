@@ -227,13 +227,18 @@ def _set_stage(value: str) -> tuple[bool, str]:
         return _user_item_report("MAA", "Info.Stage", stage)
 
     def mutate(raw: str) -> str:
+        # YAML 与 JSON 分开匹配：v5.10 scripts.yaml 里 Data.StaminaPipelineBackup 嵌套了带
+        # "Stage": "..." 的 JSON 字符串，且 Stage: 分组头后面紧跟换行；
+        # 只按行内水平空白匹配真实 YAML 标量行，既避免误改备份串，也原样保留 users/UserData 键名。
+        if masuser.source(_script_config()).suffix != ".json":
+            yhits = re.findall(r"(?m)^[ \t]*Stage:[ \t]+[^\s\r\n][^\r\n]*$", raw)
+            if len(yhits) == 1:
+                return re.sub(r"(?m)^([ \t]*Stage:[ \t]+)[^\s\r\n][^\r\n]*?(\r?)$", rf"\g<1>{stage}\2", raw, count=1)
+            raise ValueError(f'找到 {len(yhits)} 处 "Stage"，预期恰好 1 处')
         hits = re.findall(r'"Stage":\s*"[^"]*"', raw)
         if len(hits) == 1:
             return re.sub(r'("Stage":\s*)"[^"]*"', rf'\1"{stage}"', raw, count=1)
-        yhits = re.findall(r"(?m)^\s*Stage:\s*\S+.*$", raw)
-        if not hits and len(yhits) == 1:
-            return re.sub(r"(?m)^(\s*Stage:\s*)\S+.*$", rf"\g<1>{stage}", raw, count=1)
-        raise ValueError(f'找到 {len(hits) or len(yhits)} 处 "Stage"，预期恰好 1 处')
+        raise ValueError(f'找到 {len(hits)} 处 "Stage"，预期恰好 1 处')
 
     return _safe_rewrite(_script_config(), mutate, expect_changed=1)
 
@@ -257,13 +262,16 @@ def _set_medicine(value: Any) -> tuple[bool, str]:
         return _user_item_report("MAA", "Info.MedicineNumb", n)
 
     def mutate(raw: str) -> str:
+        # 同 _set_stage：YAML 绝不落入 JSON 正则，避免误改 StaminaPipelineBackup 里的旧备份值
+        if masuser.source(_script_config()).suffix != ".json":
+            yhits = re.findall(r"(?m)^[ \t]*MedicineNumb:[ \t]+\d+[ \t]*\r?$", raw)
+            if len(yhits) == 1:
+                return re.sub(r"(?m)^([ \t]*MedicineNumb:[ \t]+)\d+[ \t]*(\r?)$", rf"\g<1>{n}\2", raw, count=1)
+            raise ValueError(f'找到 {len(yhits)} 处 "MedicineNumb"，预期恰好 1 处')
         hits = re.findall(r'"MedicineNumb":\s*\d+', raw)
         if len(hits) == 1:
             return re.sub(r'("MedicineNumb":\s*)\d+', rf"\g<1>{n}", raw, count=1)
-        yhits = re.findall(r"(?m)^\s*MedicineNumb:\s*\d+$", raw)
-        if not hits and len(yhits) == 1:
-            return re.sub(r"(?m)^(\s*MedicineNumb:\s*)\d+$", rf"\g<1>{n}", raw, count=1)
-        raise ValueError(f'找到 {len(hits) or len(yhits)} 处 "MedicineNumb"，预期恰好 1 处')
+        raise ValueError(f'找到 {len(hits)} 处 "MedicineNumb"，预期恰好 1 处')
 
     return _safe_rewrite(_script_config(), mutate, expect_changed=1)
 
@@ -297,13 +305,15 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
         return _script_item_via_api(scripts, "MaaEnd", "Game.WaitTime", n)
 
     def mutate(raw: str) -> str:
+        if masuser.source(_script_config()).suffix != ".json":
+            yhits = re.findall(r"(?m)^[ \t]*WaitTime:[ \t]+\d+[ \t]*\r?$", raw)
+            if len(yhits) == 1:
+                return re.sub(r"(?m)^([ \t]*WaitTime:[ \t]+)\d+[ \t]*(\r?)$", rf"\g<1>{n}\2", raw, count=1)
+            raise ValueError(f'找到 {len(yhits)} 处 "WaitTime"，预期恰好 1 处')
         hits = re.findall(r'"WaitTime":\s*\d+', raw)
         if len(hits) == 1:
             return re.sub(r'("WaitTime":\s*)\d+', rf"\g<1>{n}", raw, count=1)
-        yhits = re.findall(r"(?m)^\s*WaitTime:\s*\d+$", raw)
-        if not hits and len(yhits) == 1:
-            return re.sub(r"(?m)^(\s*WaitTime:\s*)\d+$", rf"\g<1>{n}", raw, count=1)
-        raise ValueError(f'找到 {len(hits) or len(yhits)} 处 "WaitTime"，预期恰好 1 处')
+        raise ValueError(f'找到 {len(hits)} 处 "WaitTime"，预期恰好 1 处')
 
     return _safe_rewrite(_script_config(), mutate, expect_changed=1)
 

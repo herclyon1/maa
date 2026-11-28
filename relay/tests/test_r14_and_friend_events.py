@@ -10,7 +10,7 @@ import json
 import subprocess
 import sys
 import threading
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -383,7 +383,8 @@ def _part_friend_events_allowlist_and_integrations():
     tmp_mc = tmpdir("friend-mc-")
     notifier_mc = _FakeNotifier()
     eng_mc = _make_engine(tmp_mc, notifier_mc)
-    today = date.today()
+    # 按游戏机北京时区 SERVER_TZ 取今日日期，避免日本 00:00–00:59 跨日时与 phone.due_notice 差一天
+    today = datetime.now(tz=SERVER_TZ).date()
     phone.apply(eng_mc.state.dir, {"game": "明日方舟", "left": 3}, today=today)
     phone.apply(eng_mc.state.dir, {"game": "终末地", "left": 6}, today=today)  # >5d: must NOT trigger
     eng_mc._monthcard_notice()
@@ -817,7 +818,8 @@ def _part_engine_tick_flush_and_dual_lock_transition():
         eng = _make_engine(tmp, notifier)
         sd = eng.cfg.state_dir
         now = datetime.now(tz=SERVER_TZ)
-        today = date.today()
+        # 按游戏机北京时区 SERVER_TZ 取今日日期，避免日本 00:00–00:59 跨日时与 phone.due_notice 差一天
+        today = now.date()
 
         # Seed all 3 triggers: Arknights open activity, <=5d monthcard, tomorrow banner.
         cache_path = eng.cfg.maa_dir / "cache" / "gui" / "StageActivityV2.json"

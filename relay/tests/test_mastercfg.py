@@ -4326,5 +4326,354 @@ def _part_scriptconfig_race_and_protocolspace_guard():
                 os.environ[k] = v
 
 
+def _part_automas_v510_maa_users_schema():
+    """#214 回归：AUTO-MAS v5.10 scripts.yaml 中 MAA 子键 users 全链路读通＋回写严守原键名。"""
+    import importlib.util
+    import json
+    import logging
+    import os
+    from datetime import datetime
+    from ark_relay.core import mastercfg, plan
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features import annihilation, commands, runwatch, snapshot, stagegate
+
+    # 脱敏自 2026-11-28 实机 AUTO-MAS v5.10 scripts.yaml（MAA 使用插件新键 users，MaaEnd/OK-WW 仍用 UserData）
+    SCRIPTS_V510 = """\
+order:
+- uid: 754d129e-d587-435b-b75f-a0b91aac7020
+  type: MaaConfig
+- uid: 59da8762-8fa7-4260-8aee-10f9ca00097a
+  type: MaaEndConfig
+- uid: c5e96ddc-aae9-4a73-b6fe-1312a417382d
+  type: OkwwConfig
+data:
+  754d129e-d587-435b-b75f-a0b91aac7020:
+    game:
+      unavailable_reason: ''
+      game_id: 51b140a7-5b6b-442f-8bed-78ea5d0ee4e6
+      device_id: b15c3cc7-dfcb-5ddb-a937-db3cf05d4a93
+    info: {}
+    Info:
+      Name: MAA
+      Path: D:\\ark\\maa
+    Run:
+      IfAutoInstallGameApk: true
+      IfCheckGameUpdate: true
+    Update:
+      TakeoverEnabled: true
+      Channel: beta
+    users:
+      order:
+      - uid: 12eaa794-6946-4b07-8d6c-22b01d8160bc
+        type: MaaUserConfig
+      data:
+        12eaa794-6946-4b07-8d6c-22b01d8160bc:
+          info:
+            mode: 脚本
+            if_quick_config: true
+            proxy_status: ''
+            last_result: ''
+            plan_id: '-'
+          Data:
+            AnnihilationCompletedWeek: 2026-W48
+            LastProxyDate: '2026-11-28T01:00:46.223205Z'
+            StaminaPipelineBackup: '{"Stage": {"MedicineNumb": 999, "Stage": "YW-4", "StageMode": "Fixed"}}'
+            StaminaPipelineVersion: 1
+          Info:
+            Base: shared
+            IfQuickConfig: true
+            Name: arknights
+            Notes: 无
+            RemainedDay: -1
+            Server: Official
+            Status: true
+          Stage:
+            MedicineNumb: 999
+            SeriesNumb: '0'
+            Stage: OS-4
+            StageMode: Fixed
+            Stage_1: '-'
+            Stage_2: '-'
+            Stage_3: '-'
+          Task:
+            ActivityMedicineNumb: 0
+            ActivityStageIndex: 1
+            Annihilation: Annihilation
+            AnnihilationStartWeekday: Monday
+            IfActivityFirst: false
+            IfFight: true
+            InfrastMode: Normal
+          custom_webhooks:
+            order: []
+            data: {}
+          Notify_CustomWebhooks:
+            order: []
+            data: {}
+  59da8762-8fa7-4260-8aee-10f9ca00097a:
+    Game:
+      LaunchMode: MaaEnd
+      CloseOnFinish: true
+      ControllerType: Win32-Front
+      LauncherPath: null
+      Path: D:\\endfield\\Endfield.exe
+      RestoreDisplayType: Fullscreen
+      RestoreResolution: 1920x1080
+      SetResolution: true
+      WaitTime: 60
+    Info:
+      Name: MaaEnd
+      Path: D:\\ark\\maaend
+    Update:
+      TakeoverEnabled: true
+      Channel: beta
+    UserData:
+      order:
+      - uid: cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1
+        type: MaaEndUserConfig
+      data:
+        cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1:
+          Info:
+            Name: endfield
+            RemainedDay: -1
+            Status: true
+          Task:
+            AutoEssenceSpecifiedLocation: VFTheHub
+            IfAutoEssence: true
+            IfAutoUseSpMedication: true
+            IfProtocolSpace: false
+            SanityTaskType: OperatorProgression
+  c5e96ddc-aae9-4a73-b6fe-1312a417382d:
+    Game:
+      Enabled: true
+      IfAutoUpdate: true
+      Path: D:\\Wuthering Waves\\launcher.exe
+    Info:
+      Name: OK-WW
+      RootPath: D:\\ark\\okww
+    UserData:
+      order:
+      - uid: 50ca12aa-0288-4592-982e-60f0bd6dc74e
+        type: OkwwUserConfig
+      data:
+        50ca12aa-0288-4592-982e-60f0bd6dc74e:
+          Info:
+            IfQuickConfig: false
+            Name: wuwa
+            RemainedDay: -1
+            Status: true
+          Task:
+            AdditionalTasks: []
+            FarmNightmareNestForDailyEcho: true
+            MaterialSelection: Shell Credit
+            WhichForgeryChallengeToFarm: 1
+            WhichTacetSuppressionToFarm: 1
+            WhichToFarm: Simulation Challenge
+"""
+    QUEUES_V510 = """\
+order:
+- uid: q-evening
+  type: QueueConfig
+data:
+  q-evening:
+    Info:
+      AfterAccomplish: NoAction
+      CycleEnabled: false
+      Name: 晚班
+      StartUpMode: Never
+      TimeEnabled: true
+    TimeSet:
+      order:
+      - uid: ts-1
+        type: TimeSet
+      data:
+        ts-1:
+          Info:
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+            Enabled: true
+            Time: '2000-01-01T13:30:00Z'
+    QueueItem:
+      order:
+      - uid: qi-1
+        type: QueueItem
+      data:
+        qi-1:
+          Info:
+            ScriptId: 754d129e-d587-435b-b75f-a0b91aac7020
+          Schedule:
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+"""
+    PLANS_V510 = """\
+order:
+- uid: p-1
+  type: MaaPlanConfig
+data:
+  p-1:
+    Info:
+      Mode: ALL
+      Name: 新 MAA 计划表
+    ALL:
+      MedicineNumb: 0
+      Stage: '-'
+      Stage_1: '-'
+      Stage_2: '-'
+      Stage_3: '-'
+"""
+    root = tmpdir()
+    cfg = root / "config"
+    cfg.mkdir(parents=True)
+    (cfg / "scripts.yaml").write_text(SCRIPTS_V510, encoding="utf-8")
+    (cfg / "queues.yaml").write_text(QUEUES_V510, encoding="utf-8")
+    (cfg / "plans.yaml").write_text(PLANS_V510, encoding="utf-8")
+
+    # 配套 MAA gui.new.json 母本，验证 read_maa 同目录读取无冲突
+    maa_cfg_dir = root / "data" / "754d129e-d587-435b-b75f-a0b91aac7020" / "Default" / "ConfigFile"
+    maa_cfg_dir.mkdir(parents=True)
+    (maa_cfg_dir / "gui.new.json").write_text(json.dumps({
+        "Current": "Default",
+        "Configurations": {"Default": {"TaskQueue": [
+            {"TaskType": "Infrast", "Name": "基建换班", "UsesOfDrones": "Money"},
+            {"TaskType": "Award", "Name": "领取奖励", "Award": True, "Mail": True, "FreeGacha": False},
+        ]}},
+    }, ensure_ascii=False), encoding="utf-8")
+
+    # 假 MAA 资源目录，供 stagegate 核对 OS-4
+    maa_dir = root / "maa"
+    (maa_dir / "resource" / "tasks").mkdir(parents=True)
+    (maa_dir / "resource" / "tasks" / "activities.json").write_text(
+        json.dumps({"OS-4": {"next": []}}, ensure_ascii=False), encoding="utf-8")
+
+    print("[1. mastercfg.read / check / read_maa 对 v5.10 users 节点全数读通]")
+    doc = mastercfg.read(cfg / "ScriptConfig.json")
+    maa_uid = "754d129e-d587-435b-b75f-a0b91aac7020"
+    u_uid = "12eaa794-6946-4b07-8d6c-22b01d8160bc"
+    maa_users = (doc[maa_uid].get("SubConfigsInfo") or {}).get("UserData") or {}
+    check("scripts.yaml 的 users 映射为 SubConfigsInfo.UserData 且无重复 users 键",
+          (u_uid in maa_users, "users" not in (doc[maa_uid].get("SubConfigsInfo") or {})),
+          (True, True))
+    res = mastercfg.check(root, version="v5.10.0")
+    check("mastercfg.check 全部契约项通过（含 MAA user）",
+          (res.missing, res.unreadable, res.judged >= 40), ([], [], True))
+    rm = mastercfg.read_maa(root)
+    check("mastercfg.read_maa 正常读出无人机与领奖母本",
+          (rm["values"].get(mastercfg.MAA_DRONES_PATH), rm["values"].get("Award/Award")),
+          ("Money", True))
+
+    print("[2. plan / annihilation / runwatch / stagegate / snapshot 全仓调用方准确读取 OS-4 与剿灭]")
+    scripts = plan._scripts(cfg)
+    ms = scripts[maa_uid]
+    check("plan._scripts 读出 MAA Stage/StageMode/MedicineNumb/Annihilation/IfFight",
+          (ms.get("fight"), ms.get("stage_mode"), (ms.get("stage_info") or {}).get("Stage"),
+           (ms.get("stage_info") or {}).get("MedicineNumb"), ms.get("annihilation")),
+          (True, "Fixed", "OS-4", 999, "Annihilation"))
+
+    plan_warns: list[str] = []
+
+    class _W(logging.Handler):
+        def emit(self, r: logging.LogRecord) -> None:
+            plan_warns.append(r.getMessage())
+
+    wh = _W(level=logging.WARNING)
+    plan.log.addHandler(wh)
+    orig_done = plan._annihilation_done_tomorrow
+    orig_maint = plan.maintenance_lines
+    orig_asar = plan._asar_value_labels
+    orig_env = os.environ.get("ARK_AUTOMAS_DIR")
+    orig_backend = commands._backend_scripts
+    orig_refusal = commands._stage_refusal
+    try:
+        plan._last_error.clear()
+        plan._annihilation_done_tomorrow = lambda _d: False
+        plan.maintenance_lines = lambda _d: []
+        plan._asar_value_labels = lambda _a, _s: {"Annihilation": "当前委托"}
+        text = plan.next_plan(root)
+        check("plan.next_plan 输出明日方舟 OS-4 与剿灭安排且 0 报警",
+              ("OS-4" in text, "剿灭 当前委托" in text, plan_warns), (True, True, []))
+
+        users_list = list(annihilation._maa_users(doc))
+        check("annihilation._maa_users 读出 MAA 账号与 Annihilation",
+              (len(users_list), mastercfg.get(users_list[0], "Annihilation"),
+               (users_list[0].get("Data") or {}).get("AnnihilationCompletedWeek")),
+              (1, "Annihilation", "2026-W48"))
+
+        check("runwatch._script_of 读出 MAA 种类与用户名",
+              runwatch._script_of(root, maa_uid), ("MAA", "arknights"))
+
+        verdict, stg, why = stagegate.run_verdict(
+            root, maa_dir, datetime(2026, 11, 29, 9, 0, tzinfo=SERVER_TZ),
+            mas_get=lambda _p, _b=None: (_ for _ in ()).throw(ConnectionRefusedError()),
+        )
+        check("stagegate.run_verdict 读出 OS-4 且不是「MAA 没有用户」",
+              (verdict, stg, "没有用户" in why), (stagegate.YES, "OS-4", False))
+
+        snap = snapshot.maa_from_files(root)
+        check("snapshot.maa_from_files 准确读出 OS-4 / Fixed / 999 / Annihilation / IfFight=True",
+              (snap.get("关卡"), snap.get("关卡模式"), snap.get("理智药"),
+               snap.get("剿灭"), snap.get("作战开关")),
+              ("OS-4", "Fixed", 999, "Annihilation", True))
+
+        print("[3. 写回安全：离线改 Stage / MedicineNumb 与 patch_yaml_text 严守原 users 键名且不误改备份串]")
+        os.environ["ARK_AUTOMAS_DIR"] = str(root)
+        commands._backend_scripts = lambda: (None, "")
+        commands._stage_refusal = lambda _s: ""
+        ok_s, msg_s = commands._set_stage("1-7")
+        check("离线 _set_stage 成功", (ok_s, "OS-4" in msg_s and "1-7" in msg_s), (True, True))
+        ok_m, msg_m = commands._set_medicine(5)
+        check("离线 _set_medicine 成功", (ok_m, "999" in msg_m and "5" in msg_m), (True, True))
+        raw_after = (cfg / "scripts.yaml").read_text(encoding="utf-8")
+        # 原始 YAML 结构中 MAA 下仍严格保留 users:，未被错写成 UserData:
+        maa_block = raw_after.split("59da8762-8fa7-4260-8aee-10f9ca00097a:")[0]
+        check("回写后 MAA 节点严格保留原键名 users:（绝不写成 UserData:）",
+              ("\n    users:\n" in maa_block, "\n    UserData:\n" in maa_block),
+              (True, False))
+        # StaminaPipelineBackup 里的旧值 YW-4 / 999 纹丝不动，只有真实 Stage/MedicineNumb 改变
+        re_doc = mastercfg.read(cfg / "ScriptConfig.json")
+        re_u = re_doc[maa_uid]["SubConfigsInfo"]["UserData"][u_uid]
+        check("回读 Stage=1-7、MedicineNumb=5 且 StaminaPipelineBackup 原样未动",
+              (re_u["Stage"]["Stage"], re_u["Stage"]["MedicineNumb"],
+               '"Stage": "YW-4"' in re_u["Data"]["StaminaPipelineBackup"],
+               '"MedicineNumb": 999' in re_u["Data"]["StaminaPipelineBackup"]),
+              ("1-7", 5, True, True))
+
+        # 验证 scripts/windows/fix_maaend_preupdate.py 也能在 v5.10 scripts.yaml 上保真运行
+        fmp_path = Path(__file__).resolve().parents[2] / "scripts" / "windows" / "fix_maaend_preupdate.py"
+        spec = importlib.util.spec_from_file_location("fix_maaend_preupdate_v510", fmp_path)
+        assert spec and spec.loader
+        fmp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(fmp)
+        broken_yaml = raw_after.replace("      TakeoverEnabled: true\n      Channel: beta\n    UserData:",
+                                        "      TakeoverEnabled: false\n      Channel: stable\n    UserData:")
+        patched_yaml = fmp.patch_yaml_text(broken_yaml)
+        patched_maa = patched_yaml.split("59da8762-8fa7-4260-8aee-10f9ca00097a:")[0]
+        check("fix_maaend_preupdate.patch_yaml_text 修 MaaEnd 后仍保留 MAA 原键 users:",
+              ("\n    users:\n" in patched_maa, "\n    UserData:\n" in patched_maa,
+               fmp.inspect_yaml_text(patched_yaml)["ok"]),
+              (True, False, True))
+    finally:
+        plan.log.removeHandler(wh)
+        plan._annihilation_done_tomorrow = orig_done
+        plan.maintenance_lines = orig_maint
+        plan._asar_value_labels = orig_asar
+        commands._backend_scripts = orig_backend
+        commands._stage_refusal = orig_refusal
+        if orig_env is None:
+            os.environ.pop("ARK_AUTOMAS_DIR", None)
+        else:
+            os.environ["ARK_AUTOMAS_DIR"] = orig_env
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mastercfg_main, _part_mastercfg_jsonc_strings, _part_mastercfg_protocolspace, _part_maaend_controller_cache, _part_maaend_defs_228, _part_maaend_migrate_options, _part_maaend_migrate_stock_switch, _part_maaend_migrate_unread_defs, _part_maaend_name_mismatch, _part_maaend_phone_page_beta5, _part_maaend_schedule_skip, _part_maaend_skipped_report, _part_maaend_write_readback, _part_maaend_watchdog_main, _part_maaend_no_d3d11_alarm, _part_maaend_essence_met, _part_maaend_essence_stamina_out, _part_maaend_full_at_anchor, _part_maaend_round_upper_bound, _part_maaend_sanity, _part_maaend_sanity_fit, _part_maaend_sanity_one_formula, _part_maaend_update_after_done, _part_maaend_update_record, _part_maaend_update_restart, _part_maaend_update_restart_never_final, _part_maaend_watchdog_onepush, _part_spmed_kept_off_push, _part_spmed_v232, _part_spmed_v233_rc1, _part_essence_filler_main, _part_essence_filler_pushes_state, _part_scriptconfig_race_and_protocolspace_guard]))
+    sys.exit(run_parts([_part_mastercfg_main, _part_mastercfg_jsonc_strings, _part_mastercfg_protocolspace, _part_maaend_controller_cache, _part_maaend_defs_228, _part_maaend_migrate_options, _part_maaend_migrate_stock_switch, _part_maaend_migrate_unread_defs, _part_maaend_name_mismatch, _part_maaend_phone_page_beta5, _part_maaend_schedule_skip, _part_maaend_skipped_report, _part_maaend_write_readback, _part_maaend_watchdog_main, _part_maaend_no_d3d11_alarm, _part_maaend_essence_met, _part_maaend_essence_stamina_out, _part_maaend_full_at_anchor, _part_maaend_round_upper_bound, _part_maaend_sanity, _part_maaend_sanity_fit, _part_maaend_sanity_one_formula, _part_maaend_update_after_done, _part_maaend_update_record, _part_maaend_update_restart, _part_maaend_update_restart_never_final, _part_maaend_watchdog_onepush, _part_spmed_kept_off_push, _part_spmed_v232, _part_spmed_v233_rc1, _part_essence_filler_main, _part_essence_filler_pushes_state, _part_scriptconfig_race_and_protocolspace_guard, _part_automas_v510_maa_users_schema]))

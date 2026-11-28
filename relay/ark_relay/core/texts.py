@@ -1140,6 +1140,24 @@ OKWW_BATTLE_PASS_UNCHECKED = "OK-WW 领战令的写法变了，这次照它原�
 OKWW_BATTLE_PASS_CLOSED = "战令（先约电台）这期已结束、下期还没开播，没有可领的"
 
 
+def okww_untranslated_alarm_body(who: str, cause: str = "") -> str:
+    """OK-WW 遇到未登记新报错时发往企微群的纯白话告警正文（原文仅留中继日志供排查）。"""
+    step = who if (who and not plain(who)) else "某个任务"
+    detail = f"（{cause}）" if (cause and not plain(cause)) else ""
+    return (f"OK-WW 运行「{step}」时遇到中继还没登记的新报错{detail}，"
+            "原文已记在中继日志里，方便我们查完补翻译。\n" + RELAY_ERROR_TAIL)
+
+
+def okww_untranslated_reason(who: str, raw: str = "", cause: str = "") -> str:
+    """OK-WW 未登记报错在运行失败摘要里的纯白话说明：中文原文直出，英文原文不透到群通知。"""
+    step = who if (who and not plain(who)) else "某个任务"
+    if raw and not plain(raw):
+        return f"{step}：中继还不认识这条错——「{raw}」（原文已记在中继日志里）"
+    if cause and not plain(cause):
+        return f"{step}：中继还不认识这条错（{cause}，原文已记在中继日志里）"
+    return f"{step}：中继还不认识这条错（OK-WW 新报错，原文已记在中继日志里）"
+
+
 RELAY_ERROR_TAIL = "已交给我们这边去修。"
 
 
@@ -1824,6 +1842,11 @@ def samples() -> list[str]:
         shiftcheck_test_window_on(""), shiftcheck_broken("晚班"), OKWW_BATTLE_PASS_UNCLAIMED,
         OKWW_BATTLE_PASS_LABEL, OKWW_BATTLE_PASS_FAILED, OKWW_BATTLE_PASS_RETRIED, OKWW_BATTLE_PASS_UNCHECKED,
         OKWW_BATTLE_PASS_CLOSED,
+        okww_untranslated_alarm_body("凝素领域"),
+        okww_untranslated_alarm_body("世界 Boss", "连接或读写超时"),
+        okww_untranslated_reason("凝素领域"),
+        okww_untranslated_reason("无音区", "完全没见过的错"),
+        okww_untranslated_reason("模拟领域", "", "连接或读写超时"),
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         collect_second_round(["采集协议纹石（路线2）"]),
         NO_WHOLE_MAKEUP, *(collect_retry_ahead(["采集血菌", "采集协议纹石（路线2）"], st) for st in ("ahead", "debug", "spent")),
