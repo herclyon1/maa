@@ -214,8 +214,10 @@ nothing is dropped when the group refuses; nothing loops back from the push path
         check("INFO 不报", any("普通信息" in b for _, b, _ in n.sent), False)
         check("标题是 texts.RELAY_ERROR", [t for t, _, _ in n.sent], [texts.RELAY_ERROR] * 2)
         check("是报警（alert=True）", [a for _, _, a in n.sent], [True, True])
-        check("正文说出在哪一部分、中文原话照抄（里面有我们自己的术语也抄）",
-              "主程序" in n.sent[0][1] and "它说：AUTO-MAS 拉起后 45 秒内接口仍不通" in n.sent[0][1])
+        check("正文说出在哪一部分、中文术语自动转白话且过 plain()",
+              "主程序" in n.sent[0][1]
+              and "它说：AUTO-MAS 启动后 45 秒内数据入口仍不通" in n.sent[0][1]
+              and texts.plain(n.sent[0][1]) == [])
         check("正文带时刻", datetime.now(SERVER_TZ).strftime("%H:") in n.sent[0][1])
         check("正文不再说「只报这一次」", any("只报这一次" in b or "只记进日报" in b for _, b, _ in n.sent), False)
         lg.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", 60)

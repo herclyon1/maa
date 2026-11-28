@@ -16,6 +16,7 @@ tables elsewhere - has to pass `plain()`.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 
 from ark_relay.core.config import GAME_ZH
@@ -41,15 +42,47 @@ _URL = re.compile(r"https?://\S+")
 # An error code (0xc0000005) is copied whole and searched for, like a link; it
 # is not English prose.
 _HEX = re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])")
-_PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+"
-                   # A file named on its own (「MXU file_ops.rs」, 「maafw.log.gz」): a name and one
-                   # or more extensions a program, setting, log or archive file carries. The
-                   # relay's own warning naming such a file read as English and was replaced
-                   # whole by RELAY_ERROR_UNREAD (#180). An English error line still fails on
-                   # its other words.
-                   r"|(?<![A-Za-z0-9_/:.-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
-                   r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|ps1|sh|toml|yaml|yml"
-                   r"|md|txt|html|db|ini|cfg|png|jpg))+(?![A-Za-z0-9_])")
+# 文件结尾是否为真实文件扩展名（含 .cmd；用于区分 MIME 类型如 image/png 与真实路径如 image/shot.png）。
+_FILE_EXT_END_RE = re.compile(
+    r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|cmd|ps1|sh"
+    r"|toml|yaml|yml|md|txt|html|db|ini|cfg|png|jpg))+$",
+    re.I,
+)
+# 协议版本号（如 HTTP/1.0、HTTP/1.1、HTTP/2）与常见 MIME 类型（如 application/json、text/html）：
+# 它们不是文件路径，plain() 必须按英文拦截，故障解析中也必须先剥离再提取文件。
+_PROTOCOL_VER_RE = re.compile(
+    r"(?<![A-Za-z0-9_/:.-])(?:HTTPS?|TLS|SSL|SSH|FTP|SOCKS|WSS?)/\d+(?:\.\d+)?(?![A-Za-z0-9_.-])",
+    re.I,
+)
+_MIME_TYPE_RE = re.compile(
+    r"(?<![A-Za-z0-9_/:.-])(?:application|text|image|audio|video|font|multipart|message|model)"
+    r"/[A-Za-z0-9][A-Za-z0-9.+-]*(?![A-Za-z0-9_.-])",
+    re.I,
+)
+_PATH = re.compile(
+    r"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\|/(?!/))\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+"
+    # 独立出现的文件名（如「MXU file_ops.rs」「maafw.log.gz」「run.cmd」）：仅放行带真实扩展名的文件。
+    r"|(?<![A-Za-z0-9_/:.-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
+    r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|cmd|ps1|sh|toml|yaml|yml"
+    r"|md|txt|html|db|ini|cfg|png|jpg))+(?![A-Za-z0-9_])",
+    re.I,
+)
+
+
+def _is_protocol_or_mime(token: str) -> bool:
+    """判断单个词元是不是协议头（如 HTTP/1.1）或 MIME 类型（如 application/json），防止被当成文件路径放行。"""
+    tok = token.strip().rstrip(".,;:)'\"」）")
+    if not tok:
+        return False
+    if _PROTOCOL_VER_RE.fullmatch(tok):
+        return True
+    # 像 image/shot.png 这样带真实文件后缀的属于真实路径；image/png、application/json 则是 MIME 类型。
+    return bool(_MIME_TYPE_RE.fullmatch(tok) and not _FILE_EXT_END_RE.search(tok))
+
+
+def _blank_paths(text: str) -> str:
+    """在 plain() 检查英文词前遮蔽合法路径，但保留 HTTP/1.1、application/json 等协议/MIME 串以便照常拦截。"""
+    return _PATH.sub(lambda m: m.group(0) if _is_protocol_or_mime(m.group(0)) else " ", text)
 
 
 # Engineering words that mean nothing to the reader. A sentence has to say what
@@ -62,7 +95,7 @@ JARGON = ("落盘", "回读", "兜底", "字段", "判据", "判定点", "监听
 def plain(text: str) -> list[str]:
     """Where one piece of copy fails to read as plain language. An empty list means it passes."""
     problems = []
-    for w in _WORD.findall(_HEX.sub(" ", _PATH.sub(" ", _URL.sub(" ", text)))):
+    for w in _WORD.findall(_HEX.sub(" ", _blank_paths(_URL.sub(" ", text)))):
         if w not in ALLOWED_WORDS and not re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
             problems.append(f"英文「{w}」")
     for v in VAGUE:
@@ -1125,62 +1158,227 @@ LOST_ALARM_QUEUE = "中继重启前还排着没送出去的群报警，这次开
 EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
 
 
-# 常见系统/网络/HTTP/Win32/业务异常的中文原因对照表（按精确度从高到低排列），
-# 用于替代旧版“认不出就藏进盲盒”的翻译方式，直接输出直白中文原因和关键上下文。
-_FAULTS = (
-    (re.compile(r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution"
-                r"|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError", re.I),
-     "域名解析失败，机器当时连不上网络"),
-    (re.compile(r"timed out|TimeoutError|TimeoutExpired|ReadTimeout|ConnectTimeout|WinError 10060\b", re.I),
-     "连接或读写超时"),
-    (re.compile(r"Connection ?Refused|Connection ?Reset|Connection ?Aborted|RemoteDisconnected|IncompleteRead"
-                r"|EOF occurred|BrokenPipe|WinError 1005[34]\b|WinError 10061\b", re.I),
-     "对方拒绝连接，或者连上后中途断开了"),
-    (re.compile(r"WinError 32\b|being used by another process", re.I), "文件正被其他程序占用"),
-    (re.compile(r"PermissionError|WinError 5\b|Access is denied|Permission denied", re.I),
-     "没有权限读写要用的文件，或者文件正被其他程序占用"),
-    # 外部命令退出码必须排在 HTTP 状态码之前，防止 `exit status 128/255/126` 被误判为 HTTP 状态码
-    (re.compile(r"(?:(?<![A-Za-z0-9_])(?:returned non-zero exit status|exit[ _-](?:status(?:[ _-]code)?|code)"
-                r"|return_?code)(?![A-Za-z0-9_])|退出码)[ =:：]*(-?\d+)(?![0-9A-Za-z_])"
-                r"|(?<![A-Za-z0-9_])CalledProcessError[ (=:：]+(-?\d+)(?![0-9A-Za-z_])", re.I),
-     "外部命令执行失败（退出码 {code}）"),
-    # HTTP 状态码仅匹配合法 1xx-5xx，并对 status 加 (?<!exit )/(?<!exit-) 负向断言，杜绝误吸 exit status
-    (re.compile(r"(?<![A-Za-z0-9_])HTTP(?:\s*Error|/\d(?:\.\d)?)?[ =:：]+([1-5]\d{2})(?![0-9A-Za-z_])"
-                r"|(?<!exit )(?<!exit-)(?<![A-Za-z0-9_])status(?:[ _]code)?[ =:：]+([1-5]\d{2})(?![0-9A-Za-z_])", re.I),
-     "对方服务器返回了状态码 {code}"),
-    (re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I), "找不到要用的文件"),
-    (re.compile(r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data", re.I),
-     "收到的数据格式是坏的"),
-    (re.compile(r"UnicodeDecodeError|UnicodeEncodeError", re.I), "文本编码读取失败"),
-    (re.compile(r"SSLError|CERTIFICATE_VERIFY_FAILED|\bSSL:", re.I), "加密连接没建立起来"),
-    (re.compile(r"URLError|urlopen error|ConnectionError|WinError 1006[45]\b|Network is unreachable", re.I),
-     "网络请求没发出去，或者没收到回答"),
-    (re.compile(r"ModuleNotFoundError|ImportError", re.I), "运行环境缺少必需组件"),
-    (re.compile(r"database is locked|OperationalError|DatabaseError", re.I), "本地数据库正被占用或损坏"),
-    (re.compile(r"\bKeyError\b"), "读取数据时缺少必要内容"),
-    (re.compile(r"\bAttributeError\b"), "程序对象缺少预期能力"),
-    (re.compile(r"\bTypeError\b"), "程序处理的数据类型不对"),
-    (re.compile(r"\bIndexError\b"), "读取列表时越界"),
-    (re.compile(r"\bValueError\b"), "数据数值或格式不对"),
-    (re.compile(r"\bZeroDivisionError\b"), "程序计算时出现除以零"),
-    (re.compile(r"WinError (\d+)\b", re.I), "系统调用失败（系统错误码 {code}）"),
-    (re.compile(r"com_error|pywintypes\.error|WMI", re.I), "系统组件调用失败"),
-    (re.compile(r"\b(?:OSError|IOError)\b"), "本地文件或系统操作失败"),
-    (re.compile(r"\bRuntimeError\b"), "程序运行步骤执行失败"),
+# ==============================================================================
+# 故障词法拆解与白话渲染管线（替代旧版堆叠正则）
+#
+# 核心原则：
+# 1. 合法 HTTP 状态码用有限集合 _VALID_HTTP_CODES 显式穷举，126/127/128/255 等退出码
+#    在数学上绝不可能落进 HTTP 状态码分支；
+# 2. 先剥离 URL、协议头（HTTP/1.1 等）与 MIME 类型（application/json 等），再按真实磁盘
+#    路径或真实扩展名提取文件，按 (类型, 归一化值) 严格去重；
+# 3. 先按「｜」或首个技术诊断起点把原始日志切为「中文业务主干」与「技术诊断片段」，
+#    彻底杜绝挖词留下的 _=429、: : 22.、尾随 128 等乱码残片；
+# 4. 纯中文路径（_said）与含英文路径（format_fault_reason）统一过白话术语/模糊词规范化，
+#    保证最终推群内容 100% 通过 plain() 门禁。
+# ==============================================================================
+
+# 显式有限合法 HTTP 状态码集合（常见 RFC 响应码 + Cloudflare 52x）：
+# 非法码（如 001/126/127/128/255/999）永远不会进入 HTTP 分支。
+_VALID_HTTP_CODES = frozenset({
+    100, 101,
+    200, 201, 202, 204,
+    301, 302, 304, 307, 308,
+    400, 401, 403, 404, 405, 408, 409, 410, 413, 415, 418, 422, 429, 451,
+    500, 502, 503, 504, 520, 521, 522, 524,
+})
+
+
+@dataclass(frozen=True)
+class FaultInfo:
+    """单条报错日志经词法拆解后的故障描述，用于统一模板拼装白话中文。"""
+
+    head_zh: str = ""
+    fault_kind: str = ""
+    exit_code: int | None = None
+    http_code: int | None = None
+    win_error: int | None = None
+    files: tuple[str, ...] = ()
+    cmds: tuple[str, ...] = ()
+    url: str = ""
+    hex_code: str = ""
+
+
+# 各故障类别对应的白话中文主因文案（不含括号细节，由 _render_fault 统一拼成单层括号）。
+_FAULT_TEMPLATES = {
+    "dns": "域名解析失败，机器当时连不上网络",
+    "timeout": "连接或读写超时",
+    "conn_reset": "对方拒绝连接，或者连上后中途断开了",
+    "file_in_use": "文件正被其他程序占用",
+    "permission": "没有权限读写要用的文件，或者文件正被其他程序占用",
+    "process_exit": "外部命令执行失败",
+    "http_error": "对方服务器返回了状态码",
+    "not_found": "找不到要用的文件",
+    "json_bad": "收到的数据格式是坏的",
+    "encoding": "文本编码读取失败",
+    "ssl": "加密连接没建立起来",
+    "url_error": "网络请求没发出去，或者没收到回答",
+    "import_error": "运行环境缺少必需组件",
+    "db_error": "本地数据库正被占用或损坏",
+    "key_error": "读取数据时缺少必要内容",
+    "attr_error": "程序对象缺少预期能力",
+    "type_error": "程序处理的数据类型不对",
+    "index_error": "读取列表时越界",
+    "value_error": "数据数值或格式不对",
+    "zero_div": "程序计算时出现除以零",
+    "win_error": "系统调用失败",
+    "com_error": "系统组件调用失败",
+    "os_error": "本地文件或系统操作失败",
+    "runtime_error": "程序运行步骤执行失败",
+}
+
+# 高优先级精确故障规则（优先于外部命令退出码和 HTTP 状态码，例如「超时并伴随退出码 128」仍先说超时）。
+_FAULT_RULES_PRE = (
+    ("dns", re.compile(
+        r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution"
+        r"|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError",
+        re.I,
+    )),
+    ("timeout", re.compile(
+        r"timed out|TimeoutError|TimeoutExpired|ReadTimeout|ConnectTimeout|WinError 10060\b",
+        re.I,
+    )),
+    ("conn_reset", re.compile(
+        r"Connection ?Refused|Connection ?Reset|Connection ?Aborted|RemoteDisconnected|IncompleteRead"
+        r"|EOF occurred|BrokenPipe|WinError 1005[34]\b|WinError 10061\b",
+        re.I,
+    )),
+    ("file_in_use", re.compile(r"WinError 32\b|being used by another process", re.I)),
+    ("permission", re.compile(
+        r"PermissionError|WinError 5\b|Access is denied|Permission denied",
+        re.I,
+    )),
 )
 
-# 日志原话里的常见工程词转白话对照表，避免直接丢弃有价值的中文报错上下文。
+# 常规异常分类规则（排在外部命令退出码与 HTTP 状态码之后，避免 URLError/RuntimeError 盖过具体状态码）。
+_FAULT_RULES_POST = (
+    ("not_found", re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I)),
+    ("json_bad", re.compile(
+        r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data",
+        re.I,
+    )),
+    ("encoding", re.compile(r"UnicodeDecodeError|UnicodeEncodeError", re.I)),
+    ("ssl", re.compile(r"SSLError|CERTIFICATE_VERIFY_FAILED|\bSSL:", re.I)),
+    ("url_error", re.compile(
+        r"URLError|urlopen error|ConnectionError|WinError 1006[45]\b|Network is unreachable",
+        re.I,
+    )),
+    ("import_error", re.compile(r"ModuleNotFoundError|ImportError", re.I)),
+    ("db_error", re.compile(r"database is locked|OperationalError|DatabaseError", re.I)),
+    ("key_error", re.compile(r"\bKeyError\b")),
+    ("attr_error", re.compile(r"\bAttributeError\b")),
+    ("type_error", re.compile(r"\bTypeError\b")),
+    ("index_error", re.compile(r"\bIndexError\b")),
+    ("value_error", re.compile(r"\bValueError\b")),
+    ("zero_div", re.compile(r"\bZeroDivisionError\b")),
+)
+
+# 宽泛基类异常规则（排在 WinError 之后，避免 OSError/RuntimeError 盖过具体的 [WinError N]）。
+_FAULT_RULES_FALLBACK = (
+    ("com_error", re.compile(r"com_error|pywintypes\.error|WMI", re.I)),
+    ("os_error", re.compile(r"\b(?:OSError|IOError)\b")),
+    ("runtime_error", re.compile(r"\bRuntimeError\b")),
+)
+
+# 明确属于外部命令/子程序退出码的词法规则（允许任意数量空格、Tab、连字符、下划线）。
+_EXPLICIT_EXIT_RE = re.compile(
+    r"(?:(?<![A-Za-z0-9_])(?:returned\s+non-zero\s+exit\s+status"
+    r"|exit(?:[\s_-]+status(?:[\s_-]+code)?|[\s_-]+code)"
+    r"|return[\s_-]?code|rc)(?![A-Za-z0-9_])"
+    r"|退出码)[\s=:：]*(-?\d+)(?![0-9A-Za-z_])"
+    r"|(?<![A-Za-z0-9_])CalledProcessError[\s(=:：]+(-?\d+)(?![0-9A-Za-z_])",
+    re.I,
+)
+
+# 外部命令/子程序退出语境标记：命中时，同句中的裸 status=128/255/127 一律按退出码处理，绝不归类为 HTTP。
+_PROCESS_EXIT_CTX_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:CalledProcessError|subprocess|waitpid"
+    r"|process[\s_-]+(?:ended|exited|terminated|failed|died|crashed|killed|returned)"
+    r"|child[\s_-]+(?:process[\s_-]+)?(?:ended|exited|terminated|failed|died|killed)"
+    r"|(?:exited|ended|terminated)\s+(?:with\s+)?(?:non-zero\s+)?status"
+    r"|non-zero\s+(?:exit\s+)?status"
+    r"|(?:taskkill|tasklist|pwsh|powershell|schtasks|wevtutil|shutdown|adb|git|ssh)(?:\.exe)?)(?![A-Za-z0-9_])",
+    re.I,
+)
+
+# 外部命令退出语境下的裸 status 数值提取（兼容 status 128、status=127、status: 128、status-code=255）。
+_PROCESS_STATUS_NUM_RE = re.compile(
+    r"(?<![A-Za-z0-9_])status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+(-?\d+)(?![0-9A-Za-z_])",
+    re.I,
+)
+
+# 显式 HTTP 协议状态码（HTTP/1.1 502、HTTP/2 429、HTTP Error 503、HTTP 429、状态码 502）。
+_EXPLICIT_HTTP_RE = re.compile(
+    r"(?:(?<![A-Za-z0-9_])HTTP(?:\s*Error|/\d+(?:\.\d+)?)?[\s=:：]+"
+    r"|状态码[\s=:：]*)(\d{3})(?![0-9A-Za-z_])",
+    re.I,
+)
+
+# 通用 HTTP 状态码键值写法（仅在非外部命令退出语境且状态码位于 _VALID_HTTP_CODES 时生效）。
+_HTTP_STATUS_KV_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:http[\s_-]+)?status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+(\d{3})(?![0-9A-Za-z_])",
+    re.I,
+)
+
+# Windows 系统错误码（如 [WinError 128]）。
+_WIN_ERROR_RE = re.compile(r"(?<![A-Za-z0-9_])WinError[\s=:：]+(\d+)(?![0-9A-Za-z_])", re.I)
+
+# 故障上下文专用文件路径提取器：
+# 仅认真实 Windows 磁盘路径（如 D:\ark\a.json、D:/ark/a.json）或带真实文件扩展名的路径/文件名，
+# 杜绝把 HTTP/1.1、application/json、foo/bar、1/3 误抓成文件路径。
+_FAULT_FILE_RE = re.compile(
+    r"(?<![A-Za-z0-9_])[A-Za-z]:(?:\\|/(?!/))[^\s'\"`,;()\[\]{}（）【】<>，。！？]+"
+    r"|(?<![A-Za-z0-9_/:.-])(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
+    r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|cmd|ps1|sh"
+    r"|toml|yaml|yml|md|txt|html|db|ini|cfg|png|jpg))+(?![A-Za-z0-9_]|\.[A-Za-z0-9_])",
+    re.I,
+)
+
+# 整行开头即为纯技术异常头时，说明前面没有中文业务主干，避免把本地化报错尾误当主干。
+_LEADING_EXC_RE = re.compile(
+    r"^(?:Traceback\b|[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Failure)\b\s*[:(]"
+    r"|HTTP(?:/\d|\s+Error)\b|\[?(?:WinError|Errno)\b|<urlopen\b)",
+    re.I,
+)
+
+# 中文业务主干之后出现的首个技术诊断边界：从该处直接切开，绝不对英文技术尾做零碎挖词。
+_TECH_BOUNDARY_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:Traceback\b"
+    r"|[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Failure)\b"
+    r"|HTTP(?:/\d+(?:\.\d+)?|\s*Error|\s+[1-5]\d{2})(?![0-9A-Za-z_])"
+    r"|(?:http[\s_-]+)?status(?:[\s_-]*code)?(?![A-Za-z0-9_])[\s=:：]+-?\d+"
+    r"|(?:returned\s+non-zero\s+exit|exit(?:[\s_-]+status|[\s_-]+code)|return[\s_-]?code)(?![A-Za-z0-9_])"
+    r"|(?:waitpid|process\s+(?:ended|exited|terminated|failed)"
+    r"|child\s+(?:process\s+)?(?:ended|exited|terminated|failed))(?![A-Za-z0-9_])"
+    r"|Command\s+\["
+    r"|subprocess(?:\.[A-Za-z_]+|\s+)"
+    r"|(?:taskkill|tasklist|pwsh|powershell|schtasks|wevtutil|shutdown|adb|git|ssh|curl)(?:\.exe)?\s+[/-])"
+    r"|\[?\s*(?:WinError|Errno)\s+\d+"
+    r"|<urlopen\b"
+    r"|[:：]\s*(?:taskkill|tasklist|pwsh|powershell|schtasks|wevtutil|shutdown|adb|git|ssh|curl)\b"
+    r"|[:：]\s*[A-Za-z_][A-Za-z0-9_.-]*\s+[A-Za-z]",
+    re.I,
+)
+
+# 清洗中文主干内部残留的英文键值与带下划线标识符（彻底根除 _=429 这类残留）。
+_KV_ASCII_RE = re.compile(r"(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_.-]*\s*=\s*[^\s，。；！？（）()]+")
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./\-]*")
+_PAREN_BLOCK_RE = re.compile(r"[（(][^（）()]*[）)]")
+
+# 日志原话里的常见工程词转白话对照表（覆盖 JARGON 全部词条，按长词优先排列）。
 _JARGON_PLAIN_MAP = (
     ("调度器", "调度程序"),
     ("标记文件", "状态记录"),
     ("时间窗", "时段"),
     ("任务链", "整套任务"),
+    ("判定点", "核对项"),
+    ("结构化", "按格式"),
+    ("白名单", "允许清单"),
+    ("凭空造", "自行编造"),
     ("落盘", "保存"),
     ("回读", "重读"),
     ("兜底", "备用方式"),
     ("字段", "内容项"),
     ("判据", "依据"),
-    ("判定点", "核对项"),
     ("监听", "监测"),
     ("句柄", "连接号"),
     ("进程", "程序"),
@@ -1194,15 +1392,39 @@ _JARGON_PLAIN_MAP = (
     ("退避", "延后重试"),
     ("死键", "无效项"),
     ("冲掉", "盖掉"),
-    ("结构化", "按格式"),
-    ("白名单", "允许清单"),
-    ("凭空造", "自行编造"),
     ("原子", "完整"),
     ("幂等", "防重复"),
     ("接口", "数据入口"),
 )
 
-# 常见命令行可执行名称转白话对照表（不带 .exe 后缀时也能清晰交代出错命令，不裸露英文词）。
+# 日志原话里的模糊词规整对照表（覆盖 VAGUE 全部词条；保留否定含义，确保输出通过 plain()）。
+_VAGUE_PLAIN_MAP = (
+    ("未知错误", "未识别的错误"),
+    ("这一步", "该环节"),
+    ("有问题", "存在异常"),
+    ("出错", "发生运行异常"),
+    ("不确定", "未能确认"),
+    ("不一定", "未必"),
+    ("应该是", ""),
+    ("差不多", ""),
+    ("多半", ""),
+    ("可能", ""),
+    ("大概", ""),
+    ("大约", ""),
+    ("似乎", ""),
+    ("疑似", ""),
+    ("也许", ""),
+    ("或许", ""),
+    ("估计", ""),
+    ("左右", ""),
+    ("好像", ""),
+    ("貌似", ""),
+    ("大致", ""),
+    ("约 ", ""),
+    ("约一", "一"),
+)
+
+# 常见命令行可执行名称转白话对照表（统一补成 .exe 标准名，既明确又过 plain()）。
 _CMD_NAMES = (
     (re.compile(r"\b(?:pwsh|powershell)(?:\.exe)?\b", re.I), "pwsh.exe"),
     (re.compile(r"\bschtasks(?:\.exe)?\b", re.I), "schtasks.exe"),
@@ -1213,145 +1435,343 @@ _CMD_NAMES = (
     (re.compile(r"\badb(?:\.exe)?\b", re.I), "adb.exe"),
     (re.compile(r"\bpip(?:\.exe)?\b", re.I), "pip.exe"),
     (re.compile(r"\bgit(?:\.exe)?\b", re.I), "git.exe"),
+    (re.compile(r"\bssh(?:\.exe)?\b", re.I), "ssh.exe"),
+    (re.compile(r"\bcurl(?:\.exe)?\b", re.I), "curl.exe"),
     (re.compile(r"\bpythonw?(?:\.exe)?\b", re.I), "python.exe"),
 )
 
-# 上下文补充提取：HTTP 状态码严禁误吸 exit status，退出码严禁误吸 src/crc 等含 rc 子串的词
-_STATUS_CODE_RE = re.compile(
-    r"(?:(?<![A-Za-z0-9_])HTTP(?:\s*Error|/\d(?:\.\d)?)?[ =:：]+"
-    r"|(?<!exit )(?<!exit-)(?<![A-Za-z0-9_])status(?:[ _]code)?[ =:：]+"
-    r"|状态码[ =:：]*)([1-5]\d{2})(?![0-9A-Za-z_])",
-    re.I,
-)
-_EXIT_CODE_RE = re.compile(
-    r"(?:(?<![A-Za-z0-9_])(?:exit[ _-](?:status(?:[ _-]code)?|code)|return_?code|rc)(?![A-Za-z0-9_])"
-    r"|退出码)[ =:：]*(-?\d+)(?![0-9A-Za-z_])",
-    re.I,
+# 中文业务主干里表示“本身已经说出失败/异常结果”的常见谓词，用于判断未知故障是否需补「发生运行异常」。
+_HEAD_FAIL_VERBS = (
+    "失败", "没", "无法", "不能", "不到", "不对", "超时", "断开", "拒绝",
+    "异常", "崩", "错", "停", "卡", "缺", "坏", "丢", "拒", "满", "冲突", "无效", "受限",
 )
 
 
-def fault_cause(what: str) -> str:
-    """将日志原话中的系统/网络/HTTP/Win32/Python 异常翻成直白中文原因；未匹配时返回空串。"""
-    for pat, said in _FAULTS:
-        if m := pat.search(what or ""):
-            return said.format(code=next((g for g in m.groups() if g), ""))
+def _has_disallowed_english(text: str) -> bool:
+    """判断文本中是否含有未放行的英文词（含 HTTP/1.1、application/json 等协议与 MIME 串）。"""
+    return any(p.startswith("英文") for p in plain(text))
+
+
+def _normalize_plain_zh(text: str, strip_vague: bool = False) -> str:
+    """将中文文本里的工程术语与模糊词统一替换为直白人话。
+
+    - 保护 _THEIR_TERMS（如上游原话「结束进程」「MaaEnd 进程超时」），避免改坏官方任务名；
+    - strip_vague=False 用于纯中文日志（如「中继更新出错」→「中继更新发生运行异常」）；
+    - strip_vague=True 用于含英文故障的中文主干（剥离「出错」等泛词，由右侧主因模板给出准确说法）。
+    """
+    s = str(text or "").strip()
+    if not s:
+        return ""
+    held: list[str] = []
+    for term in _THEIR_TERMS:
+        if term in s:
+            token = f"\x01{len(held)}\x01"
+            held.append(term)
+            s = s.replace(term, token)
+    for _ in range(3):
+        before = s
+        for old, new in _JARGON_PLAIN_MAP:
+            if old in s:
+                s = s.replace(old, new)
+        for old, new in _VAGUE_PLAIN_MAP:
+            if old in s:
+                s = s.replace(old, "" if strip_vague else new)
+        if s == before:
+            break
+    for i, term in enumerate(held):
+        s = s.replace(f"\x01{i}\x01", term)
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    return s
+
+
+def _strip_proto_mime(text: str) -> str:
+    """剥离协议版本号（HTTP/1.1 等）与非文件扩展名的 MIME 类型（application/json 等）。"""
+    s = _PROTOCOL_VER_RE.sub(" ", text)
+    return _MIME_TYPE_RE.sub(lambda m: m.group(0) if _FILE_EXT_END_RE.search(m.group(0)) else " ", s)
+
+
+def _extract_codes(no_url: str) -> tuple[int | None, int | None, int | None, str]:
+    """从去除了 URL 的文本中安全提取退出码、HTTP 状态码、WinError 与十六进制错误码。"""
+    in_process_ctx = bool(_PROCESS_EXIT_CTX_RE.search(no_url))
+
+    # 1. 先提取明确退出码，再将退出码片段遮蔽，确保 exit status 500 绝不会被 HTTP 规则二次拾取。
+    exit_code: int | None = None
+    if m := _EXPLICIT_EXIT_RE.search(no_url):
+        code_s = next((g for g in m.groups() if g is not None), "")
+        if code_s:
+            exit_code = int(code_s)
+    no_exit = _EXPLICIT_EXIT_RE.sub(" ", no_url)
+
+    # 2. 若仍未拿到退出码且处于进程退出语境（waitpid/process ended/child exited/taskkill 等），
+    #    将同句里的裸 status=128/255/127 明确归类为退出码。
+    if exit_code is None and in_process_ctx:
+        if m := _PROCESS_STATUS_NUM_RE.search(no_exit):
+            exit_code = int(m.group(1))
+
+    # 3. 提取合法 HTTP 状态码：先认显式 HTTP/1.1、HTTP Error、状态码；
+    #    仅在非进程退出语境下再认 status_code / status-code / status=，且一律校验位于 _VALID_HTTP_CODES。
+    http_code: int | None = None
+    for m in _EXPLICIT_HTTP_RE.finditer(no_exit):
+        val = int(m.group(1))
+        if val in _VALID_HTTP_CODES:
+            http_code = val
+            break
+    if http_code is None and not in_process_ctx:
+        for m in _HTTP_STATUS_KV_RE.finditer(no_exit):
+            val = int(m.group(1))
+            if val in _VALID_HTTP_CODES:
+                http_code = val
+                break
+
+    # 4. 提取 WinError 系统错误码与 0x... 十六进制错误码。
+    win_error: int | None = None
+    if m := _WIN_ERROR_RE.search(no_url):
+        win_error = int(m.group(1))
+    hex_code = ""
+    if m := _HEX.search(no_url):
+        hex_code = m.group(0)
+    return exit_code, http_code, win_error, hex_code
+
+
+def _classify_fault_kind(no_url: str, exit_code: int | None, http_code: int | None, win_error: int | None) -> str:
+    """按精确优先级归类故障类别，保证 DNS/超时/占用 > 退出码 > HTTP 状态码 > 常规异常 > WinError。"""
+    for kind, pat in _FAULT_RULES_PRE:
+        if pat.search(no_url):
+            return kind
+    if exit_code is not None or re.search(r"\bCalledProcessError\b", no_url):
+        return "process_exit"
+    if http_code is not None:
+        return "http_error"
+    for kind, pat in _FAULT_RULES_POST:
+        if pat.search(no_url):
+            return kind
+    if win_error is not None:
+        return "win_error"
+    for kind, pat in _FAULT_RULES_FALLBACK:
+        if pat.search(no_url):
+            return kind
     return ""
 
 
-def _scrub_plain_zh(text: str) -> str:
-    """把中文报错主干里的常见工程术语替换成直白人话，并清掉残留英文异常碎片。"""
-    s = str(text or "")
-    for old, new in _JARGON_PLAIN_MAP:
-        s = s.replace(old, new)
-    # 剥离 URL、文件路径、十六进制码以外的未允许英文词，避免中文主干里夹杂异常类名或堆栈词
-    def _clean_word(m: re.Match) -> str:
+def _extract_files_and_cmds(no_url: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """先剥离协议头与 MIME 类型，再提取真实文件路径与命令名，并按 (类型, 归一化值) 严格去重。"""
+    cleaned = _strip_proto_mime(no_url)
+    seen: set[tuple[str, str]] = set()
+    cmds: list[str] = []
+    files: list[str] = []
+
+    for pat, label in _CMD_NAMES:
+        if pat.search(cleaned):
+            key = ("cmd", label.lower())
+            if key not in seen:
+                seen.add(key)
+                cmds.append(label)
+                break
+
+    cmd_norms = {c.lower() for c in cmds}
+    for m in _FAULT_FILE_RE.finditer(cleaned):
+        raw_p = m.group(0).rstrip(".,;:)'\"」）]")
+        if not raw_p or _is_protocol_or_mime(raw_p):
+            continue
+        norm = raw_p.replace("/", "\\").lower()
+        # 若裸文件名与已提取命令同名（如 pwsh.exe），只保留「命令 pwsh.exe」，避免重复输出。
+        if "\\" not in norm and norm in cmd_norms:
+            continue
+        key = ("file", norm)
+        if key not in seen:
+            seen.add(key)
+            files.append(raw_p)
+        if len(files) >= 2:
+            break
+    return tuple(files), tuple(cmds)
+
+
+def _extract_head_zh(raw: str, extracted_codes: set[int]) -> str:
+    """从原始日志中切出干净的中文业务主干，彻底避免把技术诊断尾揉成乱码残片。"""
+    # 1. 有显式分隔符「｜」或「|」时，直接取分隔符之前的业务描述。
+    cand = re.split(r"\s*[｜|]\s*", raw, maxsplit=1)[0].strip()
+    if not re.search(r"[\u4e00-\u9fff]", cand) or _LEADING_EXC_RE.search(cand):
+        return ""
+
+    # 2. 去掉括号内含英文/协议/报错的补充块（如「（HTTP/1.1 502 Bad Gateway）」「（官网：<urlopen ...>）」）。
+    def _drop_tech_paren(m: re.Match) -> str:
+        inner = m.group(0)[1:-1]
+        return "" if _has_disallowed_english(inner) else m.group(0)
+
+    for _ in range(3):
+        nxt = _PAREN_BLOCK_RE.sub(_drop_tech_paren, cand)
+        if nxt == cand:
+            break
+        cand = nxt
+
+    # 3. 按中文之后出现的首个技术诊断边界截断（不把前导词如「subprocess调用失败」误切空）。
+    for m in _TECH_BOUNDARY_RE.finditer(cand):
+        if re.search(r"[\u4e00-\u9fff]", cand[:m.start()]):
+            cand = cand[:m.start()]
+            break
+
+    # 4. 保护主干里合法的 URL 与真实文件路径（仅认磁盘路径/真实扩展名，绝不放行 foo/bar 或 GET/POST），
+    #    再整块清除残留英文键值、协议/MIME 与未允许标识符。
+    kept: list[str] = []
+
+    def _hold(m: re.Match) -> str:
+        tok = m.group(0)
+        if _is_protocol_or_mime(tok):
+            return " "
+        kept.append(tok)
+        return f"\x00{len(kept) - 1}\x00"
+
+    s = _URL.sub(_hold, cand)
+    s = _FAULT_FILE_RE.sub(_hold, s)
+    s = _strip_proto_mime(s)
+    s = _KV_ASCII_RE.sub(" ", s)
+    s = re.sub(r"<[^>]*>", " ", s)
+    s = re.sub(r"\[[^\]]*\]", " ", s)
+
+    def _clean_ident(m: re.Match) -> str:
         w = m.group(0)
         if w in ALLOWED_WORDS or re.fullmatch(r"v?\d[\d.]*(?:-beta\.\d+)?", w):
             return w
         return ""
 
-    # 先保护合法路径、URL、错误码，再清除其余未允许英文单词
-    kept: list[str] = []
-
-    def _hold(m: re.Match) -> str:
-        kept.append(m.group(0))
-        return f"\x00{len(kept) - 1}\x00"
-
-    s = _URL.sub(_hold, s)
-    s = _PATH.sub(_hold, s)
-    s = _HEX.sub(_hold, s)
-    s = _WORD.sub(_clean_word, s)
+    s = _IDENT_RE.sub(_clean_ident, s)
     for i, val in enumerate(kept):
         s = s.replace(f"\x00{i}\x00", val)
-    # 清除模糊词与剥离英文后留下的空括号、孤立符号
-    for v in VAGUE:
-        if v in s:
-            s = s.replace(v, "")
+
+    # 5. 工程术语与模糊词规范化，并清理空括号、孤立符号、重复冒号和尾随孤立错误码数字。
+    s = _normalize_plain_zh(s, strip_vague=True)
+    s = re.sub(r"([（(])\s+", r"\1", s)
+    s = re.sub(r"\s+([）)])", r"\1", s)
     s = re.sub(r"[（(]\s*[:：，,、\-—]*\s*[）)]", "", s)
-    s = re.sub(r"<[^>]*>", "", s)
-    s = re.sub(r"\[[^\]]*\]", "", s)
     s = re.sub(r"['\"`]", "", s)
+    s = re.sub(r"[:：]\s*[:：]+", "：", s)
     s = re.sub(r"\s+", " ", s)
-    s = re.sub(r"[：:,，；;｜|\-—\s]+$", "", s).strip("：:,，；;｜| ")
-    # 只有包含实质中文内容时才作为业务主干返回
-    if not re.search(r"[\u4e00-\u9fff]{2,}", s):
+    s = re.sub(r"[:：=_\-]+\s*-?\d+\.?\s*$", "", s)
+    for code in extracted_codes:
+        s = re.sub(rf"\s+{re.escape(str(code))}\.?\s*$", "", s)
+    s = re.sub(r"[：:,，；;｜|\-—_\s]+$", "", s)
+    s = re.sub(r"^[：:,，；;｜|\-—_\s]+", "", s)
+    if len(re.findall(r"[\u4e00-\u9fff]", s)) < 2:
         return ""
-    return s[:72]
+    if len(s) > 72 and not _URL.search(s):
+        return s[:72].rstrip("：:,，；;｜|-— ")
+    return s
 
 
-def _extract_fault_context(what: str, cause: str = "") -> list[str]:
-    """提取原话里的关键定位上下文（文件名/路径、错误码、状态码、命令名），绝不裸露英文堆栈。"""
-    text = str(what or "")
-    ctx: list[str] = []
-    # 1. 文件名或路径（plain() 允许路径与带后缀文件名）
-    for m in _PATH.finditer(text):
-        p = m.group(0).rstrip(".,;:)'\"」）")
-        if p and p not in ctx:
-            ctx.append(f"文件 {p}")
-        if len(ctx) >= 2:
-            break
-    # 2. 十六进制错误码（如 0xc0000005）
-    for m in _HEX.finditer(text):
-        hx = m.group(0)
-        if hx not in cause and f"错误码 {hx}" not in ctx:
-            ctx.append(f"错误码 {hx}")
-            break
-    # 3. HTTP 状态码（如未在 cause 中写出时补充）
-    if (m := _STATUS_CODE_RE.search(text)) and m.group(1) not in cause:
-        ctx.append(f"状态码 {m.group(1)}")
-    # 4. 退出码（如未在 cause 中写出时补充）
-    if (m := _EXIT_CODE_RE.search(text)) and f"退出码 {m.group(1)}" not in cause:
-        ctx.append(f"退出码 {m.group(1)}")
-    # 5. 相关命令（转为带 .exe 的标准命令文件名，既清晰又过 plain()）
-    for pat, label in _CMD_NAMES:
-        if pat.search(text) and not any(label in x for x in ctx):
-            ctx.append(f"命令 {label}")
-            break
-    return ctx[:3]
+def _parse_fault(raw: str) -> FaultInfo:
+    """结构化词法解析器：把原始报错拆解为 FaultInfo（主干、故障类型、退出码、HTTP码、文件、命令、URL）。"""
+    text = str(raw or "").strip()
+    if not text:
+        return FaultInfo()
+
+    # 先提取并剥离完整 URL，避免 URL 路径段被误抓为本地文件或命令。
+    url = ""
+    if m := _URL.search(text):
+        url = m.group(0).rstrip(".,;:)'\"」）]")
+    no_url = _URL.sub(" ", text)
+
+    exit_code, http_code, win_error, hex_code = _extract_codes(no_url)
+    fault_kind = _classify_fault_kind(no_url, exit_code, http_code, win_error)
+    files, cmds = _extract_files_and_cmds(no_url)
+
+    extracted_codes = {c for c in (exit_code, http_code, win_error) if c is not None}
+    head_zh = _extract_head_zh(text, extracted_codes)
+    return FaultInfo(
+        head_zh=head_zh,
+        fault_kind=fault_kind,
+        exit_code=exit_code,
+        http_code=http_code,
+        win_error=win_error,
+        files=files,
+        cmds=cmds,
+        url=url,
+        hex_code=hex_code,
+    )
 
 
-def format_fault_reason(what: str) -> str:
-    """结构化人话错误原因格式化：输出直白中文原因＋关键上下文，彻底替代旧版盲盒翻译。"""
-    raw = str(what or "").strip()
-    if not raw:
-        return "记录里没有写具体原因，详见中继日志"
-    # 若原话本身不含违规英文，则保留原话（同时把工程术语换成人话，保证读得懂且不吞真错因）
-    if not any(p.startswith("英文") for p in plain(raw)):
-        clean = raw
-        for old, new in _JARGON_PLAIN_MAP:
-            clean = clean.replace(old, new)
-        return clean
-    cause = fault_cause(raw)
-    # 切出异常分隔符前的中文业务描述作为主干（保留具体是哪件事失败）
-    head_part = re.split(r"\s*[｜|]\s*", raw, maxsplit=1)[0]
-    lead = _scrub_plain_zh(head_part)
-    ctx = _extract_fault_context(raw, cause)
-    # 若主干里已经带了文件名，避免在上下文括号里重复打印
-    ctx = [c for c in ctx if c.split(" ", 1)[-1] not in lead]
+def _render_fault(info: FaultInfo) -> str:
+    """根据 FaultInfo 模板直接拼装干净白话中文，单层括号展示上下文细节，零英文乱码。"""
+    if info.fault_kind == "http_error" and info.http_code is not None:
+        base_cause = f"对方服务器返回了状态码 {info.http_code}"
+    else:
+        base_cause = _FAULT_TEMPLATES.get(info.fault_kind, "")
+
+    # 按 (类型, 归一化值) 统一去重拼装上下文细节，避免重复文件名或双层括号。
+    details: list[str] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add(kind: str, label: str, norm: str) -> None:
+        key = (kind, norm.lower())
+        if key not in seen:
+            seen.add(key)
+            details.append(label)
+
+    for cmd in info.cmds:
+        if cmd.lower() not in info.head_zh.lower():
+            _add("cmd", f"命令 {cmd}", cmd)
+    for fpath in info.files:
+        if fpath not in info.head_zh:
+            _add("file", f"文件 {fpath}", fpath.replace("/", "\\"))
+    if info.hex_code and info.hex_code not in info.head_zh:
+        _add("hex", f"错误码 {info.hex_code}", info.hex_code)
+    if info.http_code is not None and info.fault_kind != "http_error":
+        _add("http", f"状态码 {info.http_code}", str(info.http_code))
+    if info.exit_code is not None:
+        _add("exit", f"退出码 {info.exit_code}", str(info.exit_code))
+    if info.win_error is not None and info.fault_kind == "win_error":
+        _add("win", f"系统错误码 {info.win_error}", str(info.win_error))
+
     parts: list[str] = []
-    if lead:
-        parts.append(lead)
-    if cause and cause not in lead:
-        parts.append(cause)
+    if info.head_zh:
+        parts.append(info.head_zh)
+    if base_cause and base_cause not in info.head_zh:
+        parts.append(base_cause)
     if not parts:
         parts.append("程序发生运行异常")
-    elif not cause and not any(k in lead for k in (
-        "失败", "没", "无法", "不能", "不到", "不对", "超时", "断开", "拒绝",
-        "异常", "崩", "错", "停", "卡", "缺", "坏", "丢", "拒", "满", "冲突", "无效",
-    )):
-        # 剥离模糊词后若主干仅剩动作短语（如“解析活动数据”），补齐失败谓词避免读起来像正常语句
+    elif not base_cause and not any(k in info.head_zh for k in _HEAD_FAIL_VERBS):
+        # 剥离模糊词后若主干仅剩动作短语（如「解析活动数据」），补齐失败谓词以免读起来像正常语句。
         parts.append("发生运行异常")
+
     msg = "——".join(parts)
-    if ctx:
-        msg += f"（{'，'.join(ctx)}）"
+    if details:
+        msg += f"（{'，'.join(details)}）"
     return f"{msg}，原文已记日志"
 
 
-def _said(what: str) -> str:
-    """将一条报错日志转成推群可读的直白人话：无英文直接引用，含英文输出结构化中文原因＋上下文。"""
+def fault_cause(what: str) -> str:
+    """将日志原话中的系统/网络/HTTP/Win32/外部命令/Python 异常翻成直白中文原因；未匹配时返回空串。"""
+    info = _parse_fault(what)
+    if not info.fault_kind:
+        return ""
+    if info.fault_kind == "http_error" and info.http_code is not None:
+        return f"对方服务器返回了状态码 {info.http_code}"
+    if info.fault_kind == "process_exit":
+        if info.exit_code is not None:
+            return f"外部命令执行失败（退出码 {info.exit_code}）"
+        return "外部命令执行失败"
+    if info.fault_kind == "win_error" and info.win_error is not None:
+        return f"系统调用失败（系统错误码 {info.win_error}）"
+    return _FAULT_TEMPLATES.get(info.fault_kind, "")
+
+
+def format_fault_reason(what: str) -> str:
+    """统一的白话故障原因格式化入口：纯中文走术语/模糊词规范化，含英文走 FaultInfo 词法拆解与模板渲染。"""
     raw = str(what or "").strip()
-    if raw and not any(p.startswith("英文") for p in plain(raw)):
-        return f"它说：{raw}"
+    if not raw:
+        return "记录里没有写具体原因，详见中继日志"
+    if not _has_disallowed_english(raw):
+        clean = _normalize_plain_zh(raw, strip_vague=False)
+        return clean or "程序发生运行异常，原文已记日志"
+    return _render_fault(_parse_fault(raw))
+
+
+def _said(what: str) -> str:
+    """将一条报错日志转成推群可读的直白人话：纯中文也经统一白话规范化，绝不绕过 plain() 门禁。"""
+    raw = str(what or "").strip()
+    if raw and not _has_disallowed_english(raw):
+        clean = _normalize_plain_zh(raw, strip_vague=False)
+        if clean:
+            return f"它说：{clean}"
     return f"原因：{format_fault_reason(raw)}"
 
 
@@ -1736,7 +2156,10 @@ def samples() -> list[str]:
         relay_error_body("ark.maintenance", "维护公告：终末地 官方公告取不到（官网：<urlopen error [Errno 11001] "
                          "getaddrinfo failed>），这次不知道它有没有停服维护", "05:20:16"),
         relay_error_line("ark.service", "Traceback: KeyError 'x'", "09:00:01"),
-        *(said.format(code=503) for _pat, said in _FAULTS),
+        *_FAULT_TEMPLATES.values(),
+        format_fault_reason("关游戏失败 ｜ taskkill /F /IM Endfield.exe returned non-zero exit status 128"),
+        format_fault_reason("官方数据返回异常 ｜ HTTP/1.1 502 Bad Gateway"),
+        relay_error_body("ark.service", "中继更新出错", "09:20:01"),
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
                          "游戏机缺读图组件，官方长图读不了"),
         AUTOMAS_CONTRACT, MAS_CONTRACT_CHECK,

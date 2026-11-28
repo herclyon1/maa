@@ -231,8 +231,10 @@ def _part_texts_wording():
         check(f"也照旧不抄原话：{line[:24]}", "它说" in texts.relay_error_body("ark.service", line, ""), False)
     check("不是文件后缀的英文照旧拦（file.ops、e.g）", [bool(texts.plain(x)) for x in ("看 file.ops", "参见 readme.rst")], [True, True])
     check("原话是人话时照抄", "它说：日报没发出去" in texts.relay_error_body("ark.report", "日报没发出去", "10:47"), True)
-    check("原话全是中文、只是带我们自己的术语：也照抄", "它说：AUTO-MAS 拉起后 45 秒内接口仍不通"
-          in texts.relay_error_body("ark.service", "AUTO-MAS 拉起后 45 秒内接口仍不通", "21:21"), True)
+    jargon_body = texts.relay_error_body("ark.service", "AUTO-MAS 拉起后 45 秒内接口仍不通", "21:21")
+    check("原话全是中文但带工程术语：统一转为白话并过 plain()",
+          ("它说：AUTO-MAS 启动后 45 秒内数据入口仍不通" in jargon_body, texts.plain(jargon_body)),
+          (True, []))
     merged = texts.relay_error_line("ark.maintenance", cases[0][0], "05:20:16 起共 5 次，最后一次 05:20:31")
     check("合并推送里的每一行也说原因", ("域名解析失败" in merged, texts.plain(merged)), (True, []))
     again = texts.relay_error_recurred_body("ark.banners", cases[1][0], "21:47:01", "游戏机缺读图组件")
@@ -241,62 +243,166 @@ def _part_texts_wording():
     hits = [f.relative_to(ROOT).as_posix() for f in sorted((ROOT / "ark_relay").rglob("*.py")) if old in f.read_text(encoding="utf-8")]
     check("代码里不再有那句半截话（全仓彻底清零）", hits, [])
 
-    print("\n[外部命令退出码与 HTTP 状态码严格隔离：exit status 128/255/127/126 绝不误报为 HTTP 状态码]")
+    print("\n[结构化词法拆解：有限 HTTP 状态码集合 + 进程退出语境隔离 + 零伪文件/乱码]")
+    for bad_http in (0, 1, 104, 126, 127, 128, 199, 255, 299, 599, 600, 999):
+        check(f"非法 HTTP 码 {bad_http} 不在 _VALID_HTTP_CODES", bad_http in texts._VALID_HTTP_CODES, False)
+    for good_http in (200, 400, 401, 403, 404, 429, 500, 502, 503, 504, 520, 524):
+        check(f"合法 HTTP 码 {good_http} 在 _VALID_HTTP_CODES", good_http in texts._VALID_HTTP_CODES, True)
+
     exit_cases = [
-        ("CalledProcessError: Command '['git', 'pull']' returned non-zero exit status 128.", "128"),
-        ("subprocess.CalledProcessError: Command '['pwsh', '-File', 'check.ps1']' returned non-zero exit status 255.", "255"),
-        ("CalledProcessError: Command '['adb', 'devices']' returned non-zero exit status 127.", "127"),
-        ("CalledProcessError: Command '['schtasks']' returned non-zero exit status 126.", "126"),
-        ("CalledProcessError: Command '['git', 'status']' returned non-zero exit status 500.", "500"),
-        ("任务执行失败 ｜ exit status 128", "128"),
-        ("任务执行失败 ｜ returncode=255", "255"),
-        ("CalledProcessError(127, 'adb')", "127"),
+        ("CalledProcessError: Command '['git', 'pull']' returned non-zero exit status 128.", 128, "git.exe"),
+        ("subprocess.CalledProcessError: Command '['pwsh', '-File', 'check.ps1']' returned non-zero exit status 255.", 255, "pwsh.exe"),
+        ("CalledProcessError: Command '['adb', 'devices']' returned non-zero exit status 127.", 127, "adb.exe"),
+        ("CalledProcessError: Command '['schtasks']' returned non-zero exit status 126.", 126, "schtasks.exe"),
+        ("CalledProcessError: Command '['git', 'status']' returned non-zero exit status 500.", 500, "git.exe"),
+        ("任务执行失败 ｜ exit status 128", 128, ""),
+        ("任务执行失败 ｜ returncode=255", 255, ""),
+        ("CalledProcessError(127, 'adb')", 127, "adb.exe"),
+        # batch2 盲测打穿案例：无 exit 前缀 / 多空格 / Tab / 子程序退出语境
+        ("process ended with status 128", 128, ""),
+        ("child exited with status 255", 255, ""),
+        ("waitpid failed: status=127", 127, ""),
+        ("taskkill failed, status: 128", 128, "taskkill.exe"),
+        ("subprocess.CalledProcessError: Command ['git'] returned non-zero exit  status 128.", 128, "git.exe"),
+        ("PowerShell script failed with EXIT\tSTATUS 255", 255, "pwsh.exe"),
+        ("ssh host failed, status=255", 255, "ssh.exe"),
+        ("process ended with status 500", 500, ""),
     ]
-    for raw, code in exit_cases:
-        want = f"外部命令执行失败（退出码 {code}）"
+    for raw, code, want_cmd in exit_cases:
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
         body = texts.relay_error_body("ark.service", raw, "09:10:00")
-        check(f"退出码 {code} 准确识别且不串判 HTTP：{raw[:36]}",
-              (texts.fault_cause(raw), want in body, "状态码" in body,
-               texts._STATUS_CODE_RE.search(raw) is None, texts.plain(body)),
-              (want, True, False, True, []))
+        check(f"退出码 {code} 归类 process_exit 且绝不串判 HTTP：{raw[:38]}",
+              (info.fault_kind, info.exit_code, info.http_code,
+               texts.fault_cause(raw), f"退出码 {code}" in out, "外部命令执行失败" in out,
+               "状态码" in out, (not want_cmd or f"命令 {want_cmd}" in out),
+               texts.plain(out), texts.plain(body)),
+              ("process_exit", code, None,
+               f"外部命令执行失败（退出码 {code}）", True, True,
+               False, True, [], []))
+
+    kill_raw = "关游戏失败 ｜ taskkill /F /IM Endfield.exe returned non-zero exit status 128"
+    kill_out = texts.format_fault_reason(kill_raw)
+    check("FaultInfo 单层括号模板精确输出（命令 + 文件 + 退出码）",
+          (kill_out, texts.plain(kill_out)),
+          ("关游戏失败——外部命令执行失败（命令 taskkill.exe，文件 Endfield.exe，退出码 128），原文已记日志", []))
 
     http_cases = [
-        ("推消息失败 ｜ status=502 Bad Gateway", "502"),
-        ("推消息失败 ｜ status_code=502 Bad Gateway", "502"),
-        ("拉取公告失败 ｜ status_code=429 Too Many Requests", "429"),
-        ("上传失败 ｜ status code 502 Bad Gateway", "502"),
-        ("森空岛请求受限 ｜ HTTP 429 Too Many Requests", "429"),
-        ("官方接口返回异常 ｜ HTTP/1.1 502 Bad Gateway", "502"),
-        ("公告取不到（HTTP Error 503: Service Unavailable）", "503"),
+        ("推消息失败 ｜ status=502 Bad Gateway", 502),
+        ("推消息失败 ｜ status_code=502 Bad Gateway", 502),
+        ("拉取公告失败 ｜ status_code=429 Too Many Requests", 429),
+        ("上传失败 ｜ status code 502 Bad Gateway", 502),
+        ("森空岛请求受限 ｜ HTTP 429 Too Many Requests", 429),
+        ("官方接口返回异常 ｜ HTTP/1.1 502 Bad Gateway", 502),
+        ("拉取失败 ｜ HTTP/2 429 Too Many Requests", 429),
+        ("接口返回异常 ｜ status-code=503", 503),
+        ("公告取不到（HTTP Error 503: Service Unavailable）", 503),
+        ("COS 上传失败（HTTP/1.1 502 Bad Gateway）", 502),
+        ("拉取超时 ｜ status_code=524 Cloudflare", 524),
     ]
     for raw, code in http_cases:
-        want = f"对方服务器返回了状态码 {code}"
+        info = texts._parse_fault(raw)
+        out = texts.format_fault_reason(raw)
         body = texts.relay_error_body("ark.banners", raw, "09:11:00")
-        check(f"真 HTTP 状态码 {code} 准确识别：{raw[:36]}",
-              (texts.fault_cause(raw), want in body, "退出码" in body, texts.plain(body)),
-              (want, True, False, []))
+        check(f"真 HTTP 状态码 {code} 准确识别且零伪文件：{raw[:38]}",
+              (info.fault_kind, info.http_code, info.exit_code, info.files,
+               texts.fault_cause(raw), f"对方服务器返回了状态码 {code}" in out,
+               "退出码" in out, "文件 HTTP/" in out, "HTTP/" in out,
+               texts.plain(out), texts.plain(body)),
+              ("http_error", code, None, (),
+               f"对方服务器返回了状态码 {code}", True,
+               False, False, False, [], []))
 
-    # 同源顺序冲突与上下文提取边界对照（Timeout + exit status、WinError 128、非法状态码、含 rc 子串词）
-    timeout_exit = "TimeoutError: command timed out, exit status 128"
-    body_te = texts.relay_error_body("ark.service", timeout_exit, "09:12:00")
-    check("超时伴随 exit status 128 只补退出码不误补 HTTP 状态码",
-          (texts.fault_cause(timeout_exit), "退出码 128" in body_te, "状态码" in body_te, texts.plain(body_te)),
-          ("连接或读写超时", True, False, []))
+    # MIME 类型剥离与文件路径去重
+    mime_raw = "JSONDecodeError: expected application/json got text/html"
+    mime_out = texts.format_fault_reason(mime_raw)
+    check("MIME 类型绝不掉进文件提取器",
+          (texts._parse_fault(mime_raw).files, "收到的数据格式是坏的" in mime_out,
+           "文件 application/" in mime_out, "文件 text/" in mime_out, texts.plain(mime_out)),
+          ((), True, False, False, []))
+
+    dup_raw = r"FileNotFoundError: missing D:\ark\a.json and D:\ark\a.json"
+    dup_out = texts.format_fault_reason(dup_raw)
+    check("重复文件路径按 (kind, normalized_val) 严格去重",
+          (texts._parse_fault(dup_raw).files, dup_out.count(r"D:\ark\a.json"), texts.plain(dup_out)),
+          ((r"D:\ark\a.json",), 1, []))
+
+    # plain() 本身必须拦截 HTTP/1.1、HTTP/2 与 MIME 类型，不让伪路径绕过门禁
+    for raw_proto in ("返回 HTTP/1.1 502", "返回 HTTP/2 429", "类型 application/json",
+                      "类型 text/html", "类型 image/png", "类型 multipart/form-data"):
+        check(f"plain() 拦截协议/MIME：{raw_proto}", bool(texts.plain(raw_proto)), True)
+    check("plain() 照常放行真实相对路径与 .cmd 文件",
+          [texts.plain(x) for x in ("截图在 image/shot.png", "脚本 run.cmd 失败", "目录 resource/tasks")],
+          [[], [], []])
+
+    # 无「｜」分隔符的中文主干切分：零 _=429、零 : : 22.、零尾随 128 残片
+    no_pipe_cases = [
+        ("请求森空岛受限: status_code=429 Too Many Requests",
+         "请求森空岛受限", "状态码 429", ("_=429", "status_code")),
+        ("森空岛签到接口返回 status_code=429 (Too Many Requests)",
+         "森空岛签到数据入口返回", "状态码 429", ("_=429", "接口")),
+        ("拉取 https://cos.example.com/relay/manifest.json 失败：CalledProcessError: Command ['curl', '-fsSL', 'https://cos.example.com/relay/manifest.json'] returned non-zero exit status 22.",
+         "拉取 https://cos.example.com/relay/manifest.json 失败", "退出码 22", (": : ", "：: ", "状态码")),
+        ("subprocess调用失败exit status 128",
+         "调用失败", "退出码 128", (" 128——", "subprocess", "状态码")),
+        ("拉取更新失败exit status 128",
+         "拉取更新失败", "退出码 128", (" 128——", "状态码")),
+    ]
+    for raw, want_head, want_code, forbid in no_pipe_cases:
+        out = texts.format_fault_reason(raw)
+        body = texts.relay_error_body("ark.service", raw, "09:11:30")
+        check(f"无分隔符主干切分干净无乱码：{raw[:34]}",
+              (want_head in out, want_code in out,
+               any(bad in out for bad in forbid), texts.plain(out), texts.plain(body)),
+              (True, True, False, [], []))
+
+    # 同源顺序冲突与上下文提取边界对照（Timeout + exit status 多空格/Tab/subprocess、WinError 128、非法状态码、src=128）
+    for timeout_exit, want_rc in (
+        ("TimeoutError: command timed out, exit status 128", 128),
+        ("TimeoutError: process failed, exit  status 128", 128),
+        ("TimeoutError: process failed, exit\tstatus 128", 128),
+        ("TimeoutError: subprocess failed (status=255)", 255),
+    ):
+        body_te = texts.relay_error_body("ark.service", timeout_exit, "09:12:00")
+        check(f"超时伴随退出码只补退出码不误补 HTTP：{timeout_exit[:36]}",
+              (texts.fault_cause(timeout_exit), f"退出码 {want_rc}" in body_te,
+               "状态码" in body_te, texts.plain(body_te)),
+              ("连接或读写超时", True, False, []))
+
     win128 = "OSError: [WinError 128] There are no child processes to wait for"
     body_w128 = texts.relay_error_body("ark.service", win128, "09:12:01")
     check("WinError 128 走系统错误码不误判 HTTP",
-          (texts.fault_cause(win128), "系统错误码 128" in body_w128, "状态码" in body_w128, texts.plain(body_w128)),
-          ("系统调用失败（系统错误码 128）", True, False, []))
-    check("超出 1xx-5xx 的 status=999 / status=001 不算 HTTP 状态码",
+          (texts.fault_cause(win128), "系统错误码 128" in body_w128,
+           "状态码" in body_w128, "退出码" in body_w128, texts.plain(body_w128)),
+          ("系统调用失败（系统错误码 128）", True, False, False, []))
+
+    check("非法 status=999 / status=001 / status=128（无退出语境）绝不算 HTTP 状态码",
           (texts.fault_cause("ValueError: invalid status=999"),
            texts.fault_cause("ValueError: invalid status=001"),
-           texts._STATUS_CODE_RE.search("status=999"),
-           texts._STATUS_CODE_RE.search("status=001")),
-          ("数据数值或格式不对", "数据数值或格式不对", None, None))
+           texts.fault_cause("ValueError: invalid status=128"),
+           texts._parse_fault("ValueError: invalid status=999").http_code,
+           texts._parse_fault("ValueError: invalid status=128").http_code),
+          ("数据数值或格式不对", "数据数值或格式不对", "数据数值或格式不对", None, None))
+
     check("含 rc 子串的普通英文词 src=128 不误提退出码",
-          (texts._EXIT_CODE_RE.search("RuntimeError: src=128 failed"),
+          (texts._parse_fault("RuntimeError: src=128 failed").exit_code,
            "退出码" in texts.relay_error_body("ark.service", "RuntimeError: src=128 failed", "09:12:02")),
           (None, False))
+
+    # 纯中文日志统一走白话术语与模糊词规范化：relay_error_body / relay_error_line / relay_error_recurred_body 全过 plain()
+    for pure_zh, forbid_words in (
+        ("进程落盘接口失败", ("进程", "落盘", "接口")),
+        ("中继更新出错", ("出错",)),
+        ("这一步可能有问题，不确定是否落盘", ("这一步", "可能", "有问题", "不确定", "落盘")),
+    ):
+        b1 = texts.relay_error_body("ark.service", pure_zh, "09:20:00")
+        b2 = texts.relay_error_line("ark.service", pure_zh, "09:20:00")
+        b3 = texts.relay_error_recurred_body("ark.service", pure_zh, "09:20:00", "修复旧异常")
+        b4 = texts.format_fault_reason(pure_zh)
+        check(f"纯中文日志统一白话收口且 100% 过 plain()：{pure_zh}",
+              (texts.plain(b1), texts.plain(b2), texts.plain(b3), texts.plain(b4),
+               any(w in b1 for w in forbid_words)),
+              ([], [], [], [], False))
 
 
 def _part_user_switches():  # noqa: C901
